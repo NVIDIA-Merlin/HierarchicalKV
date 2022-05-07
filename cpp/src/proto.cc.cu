@@ -102,6 +102,8 @@ struct __align__(16) Vector {
 
 struct __align__(sizeof(M)) Meta {
   M val;
+  //   int prev;
+  //   int next;
 };
 
 struct Bucket {
@@ -109,9 +111,12 @@ struct Bucket {
   Meta *metas;      // Device memory
   Vector *cache;    // Device memory
   Vector *vectors;  // Pinned host memory
+  Vector *slots1;   // Pinned host memory
+  Vector *slots2;   // Pinned host memory
   M min_meta;
   int min_pos;
   int size;
+  64
 };
 
 struct __align__(32) Table {
@@ -167,7 +172,8 @@ __global__ void write(const Vector *__restrict src, Vector **__restrict dst,
     int dim_index = tid % DIM;
 
     if (dst[vec_index] != nullptr) {
-      (*(dst[vec_index])).values[dim_index] = src[vec_index].values[dim_index];
+      (*(dst[vec_index])).values[dim_index] =
+          1.0;  // src[vec_index].values[dim_index];
     }
   }
 }
