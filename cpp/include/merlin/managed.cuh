@@ -16,35 +16,20 @@
 
 #pragma once
 
+#include <new>
+
 namespace nv {
 namespace merlin {
 
-template <typename T>
-class FlexMemory {
- public:
-  FlexMemory(int size) : ptr_(nullptr) {
-    if (!ptr_) {
-      size_ = size;
-      assert(size_ > 0);
-      cudaMalloc(&ptr_, sizeof(T) * size_);
-    }
-  }
-  ~FlexMemory() {
-    if (!ptr_) cudaFree(ptr_);
-  }
-  V *get(size_t size = 0) {
-    if (size > size_) {
-      cudaFree(ptr_);
-      size_ = size;
-      assert(size_ > 0);
-      cudaMalloc(&ptr_, sizeof(T) * size_);
-    }
-    return ptr_;
+struct managed {
+  static void *operator new(size_t n) {
+    void *ptr = 0;
+    cudaError_t result = cudaMallocManaged(&ptr, n);
+    if (cudaSuccess != result || 0 == ptr) throw std::bad_alloc();
+    return ptr;
   }
 
- private:
-  T *ptr_;
-  size_t size_;
+  static void operator delete(void *ptr) noexcept { cudaFree(ptr); }
 };
 
 }  // namespace merlin
