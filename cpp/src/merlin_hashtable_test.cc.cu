@@ -76,7 +76,7 @@ struct ValueArray : public ValueArrayBase<V> {
 template <class T>
 using ValueType = ValueArrayBase<T>;
 
-int main() {
+int test_main() {
   constexpr uint64_t INIT_SIZE = 32 * 1024 * 1024;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024;
   constexpr uint64_t TEST_TIMES = 1;
@@ -101,7 +101,7 @@ int main() {
 
   cudaMemset(h_vectors, 0, KEY_NUM * sizeof(Vector));
 
-  create_random_keys<K,  M>(h_keys, h_metas, KEY_NUM);
+  create_random_keys<K, M>(h_keys, h_metas, KEY_NUM);
 
   K *d_keys;
   M *d_metas = nullptr;
@@ -128,7 +128,6 @@ int main() {
   cudaStream_t stream;
   cudaStreamCreate(&stream);
 
-
   uint64_t total_size = 0;
   for (int i = 0; i < TEST_TIMES; i++) {
     cudaDeviceSynchronize();
@@ -149,6 +148,7 @@ int main() {
     printf("[timing] lookup=%.2fms\n ", diff_lookup.count() * 1000);
   }
   cudaStreamDestroy(stream);
+  cudaDeviceSynchronize();
 
   cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool), cudaMemcpyDeviceToHost);
   cudaMemcpy(h_vectors, d_vectors, KEY_NUM * sizeof(Vector),
@@ -180,5 +180,10 @@ int main() {
 
   cout << "COMPLETED SUCCESSFULLY\n";
 
+  return 0;
+}
+
+int main() {
+  test_main();
   return 0;
 }

@@ -38,6 +38,27 @@ __inline__ __device__ int64_t atomicCAS(int64_t* address, int64_t compare,
                             (unsigned long long)val);
 }
 
+__inline__ __device__ uint64_t atomicExch(uint64_t* address, uint64_t val) {
+  return (uint64_t)atomicExch((unsigned long long*)address,
+                              (unsigned long long)val);
+}
+
+__inline__ __device__ int64_t atomicExch(int64_t* address, int64_t val) {
+  return (int64_t)atomicExch((unsigned long long*)address,
+                             (unsigned long long)val);
+}
+
+__inline__ __device__ int64_t atomicAdd(int64_t* address, const int64_t val) {
+  return (int64_t)atomicAdd((unsigned long long*)address,
+                            (const unsigned long long)val);
+}
+
+__inline__ __device__ uint64_t atomicAdd(uint64_t* address,
+                                         const uint64_t val) {
+  return (uint64_t)atomicAdd((unsigned long long*)address,
+                             (const unsigned long long)val);
+}
+
 namespace nv {
 namespace merlin {
 
