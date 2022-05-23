@@ -36,7 +36,7 @@ constexpr uint64_t DIM = 64;
 constexpr uint64_t INIT_SIZE = 32 * 4 * 1024 * 1024;  // 134,217,728
 constexpr uint64_t BUCKETS_SIZE = 128;
 constexpr uint64_t CACHE_SIZE = 2;
-constexpr uint64_t TABLE_SIZE = INIT_SIZE / BUCKETS_SIZE;  // 1,048,576
+constexpr uint64_t BUCKETS_NUM = INIT_SIZE / BUCKETS_SIZE;  // 1,048,576
 constexpr K EMPTY_KEY = (K)(0xFFFFFFFFFFFFFFFF);
 constexpr M MAX_META = (M)(0xFFFFFFFFFFFFFFFF);
 
@@ -156,13 +156,14 @@ inline uint64_t Murmur3Hash(const uint64_t &key) {
 
 void create_table(Table **table) {
   cudaMallocManaged((void **)table, sizeof(Table));
-  cudaMallocManaged((void **)&((*table)->buckets), TABLE_SIZE * sizeof(Bucket));
-  cudaMemset(((*table)->buckets), 0, TABLE_SIZE * sizeof(Bucket));
+  cudaMallocManaged((void **)&((*table)->buckets),
+                    BUCKETS_NUM * sizeof(Bucket));
+  cudaMemset(((*table)->buckets), 0, BUCKETS_NUM * sizeof(Bucket));
 
-  cudaMalloc((void **)&((*table)->locks), TABLE_SIZE * sizeof(int));
-  cudaMemset((*table)->locks, 0, TABLE_SIZE * sizeof(unsigned int));
+  cudaMalloc((void **)&((*table)->locks), BUCKETS_NUM * sizeof(int));
+  cudaMemset((*table)->locks, 0, BUCKETS_NUM * sizeof(unsigned int));
 
-  for (int i = 0; i < TABLE_SIZE; i++) {
+  for (int i = 0; i < BUCKETS_NUM; i++) {
     cudaMalloc(&((*table)->buckets[i].keys), BUCKETS_SIZE * sizeof(K));
     cudaMemset((*table)->buckets[i].keys, 0xFF, BUCKETS_SIZE * sizeof(K));
     cudaMalloc(&((*table)->buckets[i].metas), BUCKETS_SIZE * sizeof(M));
@@ -173,7 +174,7 @@ void create_table(Table **table) {
 }
 
 void destroy_table(Table **table) {
-  for (int i = 0; i < TABLE_SIZE; i++) {
+  for (int i = 0; i < BUCKETS_NUM; i++) {
     cudaFree((*table)->buckets[i].keys);
     cudaFree((*table)->buckets[i].metas);
     cudaFree((*table)->buckets[i].cache);
@@ -219,7 +220,7 @@ __global__ void upsert(const Table *__restrict table, const K *__restrict keys,
 
   if (tid < N) {
     int key_idx = tid;
-    int bkt_idx = keys[tid] % TABLE_SIZE;
+    int bkt_idx = keys[tid] % BUCKETS_NUM;
     const K insert_key = keys[tid];
     bool release_lock = false;
 
@@ -279,7 +280,7 @@ __global__ void upsert(const Table *__restrict table, const K *__restrict keys,
   int key_pos = 0;
 
   if (tid < N) {
-    int bkt_idx = keys[tid] % TABLE_SIZE;
+    int bkt_idx = keys[tid] % BUCKETS_NUM;
     const K insert_key = keys[tid];
     Bucket *bucket = &(table->buckets[bkt_idx]);
     key_pos = atomicInc((unsigned int *)&(bucket->min_pos), BUCKETS_SIZE - 1);
@@ -295,7 +296,7 @@ __global__ void lookup(const Table *__restrict table, const K *__restrict keys,
   if (tid < N) {
     int key_idx = tid / BUCKETS_SIZE;
     int key_pos = tid % BUCKETS_SIZE;
-    int bkt_idx = keys[key_idx] % TABLE_SIZE;
+    int bkt_idx = keys[key_idx] % BUCKETS_NUM;
     K target_key = keys[key_idx];
     Bucket *bucket = &(table->buckets[bkt_idx]);
 
@@ -313,7 +314,7 @@ __global__ void lookup(const Table *__restrict table, const K *__restrict keys,
   if (tid < N) {
     int key_idx = tid / BUCKETS_SIZE;
     int key_pos = tid % BUCKETS_SIZE;
-    int bkt_idx = keys[key_idx] % TABLE_SIZE;
+    int bkt_idx = keys[key_idx] % BUCKETS_NUM;
     K target_key = keys[key_idx];
     Bucket *bucket = &(table->buckets[bkt_idx]);
 
@@ -331,7 +332,7 @@ __global__ void remove(const Table *__restrict table, const K *__restrict keys,
   if (tid < N) {
     int key_idx = tid / BUCKETS_SIZE;
     int key_pos = tid % BUCKETS_SIZE;
-    int bkt_idx = keys[key_idx] % TABLE_SIZE;
+    int bkt_idx = keys[key_idx] % BUCKETS_NUM;
     K target_key = keys[key_idx];
     Bucket *bucket = &(table->buckets[bkt_idx]);
 
@@ -434,7 +435,7 @@ void create_random_keys_test(T *h_keys, M *h_metas, int KEY_NUM) {
 
   while (numbers.size() < KEY_NUM) {
     T tmp = distr(eng);
-    if (Murmur3Hash(tmp) % TABLE_SIZE == 0) numbers.insert(tmp);
+    if (Murmur3Hash(tmp) % BUCKETS_NUM == 0) numbers.insert(tmp);
   }
   for (const T num : numbers) {
     h_keys[i] = Murmur3Hash(num);
@@ -495,7 +496,7 @@ int main() {
   cudaMallocHost(&h_metas, KEY_NUM * sizeof(M));              // 8MB
   cudaMallocHost(&h_vectors, KEY_NUM * sizeof(Vector));       // 256MB
   cudaMallocHost(&h_dump_vectors, KEY_NUM * sizeof(Vector));  // 256MB
-  cudaMallocHost(&h_size, TABLE_SIZE * sizeof(size_t));       // 8MB
+  cudaMallocHost(&h_size, BUCKETS_NUM * sizeof(size_t));      // 8MB
   cudaMallocHost(&h_found, KEY_NUM * sizeof(bool));           // 4MB
 
   cudaMemset(h_vectors, 0, KEY_NUM * sizeof(Vector));
@@ -519,9 +520,9 @@ int main() {
   cudaMalloc(&d_vectors, KEY_NUM * sizeof(Vector));        // 256MB
   cudaMalloc(&d_dump_vectors, KEY_NUM * sizeof(Vector));   // 256MB
   cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(Vector *));  // 8MB
-  cudaMalloc(&d_size, TABLE_SIZE * sizeof(size_t));        // 8MB
+  cudaMalloc(&d_size, BUCKETS_NUM * sizeof(size_t));       // 8MB
   cudaMalloc(&d_found, KEY_NUM * sizeof(bool));            // 4MB
-  cudaMalloc(&d_counter, sizeof(size_t));                // 4MB
+  cudaMalloc(&d_counter, sizeof(size_t));                  // 4MB
 
   cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice);
   cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M), cudaMemcpyHostToDevice);
@@ -531,7 +532,7 @@ int main() {
   cudaMemset(d_vectors_ptr, 0, KEY_NUM * sizeof(Vector *));
   cudaMemset(d_found, 0, KEY_NUM * sizeof(bool));
   cudaMemset(d_counter, 0, sizeof(size_t));
-  cudaMemset(d_size, 0, TABLE_SIZE * sizeof(size_t));
+  cudaMemset(d_size, 0, BUCKETS_NUM * sizeof(size_t));
 
   cudaStream_t stream;
   cudaStreamCreate(&stream);
@@ -565,18 +566,18 @@ int main() {
     std::chrono::duration<double> diff_write = end_write - start_write;
 
     //     // size test
-    //     N = TABLE_SIZE;
+    //     N = BUCKETS_NUM;
     //     NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
     //     size<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_size, N);
     //     cudaDeviceSynchronize();
 
     // size test
-    cudaMemset(d_size, 0, TABLE_SIZE * sizeof(size_t));
-    N = TABLE_SIZE;
+    cudaMemset(d_size, 0, BUCKETS_NUM * sizeof(size_t));
+    N = BUCKETS_NUM;
     NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
     size_new<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_size, N);
     cudaDeviceSynchronize();
-    cudaMemcpy(h_size, d_size, TABLE_SIZE * sizeof(size_t),
+    cudaMemcpy(h_size, d_size, BUCKETS_NUM * sizeof(size_t),
                cudaMemcpyDeviceToHost);
     cout << "after upsert, size=" << h_size[0] << endl;
 
@@ -600,7 +601,8 @@ int main() {
     dump<<<grid_size, block_size, shared_size, stream>>>(
         d_table, d_dump_keys, d_dump_vectors, 0, search_length, d_counter);
     cudaDeviceSynchronize();
-    cudaMemcpy(&h_counter, d_counter, sizeof(d_counter), cudaMemcpyDeviceToHost);
+    cudaMemcpy(&h_counter, d_counter, sizeof(d_counter),
+               cudaMemcpyDeviceToHost);
     cout << "dump, h_counter=" << h_counter << endl;
 
     cudaMemcpy(h_dump_keys, d_dump_keys, KEY_NUM * sizeof(K),
@@ -648,32 +650,32 @@ int main() {
     std::chrono::duration<double> diff_read = end_read - start_read;
 
     // remove:
-    cudaMemset(d_size, 0, TABLE_SIZE * sizeof(size_t));
+    cudaMemset(d_size, 0, BUCKETS_NUM * sizeof(size_t));
     int remove_key_num = KEY_NUM / 2;
     N = remove_key_num * BUCKETS_SIZE;
     NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
     remove<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_keys, N);
     cudaDeviceSynchronize();
-    N = TABLE_SIZE;
+    N = BUCKETS_NUM;
     NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
     size_new<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_size, N);
     cudaDeviceSynchronize();
-    cudaMemcpy(h_size, d_size, TABLE_SIZE * sizeof(size_t),
+    cudaMemcpy(h_size, d_size, BUCKETS_NUM * sizeof(size_t),
                cudaMemcpyDeviceToHost);
     cout << "after remove, size=" << h_size[0] << endl;
 
     // clear:
-    cudaMemset(d_size, 0, TABLE_SIZE * sizeof(size_t));
-    N = TABLE_SIZE * BUCKETS_SIZE;
+    cudaMemset(d_size, 0, BUCKETS_NUM * sizeof(size_t));
+    N = BUCKETS_NUM * BUCKETS_SIZE;
     NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
     clear<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, N);
     cudaDeviceSynchronize();
 
-    N = TABLE_SIZE;
+    N = BUCKETS_NUM;
     NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
     size_new<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_size, N);
     cudaDeviceSynchronize();
-    cudaMemcpy(h_size, d_size, TABLE_SIZE * sizeof(size_t),
+    cudaMemcpy(h_size, d_size, BUCKETS_NUM * sizeof(size_t),
                cudaMemcpyDeviceToHost);
     cout << "after clear, size=" << h_size[0] << endl;
 
@@ -681,7 +683,7 @@ int main() {
            diff_write.count() * 1000);
     printf("[timing] lookup=%.2fms, read = % .2fms\n ",
            diff_lookup.count() * 1000, diff_read.count() * 1000);
-    cudaMemcpy(h_size, d_size, TABLE_SIZE * sizeof(size_t),
+    cudaMemcpy(h_size, d_size, BUCKETS_NUM * sizeof(size_t),
                cudaMemcpyDeviceToHost);
 
     cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
@@ -694,7 +696,7 @@ int main() {
       if (h_found[i]) found_num++;
     }
 
-    for (int i = 0; i < TABLE_SIZE; i++) {
+    for (int i = 0; i < BUCKETS_NUM; i++) {
       total_size += h_size[i];
       if (size2length.find(h_size[i]) != size2length.end()) {
         size2length[h_size[i]] += 1;

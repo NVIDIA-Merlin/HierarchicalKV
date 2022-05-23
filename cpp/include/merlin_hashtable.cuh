@@ -65,6 +65,7 @@ class HashTable {
 
   void upsert(const K *d_keys, const BaseV *d_vals, size_t len,
               cudaStream_t stream) {
+    // TODO(james): split when len is too huge.
     if (len == 0) {
       return;
     }
@@ -104,6 +105,7 @@ class HashTable {
     lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
         table_, d_keys, d_src, d_status, N);
 
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     N = len * DIM;
     grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
     read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
@@ -143,9 +145,9 @@ class HashTable {
     size_t h_size = 0;
     size_t *d_size;
 
-    const int N = table_->table_size;
+    const int N = table_->buckets_num * table_->buckets_size;
     const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    CUDA_CHECK(cudaMallocManaged((void **)&d_size, sizeof(size_t)));
+    CUDA_CHECK(cudaMalloc((void **)&d_size, sizeof(size_t)));
     CUDA_CHECK(cudaMemset(d_size, 0, sizeof(size_t)));
 
     size_kernel<K, V, M, DIM>
@@ -161,7 +163,7 @@ class HashTable {
   size_t get_capacity() const { return (size_t)init_size_; }
 
   void clear(cudaStream_t stream) {
-    const int N = table_->table_size * table_->buckets_size;
+    const int N = table_->buckets_num * table_->buckets_size;
     const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
     clear_kernel<<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, N);
   }
@@ -170,6 +172,7 @@ class HashTable {
     const int N = len * table_->buckets_size;
     const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
     remove_kernel<<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, N);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
   void dump(K *d_key, BaseV *d_val, const size_t offset,
@@ -183,8 +186,9 @@ class HashTable {
     size_t shared_size = sizeof(K) * block_size + sizeof(V) * block_size;
     const int grid_size = (search_length - 1) / (block_size) + 1;
 
-    dump_kernel<<<grid_size, block_size, 0, stream>>>(
+    dump_kernel<<<grid_size, block_size, shared_size, stream>>>(
         table_, d_key, (V *)d_val, offset, search_length, d_dump_counter);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
   void get(const K *d_keys, BaseV *d_vals, bool *d_status, size_t len,

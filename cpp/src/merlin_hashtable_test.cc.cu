@@ -109,6 +109,8 @@ int test_main() {
   Vector *d_def_val;
   Vector **d_vectors_ptr;
   bool *d_found;
+  size_t *d_dump_counter;
+  size_t h_dump_counter = 0;
 
   cudaMalloc(&d_keys, KEY_NUM * sizeof(K));                // 8MB
   cudaMalloc(&d_metas, KEY_NUM * sizeof(M));               // 8MB
@@ -116,6 +118,7 @@ int test_main() {
   cudaMalloc(&d_def_val, KEY_NUM * sizeof(Vector));        // 256MB
   cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(Vector *));  // 8MB
   cudaMalloc(&d_found, KEY_NUM * sizeof(bool));            // 4MB
+  cudaMallocManaged((void **)&d_dump_counter, sizeof(size_t));
 
   cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice);
   cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M), cudaMemcpyHostToDevice);
@@ -130,27 +133,40 @@ int test_main() {
 
   uint64_t total_size = 0;
   for (int i = 0; i < TEST_TIMES; i++) {
-    cudaDeviceSynchronize();
+    total_size = table_->get_size(stream);
+
+    cout << "before upsert: total_size = " << total_size << endl;
     auto start_upsert = std::chrono::steady_clock::now();
     table_->upsert(d_keys, (ValueArrayBase<float> *)d_vectors, d_metas, KEY_NUM,
                    stream);
     auto end_upsert = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
 
+    cudaMemset(d_vectors, 2, KEY_NUM * sizeof(Vector));
+    table_->upsert(d_keys, (ValueArrayBase<float> *)d_vectors, d_metas, KEY_NUM,
+                   stream);
+
     total_size = table_->get_size(stream);
+    cout << "after upsert: total_size = " << total_size << endl;
 
     auto start_lookup = std::chrono::steady_clock::now();
     table_->get(d_keys, (ValueArrayBase<float> *)d_vectors, d_found, KEY_NUM,
                 d_def_val, stream, true);
     auto end_lookup = std::chrono::steady_clock::now();
+
+    table_->dump(d_keys, (ValueArrayBase<float> *)d_vectors, 0,
+                 table_->get_capacity(), d_dump_counter, stream);
+
     std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
     printf("[timing] upsert=%.2fms\n", diff_upsert.count() * 1000);
     printf("[timing] lookup=%.2fms\n ", diff_lookup.count() * 1000);
   }
   cudaStreamDestroy(stream);
-  cudaDeviceSynchronize();
 
   cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool), cudaMemcpyDeviceToHost);
+
+  cudaMemcpy(&h_dump_counter, d_dump_counter, sizeof(size_t),
+             cudaMemcpyDeviceToHost);
   cudaMemcpy(h_vectors, d_vectors, KEY_NUM * sizeof(Vector),
              cudaMemcpyDeviceToHost);
 
@@ -162,7 +178,9 @@ int test_main() {
     if (h_found[i]) found_num++;
   }
 
-  cout << "Capacity = " << INIT_SIZE << ", total_size = " << total_size
+  cout << "Capacity = " << table_->get_capacity()
+       << ", total_size = " << total_size
+       << ", h_dump_counter = " << h_dump_counter
        << ", max_bucket_len = " << max_bucket_len
        << ", min_bucket_len = " << min_bucket_len
        << ", found_num = " << found_num << endl;
@@ -171,6 +189,7 @@ int test_main() {
   cudaFreeHost(h_metas);
   cudaFreeHost(h_found);
 
+  cudaFree(d_dump_counter);
   cudaFree(d_keys);
   cudaFree(d_metas);
   cudaFree(d_vectors);
