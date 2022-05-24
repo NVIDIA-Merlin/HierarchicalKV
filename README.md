@@ -2,91 +2,52 @@
 
 Merlin Hierarchical Key-Value Storage
 
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab-master.nvidia.com/hrong/merlin-hkvs.git
-git branch -M main
-git push -uf origin main
+## How to build with TFRA
+```shell
+git clone -b rhdong/merlin https://github.com/rhdong/recommenders-addons.git
+cd recommenders-addons/tensorflow_recommenders_addons/dynamic_embedding/core/lib/
+git clone -b master https://github.com/rhdong/merlin-hkvs.git
+cd ../../../../
+PY_VERSION="3.8" TF_VERSION="2.5.1" TF_NEED_CUDA=1 sh .github/workflows/make_wheel_Linux_x86.sh
 ```
 
-## Integrate with your tools
+wheel file will be created in the [TFRA root]/wheelhouse/
 
-- [ ] [Set up project integrations](https://gitlab-master.nvidia.com/hrong/merlin-hkvs/-/settings/integrations)
+## benchmark
 
-## Collaborate with your team
+### Merlin
+* Update time: May 24, 2022
+* version: tag [v0.1.0](https://github.com/rhdong/merlin-hkvs/releases/tag/v0.1.0)
+* Unit: M keys/s 
+* `cudf::nvhash` run on pure HBM mode.
+* `Merlin-HKVS-A` run on pure HBM mode.
+* `Merlin-HKVS-B` run on HBM+HMEM mode.
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Automatically merge when pipeline succeeds](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
-
-## Test and Deploy
-
-Use the built-in continuous integration in GitLab.
-
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing(SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
-
-***
-
-# Editing this README
-
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!).  Thank you to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
-
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
-
-## License
-For open source projects, say how it is licensed.
-
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+|   dim |   keys num |   test_times | CPU.upsert |   cudf::nvhash.upsert | Merlin-HKVS-A.upsert | Merlin-HKVS-B.upsert | CPU.lookup  | cudf::nvhash.lookup  | Merlin-HKVS-A.lookup | Merlin-HKVS-B.lookup |
+|-------|------------|--------------|----------------------|--------------|--------------|---------------------------|--------------|--------------|--------------|-----------------------|
+|     8 |       1024 |           20 | 16.596               |        0.715 |       13.254 | 4.612       | 12.658      |        2.104 |        2.619 | 3.146                 |
+|     8 |       2048 |           20 | 23.696               |        1.493 |        5.754 | 8.057       | 16.139      |        3.756 |        3.642 | 6.876                 |
+|     8 |       4096 |           20 | 26.881               |        2.943 |       10.693 | 7.17        | 23.143      |        9.017 |        4.467 | 6.674                 |
+|     8 |       8192 |           20 | 27.505               |        6.088 |       29.531 | 11.368      | 23.709      |       58.594 |       28.112 | 16.724                |
+|     8 |      16384 |           20 | 29.602               |       12.311 |       42.968 | 20.523      | 17.047      |       42.756 |       52.476 | 43.032                |
+|     8 |      10000 |           20 | 14.383               |        6.449 |       23.841 | 16.887      | 20.867      |       36.12  |       27.196 | 26.906                |
+|     8 |      20000 |           20 | 37.053               |       10.446 |       47.253 | 20.82       | 21.245      |       30.5   |       58.845 | 45.891                |
+|     8 |      25000 |           20 | 36.594               |       13.393 |       56.093 | 23.135      | 21.948      |       47.939 |       46.797 | 63.604                |
+|     8 |      30000 |           20 | 35.966               |       16.264 |       52.558 | 25.347      | 17.712      |       39.011 |       78.058 | 77.569                |
+|     8 |      32768 |           20 | 30.714               |       23.052 |       52.248 | 19.283      | 16.036      |      111.985 |       85.115 | 23.548                |
+|     8 |      65536 |           20 | 26.499               |       42.207 |       57.458 | 26.422      | 20.121      |      120.052 |      139.841 | 50.159                |
+|     8 |     131072 |           20 | 33.668               |       75.843 |       53.859 | 25.718      | 20.936      |      133.2   |      166.899 | 62.878                |
+|     8 |    1048576 |           20 | 25.652               |      386.433 |       37.335 | 23.178      | 9.698       |      615.525 |      227.989 | 148.813               |
+|    64 |       1024 |           20 | 2.032                |        0.668 |        5.072 | 5.607       | 1.035       |        2.571 |        3.958 | 3.844                 |
+|    64 |       2048 |           20 | 5.67                 |        1.22  |        9.766 | 5.378       | 2.211       |        8.935 |        6.856 | 6.704                 |
+|    64 |       4096 |           20 | 5.681                |        2.454 |       19.56  | 5.048       | 2.678       |        6.37  |       15.05  | 3.23                  |
+|    64 |       8192 |           20 | 9.933                |        4.824 |       33.19  | 8.115       | 1.51        |       30.624 |       19.276 | 5.937                 |
+|    64 |      16384 |           20 | 10.081               |        9.07  |       43.079 | 13.833      | 2.074       |       21.365 |       40.462 | 14.078                |
+|    64 |      10000 |           20 | 6.601                |        5.597 |       18.945 | 12.394      | 1.589       |       80.52  |       18.669 | 10.118                |
+|    64 |      20000 |           20 | 10.384               |       10.891 |       50.218 | 16.086      | 1.995       |       70.41  |       46.32  | 16.043                |
+|    64 |      25000 |           20 | 10.566               |       13.55  |       42.216 | 15.872      | 2.254       |       52.258 |       46.049 | 15.757                |
+|    64 |      30000 |           20 | 11.073               |       16.237 |       64.176 | 20.805      | 2.536       |       42.758 |       29.259 | 22.852                |
+|    64 |      32768 |           20 | 12.219               |       17.796 |       51.808 | 18.093      | 2.587       |       74.905 |       42.692 | 23.547                |
+|    64 |      65536 |           20 | 11.485               |       31.12  |       48.566 | 20.93       | 3.081       |       52.28  |       31.862 | 38.798                |
+|    64 |     131072 |           20 | 12.582               |       53.667 |       50.757 | 19.664      | 2.947       |       52.039 |       51.93  | 44.415                |
+|    64 |    1048576 |           20 | 10.992               |      166.021 |       36.72  | 17.318      | 2.646       |       76.514 |       70.447 | 58.597                |
