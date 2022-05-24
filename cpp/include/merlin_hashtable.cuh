@@ -29,11 +29,11 @@ class HashTable {
 
  public:
   HashTable(uint64_t max_size, bool master = true) {
-    init_size_ = max_size;
+    capacity_ = max_size;
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
     shared_mem_size = deviceProp.sharedMemPerBlock;
-    create_table<K, V, M, DIM>(&table_, init_size_);
+    create_table<K, V, M, DIM>(&table_, capacity_);
   }
   ~HashTable() { destroy_table<K, V, M, DIM>(&table_); }
   HashTable(const HashTable &) = delete;
@@ -160,7 +160,7 @@ class HashTable {
     return h_size;
   }
 
-  size_t get_capacity() const { return (size_t)init_size_; }
+  size_t get_capacity() const { return (size_t)capacity_; }
 
   void clear(cudaStream_t stream) {
     const int N = table_->buckets_num * table_->buckets_size;
@@ -191,6 +191,24 @@ class HashTable {
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
+  void dump(K *d_key, BaseV *d_val, M *d_metas, const size_t offset,
+            const size_t search_length, size_t *d_dump_counter,
+            cudaStream_t stream) const {
+    CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
+    size_t block_size =
+        shared_mem_size * 0.5 / (sizeof(K) + sizeof(V) + sizeof(M));
+    block_size = block_size <= 1024 ? block_size : 1024;
+    assert(block_size > 0 &&
+           "nv::merlinhash: block_size <= 0, the K-V size may be too large!");
+    size_t shared_size = sizeof(K) * block_size + sizeof(V) * block_size;
+    const int grid_size = (search_length - 1) / (block_size) + 1;
+
+    dump_kernel<<<grid_size, block_size, shared_size, stream>>>(
+        table_, d_key, (V *)d_val, (M *)d_metas, offset, search_length,
+        d_dump_counter);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+  }
+
   void get(const K *d_keys, BaseV *d_vals, bool *d_status, size_t len,
            const int initializer, cudaStream_t stream) const {}
 
@@ -202,7 +220,7 @@ class HashTable {
 
  private:
   static const int BLOCK_SIZE_ = 1024;
-  uint64_t init_size_;
+  uint64_t capacity_;
   size_t shared_mem_size;
   Table *table_;
 };
