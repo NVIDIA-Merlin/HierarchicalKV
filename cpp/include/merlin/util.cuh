@@ -21,9 +21,6 @@
 
 #include "cuda_runtime_api.h"
 
-#define CUDA_CHECK(val) \
-  { nv::merlin::cuda_check_((val), __FILE__, __LINE__); }
-
 __inline__ __device__ uint64_t atomicCAS(uint64_t* address, uint64_t compare,
                                          uint64_t val) {
   return (uint64_t)atomicCAS((unsigned long long*)address,
@@ -72,6 +69,9 @@ inline void cuda_check_(cudaError_t val, const char* file, int line) {
                         cudaGetErrorString(val));
   }
 }
+
+#define CUDA_CHECK(val) \
+  { cuda_check_((val), __FILE__, __LINE__); }
 
 inline uint64_t Murmur3HashHost(const uint64_t& key) {
   uint64_t k = key;

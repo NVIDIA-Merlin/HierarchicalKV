@@ -16,7 +16,8 @@
 
 #pragma once
 
-#include "merlin/concurrent_ordered_map.cuh"
+#include "merlin/core_kernels.cuh"
+#include "merlin/initializers.cuh"
 #include "merlin/util.cuh"
 
 namespace nv {
@@ -32,7 +33,7 @@ class HashTable {
     capacity_ = max_size;
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
-    shared_mem_size = deviceProp.sharedMemPerBlock;
+    shared_mem_size_ = deviceProp.sharedMemPerBlock;
     create_table<K, V, M, DIM>(&table_, capacity_);
   }
   ~HashTable() { destroy_table<K, V, M, DIM>(&table_); }
@@ -179,7 +180,7 @@ class HashTable {
             const size_t search_length, size_t *d_dump_counter,
             cudaStream_t stream) const {
     CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
-    size_t block_size = shared_mem_size * 0.5 / (sizeof(K) + sizeof(V));
+    size_t block_size = shared_mem_size_ * 0.5 / (sizeof(K) + sizeof(V));
     block_size = block_size <= 1024 ? block_size : 1024;
     assert(block_size > 0 &&
            "nv::merlinhash: block_size <= 0, the K-V size may be too large!");
@@ -196,7 +197,7 @@ class HashTable {
             cudaStream_t stream) const {
     CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
     size_t block_size =
-        shared_mem_size * 0.5 / (sizeof(K) + sizeof(V) + sizeof(M));
+        shared_mem_size_ * 0.5 / (sizeof(K) + sizeof(V) + sizeof(M));
     block_size = block_size <= 1024 ? block_size : 1024;
     assert(block_size > 0 &&
            "nv::merlinhash: block_size <= 0, the K-V size may be too large!");
@@ -221,7 +222,7 @@ class HashTable {
  private:
   static const int BLOCK_SIZE_ = 1024;
   uint64_t capacity_;
-  size_t shared_mem_size;
+  size_t shared_mem_size_;
   Table *table_;
 };
 
