@@ -18,22 +18,27 @@
 
 #include "merlin/core_kernels.cuh"
 #include "merlin/initializers.cuh"
-#include "merlin/util.cuh"
+#include "merlin/utils.cuh"
 
 namespace nv {
 namespace merlin {
 
-template <class K, class V, class BaseV, class M, size_t DIM>
+template <class K, class V, class BaseV, class T, class M, size_t DIM>
 class HashTable {
  public:
   using Table = nv::merlin::Table<K, V, M, DIM>;
+  using Initializer = nv::merlin::initializers::Initializer<T>;
+  using Zeros = nv::merlin::initializers::Zeros<T>;
 
  public:
-  HashTable(uint64_t max_size, bool master = true) {
+  HashTable(uint64_t max_size, const Initializer *initializer = nullptr,
+            bool master = true) {
     capacity_ = max_size;
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
+    initializer_ = std::make_shared<Initializer>(
+        (initializer != nullptr) ? *initializer : Zeros());
     create_table<K, V, M, DIM>(&table_, capacity_);
   }
   ~HashTable() { destroy_table<K, V, M, DIM>(&table_); }
@@ -66,7 +71,7 @@ class HashTable {
 
   void upsert(const K *d_keys, const BaseV *d_vals, size_t len,
               cudaStream_t stream) {
-    // TODO(james): split when len is too huge.
+    // TODO(jamesrong): split when len is too huge.
     if (len == 0) {
       return;
     }
@@ -142,6 +147,33 @@ class HashTable {
     CUDA_CHECK(cudaFree(d_src));
   }
 
+  /* when missing, this `get` will return values by using initializer.*/
+  void get(const K *d_keys, BaseV *d_vals, size_t len,
+           cudaStream_t stream) const {
+    if (len == 0) {
+      return;
+    }
+    V **d_src;
+    CUDA_CHECK(cudaMalloc(&d_src, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(V *), stream));
+
+    int N = len * table_->buckets_size;
+    int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+
+    initializer_->initialize((T *)d_vals, len * sizeof(V), stream);
+
+    lookup_kernel<K, V, M, DIM>
+        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_src, N);
+
+    N = len * DIM;
+    grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+    read_kernel<K, V, M, DIM>
+        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(d_src, (V *)d_vals, N);
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaFree(d_src));
+  }
+
   size_t get_size(cudaStream_t stream) const {
     size_t h_size = 0;
     size_t *d_size;
@@ -210,20 +242,15 @@ class HashTable {
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
-  void get(const K *d_keys, BaseV *d_vals, bool *d_status, size_t len,
-           const int initializer, cudaStream_t stream) const {}
-
   void accum(const K *d_keys, const BaseV *d_vals_or_deltas,
              const bool *d_exists, size_t len, cudaStream_t stream) {}
-
-  void update(const K *d_keys, const BaseV *d_grad, const int optimizer,
-              float lr, size_t len, cudaStream_t stream) {}
 
  private:
   static const int BLOCK_SIZE_ = 1024;
   uint64_t capacity_;
   size_t shared_mem_size_;
   Table *table_;
+  std::shared_ptr<Initializer> initializer_;
 };
 
 }  // namespace merlin

@@ -29,6 +29,8 @@
 #include <unordered_set>
 
 #include "merlin_hashtable.cuh"
+#include "merlin_initializers.cuh"
+#include "merlin_optimizers.cuh"
 
 using std::begin;
 using std::cerr;
@@ -85,7 +87,7 @@ int test_main() {
   using K = uint64_t;
   using M = uint64_t;
   using Vector = ValueArray<float, DIM>;
-  using Table = HashTable<K, Vector, ValueArrayBase<float>, M, DIM>;
+  using Table = HashTable<K, Vector, ValueArrayBase<float>, float, M, DIM>;
 
   K *h_keys;
   M *h_metas;

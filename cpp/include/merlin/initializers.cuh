@@ -22,7 +22,7 @@
 
 #include "curand_philox4x32_x.h"
 #include "types.cuh"
-#include "util.cuh"
+#include "utils.cuh"
 
 namespace nv {
 namespace merlin {
@@ -38,25 +38,18 @@ inline void cuda_rand_check_(curandStatus_t val, const char *file, int line) {
 #define CURAND_CHECK(val) \
   { cuda_rand_check_((val), __FILE__, __LINE__); }
 
-template <class K, class V, class T, class M, size_t DIM>
-void zeros(Table<K, V, M, DIM> **table) {
-  for (int i = 0; i < (*table)->buckets_num; i++) {
-    cudaMemset((*table)->buckets[i].vectors, 0,
-               (*table)->buckets_size * sizeof(V));
-  }
+template <class T>
+void zeros(T *d_data, size_t len, cudaStream_t stream) {
+  cudaMemsetAsync(d_data, 0, len, stream);
 }
 
-template <class K, class V, class M, class T, size_t DIM>
-void random_normal(Table<K, V, M, DIM> **table, T mean = 0.0, T stddev = 0.05,
-                   unsigned long long seed = 2022ULL) {
+template <class T>
+void random_normal(T *d_data, size_t len, cudaStream_t stream, T mean = 0.0,
+                   T stddev = 0.05, unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
   CURAND_CHECK(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
   CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(generator, seed));
-  for (int i = 0; i < (*table)->buckets_num; i++) {
-    CURAND_CHECK(curandGenerateNormal(generator, (*table)->buckets[i].vectors,
-                                      (*table)->buckets_size * sizeof(V), mean,
-                                      stddev));
-  }
+  CURAND_CHECK(curandGenerateNormal(generator, d_data, len, mean, stddev));
 }
 
 template <class T>
@@ -68,28 +61,22 @@ __global__ void adjust_max_min(T *d_data, T minval, T maxval, size_t N) {
   }
 }
 
-template <class K, class V, class M, class T, size_t DIM>
-void random_uniform(Table<K, V, M, DIM> **table, T minval = 0.0, T maxval = 1.0,
-                    unsigned long long seed = 2022ULL) {
-  cudaStream_t stream;
+template <class T>
+void random_uniform(T *d_data, size_t len, cudaStream_t stream, T minval = 0.0,
+                    T maxval = 1.0, unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
 
-  CUDA_CHECK(cudaStreamCreate(&stream));
   CURAND_CHECK(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
   CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(generator, seed));
 
-  for (int i = 0; i < (*table)->buckets_num; i++) {
-    int N = (*table)->buckets_size * sizeof(V);
-    int block_size = 256;
-    int grid_size = (N + block_size - 1) / block_size;
-    CURAND_CHECK(
-        curandGenerateUniform(generator, (*table)->buckets[i].vectors, N));
-    adjust_max_min<T><<<grid_size, block_size, 0, stream>>>(
-        (*table)->buckets[i].vectors, minval, maxval, N);
-  }
+  int N = len;
+  int block_size = 256;
+  int grid_size = (N + block_size - 1) / block_size;
+  CURAND_CHECK(curandGenerateUniform(generator, d_data, N));
+  adjust_max_min<T>
+      <<<grid_size, block_size, 0, stream>>>(d_data, minval, maxval, N);
 
   CUDA_CHECK(cudaStreamSynchronize(stream));
-  CUDA_CHECK(cudaStreamDestroy(stream));
 }
 
 __global__ void init_states(curandStatePhilox4_32_10_t *states,
@@ -113,35 +100,48 @@ __global__ void make_truncated_normal(T *d_data,
   }
 }
 
-template <class K, class V, class M, class T, size_t DIM>
-void truncated_normal(Table<K, V, M, DIM> **table, T minval = 0.0,
-                      T maxval = 1.0, unsigned long long seed = 2022ULL) {
-  cudaStream_t stream;
+template <class T>
+void truncated_normal(T *d_data, size_t len, cudaStream_t stream,
+                      T minval = 0.0, T maxval = 1.0,
+                      unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
 
-  CUDA_CHECK(cudaStreamCreate(&stream));
   CURAND_CHECK(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
   CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(generator, seed));
-  for (int i = 0; i < (*table)->buckets_num; i++) {
-    int N = (*table)->buckets_size * sizeof(V);
-    int block_size = 256;
-    int grid_size = (N + block_size - 1) / block_size;
-    curandStatePhilox4_32_10_t *d_states;
-    cudaMalloc(&d_states, N);
 
-    init_states<<<grid_size, block_size, 0, stream>>>(d_states, seed, N);
+  int N = len;
+  int block_size = 256;
+  int grid_size = (N + block_size - 1) / block_size;
+  curandStatePhilox4_32_10_t *d_states;
+  cudaMalloc(&d_states, N);
 
-    make_truncated_normal<T><<<grid_size, block_size, 0, stream>>>(
-        (*table)->buckets[i].vectors, d_states, N);
+  init_states<<<grid_size, block_size, 0, stream>>>(d_states, seed, N);
 
-    adjust_max_min<T><<<grid_size, block_size, 0, stream>>>(
-        (*table)->buckets[i].vectors, minval, maxval, N);
+  make_truncated_normal<T>
+      <<<grid_size, block_size, 0, stream>>>(d_data, d_states, N);
 
-    cudaFree(d_states);
-  }
+  adjust_max_min<T>
+      <<<grid_size, block_size, 0, stream>>>(d_data, minval, maxval, N);
+
+  cudaFree(d_states);
+
   CUDA_CHECK(cudaStreamSynchronize(stream));
-  CUDA_CHECK(cudaStreamDestroy(stream));
 }
+
+template <class T>
+class Initializer {
+ public:
+  virtual ~Initializer() {}
+  virtual void initialize(T *data, size_t len, cudaStream_t stream) {}
+};
+
+template <class T>
+class Zeros final : public Initializer<T> {
+ public:
+  void initialize(T *data, size_t len, cudaStream_t stream) override {
+    zeros<T>(data, len, stream);
+  }
+};
 
 }  // namespace initializers
 }  // namespace merlin

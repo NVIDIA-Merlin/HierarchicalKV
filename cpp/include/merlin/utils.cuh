@@ -19,6 +19,7 @@
 #include <exception>
 #include <string>
 
+#include "cuda_fp16.h"
 #include "cuda_runtime_api.h"
 
 __inline__ __device__ uint64_t atomicCAS(uint64_t* address, uint64_t compare,
@@ -124,6 +125,56 @@ inline void switch_to_dev(const void* ptr) {
     CUDA_CHECK(cudaSetDevice(dev));
   }
 }
+
+template <typename TOUT, typename TIN>
+struct TypeConvertFunc;
+
+template <>
+struct TypeConvertFunc<__half, float> {
+  static __forceinline__ __device__ __half convert(float val) {
+    return __float2half(val);
+  }
+};
+
+template <>
+struct TypeConvertFunc<float, __half> {
+  static __forceinline__ __device__ float convert(__half val) {
+    return __half2float(val);
+  }
+};
+
+template <>
+struct TypeConvertFunc<float, float> {
+  static __forceinline__ __device__ float convert(float val) { return val; }
+};
+
+template <>
+struct TypeConvertFunc<float, long long> {
+  static __forceinline__ __device__ float convert(long long val) {
+    return static_cast<float>(val);
+  }
+};
+
+template <>
+struct TypeConvertFunc<float, unsigned int> {
+  static __forceinline__ __device__ float convert(unsigned int val) {
+    return static_cast<float>(val);
+  }
+};
+
+template <>
+struct TypeConvertFunc<int, long long> {
+  static __forceinline__ __device__ int convert(long long val) {
+    return static_cast<int>(val);
+  }
+};
+
+template <>
+struct TypeConvertFunc<int, unsigned int> {
+  static __forceinline__ __device__ int convert(unsigned int val) {
+    return static_cast<int>(val);
+  }
+};
 
 }  // namespace merlin
 }  // namespace nv

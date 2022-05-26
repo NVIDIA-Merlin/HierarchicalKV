@@ -19,7 +19,7 @@
 #include <cuda_runtime.h>
 
 #include "types.cuh"
-#include "util.cuh"
+#include "utils.cuh"
 
 namespace nv {
 namespace merlin {
@@ -43,6 +43,7 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t capacity = 134217728,
   (*table)->buckets_num = 1 + (capacity - 1) / (*table)->buckets_size;
   (*table)->cache_size = 0;
   (*table)->vector_on_gpu = vector_on_gpu;
+  (*table)->primary_table = true;
   cudaMallocManaged((void **)&((*table)->buckets),
                     (*table)->buckets_num * sizeof(Bucket<K, V, M, DIM>));
   cudaMemset((*table)->buckets, 0,
@@ -144,6 +145,29 @@ __global__ void read_kernel(V **__restrict src, V *__restrict dst,
     } else {
       dst[vec_index].value[dim_index] =
           default_val[default_index].value[dim_index];
+    }
+  }
+}
+
+/* Read the N data from src to each address in *dst,
+   usually called by upsert kernel.
+
+   `src`: A pointer of pointer of V which should be on HBM,
+          but each value (a pointer of V) could point to a
+          memory on HBM or HMEM.
+   `dst`: A continue memory pointer with Vector
+          which should be HBM.
+   `N`: The number of vectors needed to be read.
+*/
+template <class K, class V, class M, size_t DIM>
+__global__ void read_kernel(V **__restrict src, V *__restrict dst, int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  if (tid < N) {
+    int vec_index = int(tid / DIM);
+    int dim_index = tid % DIM;
+    if (src[vec_index] != nullptr) {
+      dst[vec_index].value[dim_index] = (*(src[vec_index])).value[dim_index];
     }
   }
 }
@@ -358,6 +382,27 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
     if (bucket->keys[key_pos] == target_key) {
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
       found[key_idx] = true;
+    }
+  }
+}
+
+/* Lookup with no meta.*/
+template <class K, class V, class M, size_t DIM>
+__global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
+                              const K *__restrict keys, V **__restrict vectors,
+                              int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  const uint64_t buckets_num = table->buckets_num;
+  const uint64_t buckets_size = table->buckets_size;
+  if (tid < N) {
+    int key_idx = tid / buckets_size;
+    int key_pos = tid % buckets_size;
+    int bkt_idx = keys[key_idx] % buckets_num;
+    K target_key = keys[key_idx];
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+
+    if (bucket->keys[key_pos] == target_key) {
+      vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
     }
   }
 }

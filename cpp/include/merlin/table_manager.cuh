@@ -16,23 +16,11 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
+
 #include "types.cuh"
 #include "utils.cuh"
 
 namespace nv {
-namespace merlin {
-namespace embedding {
-
-template <class K, class V, class M, size_t DIM>
-void create_slot(Table<K, V, M, DIM> *primary_table,
-                 Table<K, V, M, DIM> **slot_table, int vector_offset = 0) {
-  cudaMallocManaged((void **)slot_table, sizeof(Table<K, V, M, DIM>));
-  cudaMemcpy(slot_table, primary_table, sizeof(Table<K, V, M, DIM>),
-             cudaMemcpyDeviceToDevice);
-  (*slot_table)->primary_table = false;
-  (*slot_table)->vector_offset = vector_offset;
-}
-
-}  // namespace embedding
-}  // namespace merlin
+namespace merlin {}  // namespace merlin
 }  // namespace nv

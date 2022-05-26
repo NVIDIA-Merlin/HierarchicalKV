@@ -16,23 +16,31 @@
 
 #pragma once
 
-#include "types.cuh"
-#include "utils.cuh"
+#include "merlin/initializers.cuh"
+#include "merlin_hashtable.cuh"
 
 namespace nv {
 namespace merlin {
-namespace embedding {
+namespace initializers {
 
-template <class K, class V, class M, size_t DIM>
-void create_slot(Table<K, V, M, DIM> *primary_table,
-                 Table<K, V, M, DIM> **slot_table, int vector_offset = 0) {
-  cudaMallocManaged((void **)slot_table, sizeof(Table<K, V, M, DIM>));
-  cudaMemcpy(slot_table, primary_table, sizeof(Table<K, V, M, DIM>),
-             cudaMemcpyDeviceToDevice);
-  (*slot_table)->primary_table = false;
-  (*slot_table)->vector_offset = vector_offset;
-}
+template <class T>
+class RandomNormal final : public Initializer<T> {
+ public:
+ public:
+  RandomNormal(T mean = 0.0, T stddev = 0.5, unsigned long long seed = 2022ULL)
+      : mean_(mean), stddev_(stddev), seed_(seed) {}
+  ~RandomNormal() {}
 
-}  // namespace embedding
+  void initialize(T *data, size_t len, cudaStream_t stream) override {
+    random_normal<T>(data, len, stream, mean_, stddev_, seed_);
+  }
+
+ private:
+  T mean_;
+  T stddev_;
+  unsigned long long seed_;
+};
+
+}  // namespace initializers
 }  // namespace merlin
 }  // namespace nv

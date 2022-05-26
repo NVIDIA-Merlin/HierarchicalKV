@@ -58,6 +58,9 @@ struct Table {
   uint64_t buckets_size = 128;
   uint64_t cache_size = 0;
   bool vector_on_gpu = false;
+  bool primary_table = true;
+  int slots_number = 0;
+  int vector_offset = 0;
 };
 
 }  // namespace merlin
