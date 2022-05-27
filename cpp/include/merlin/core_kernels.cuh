@@ -114,6 +114,62 @@ __global__ void write_kernel(const V *__restrict src, V **__restrict dst,
   }
 }
 
+/* Write the N data from src to each address in *dst,
+   usually called by upsert kernel.
+
+   `src`: A continue memory pointer with Vector
+          which can be HBM.
+   `dst`: A pointer of pointer to V which should be on HBM,
+          but each value (a pointer of V) could point to a
+          memory on HBM or HMEM.
+   `N`: number of vectors needed to be writen.
+*/
+template <class K, class V, class M, size_t DIM>
+__global__ void accum_kernel(const V *__restrict src,
+                             const bool *__restrict exists, V **__restrict dst,
+                             int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  if (tid < N) {
+    int vec_index = int(tid / DIM);
+    int dim_index = tid % DIM;
+
+    if (dst[vec_index] != nullptr) {
+      if (exists[vec_index]) {
+        (*(dst[vec_index])).value[dim_index] += src[vec_index].value[dim_index];
+      } else {
+        (*(dst[vec_index])).value[dim_index] = src[vec_index].value[dim_index];
+      }
+    }
+  }
+}
+
+/* Write the N data from src to each address in *dst,
+   usually called by upsert kernel.
+
+   `src`: A continue memory pointer with Vector
+          which can be HBM.
+   `dst`: A pointer of pointer to V which should be on HBM,
+          but each value (a pointer of V) could point to a
+          memory on HBM or HMEM.
+   `N`: number of vectors needed to be writen.
+*/
+template <class K, class V, class M, size_t DIM>
+__global__ void accum_kernel(const V *__restrict src, V **__restrict dst,
+                             int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  if (tid < N) {
+    int vec_index = int(tid / DIM);
+    int dim_index = tid % DIM;
+
+    if (dst[vec_index] != nullptr) {
+      if (exists[vec_index]) {
+        (*(dst[vec_index])).value[dim_index] += src[vec_index].value[dim_index];
+    }
+  }
+}
+
 /* Read the N data from src to each address in *dst,
    usually called by upsert kernel.
 
@@ -198,7 +254,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 
   if (tid < N) {
     int key_idx = tid;
-    int bkt_idx = keys[tid] % table->buckets_num;
+    int hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % table->buckets_num;
     const uint64_t buckets_size = table->buckets_size;
     const K insert_key = keys[tid];
 
@@ -269,7 +326,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 
   if (tid < N) {
     int key_idx = tid;
-    int bkt_idx = keys[tid] % table->buckets_num;
+    int hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % table->buckets_num;
     const uint64_t buckets_size = table->buckets_size;
     const K insert_key = keys[tid];
 
@@ -352,7 +410,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int bkt_idx = keys[key_idx] % buckets_num;
+    int hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
@@ -375,7 +434,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int bkt_idx = keys[key_idx] % buckets_num;
+    int hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
@@ -397,7 +457,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int bkt_idx = keys[key_idx] % buckets_num;
+    int hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
@@ -449,7 +510,8 @@ __global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int bkt_idx = keys[key_idx] % buckets_num;
+    int hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 

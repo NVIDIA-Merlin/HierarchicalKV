@@ -243,7 +243,28 @@ class HashTable {
   }
 
   void accum(const K *d_keys, const BaseV *d_vals_or_deltas,
-             const bool *d_exists, size_t len, cudaStream_t stream) {}
+             const bool *d_exists, size_t len, cudaStream_t stream) {
+    if (len == 0) {
+      return;
+    }
+
+    V **d_dst;
+    cudaMalloc(&d_dst, len * sizeof(V *));
+    cudaMemset(d_dst, 0, len * sizeof(V *));
+
+    int N = len;
+    int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+    accum_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+        table_, d_keys, d_vals_or_deltas, d_exists, len);
+
+    N = len * DIM;
+    grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+    write_kernel<K, V, M, DIM>
+        <<<grid_size, BLOCK_SIZE_, 0, stream>>>((const V *)d_vals, d_dst, N);
+
+    CUDA_CHECK(cudaFree(d_dst));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+  }
 
  private:
   static const int BLOCK_SIZE_ = 1024;
