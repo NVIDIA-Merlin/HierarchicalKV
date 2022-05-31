@@ -111,7 +111,6 @@ class HashTable {
     lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
         table_, d_keys, d_src, d_status, N);
 
-    CUDA_CHECK(cudaStreamSynchronize(stream));
     N = len * DIM;
     grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
     read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
@@ -249,20 +248,24 @@ class HashTable {
     }
 
     V **d_dst;
-    cudaMalloc(&d_dst, len * sizeof(V *));
-    cudaMemset(d_dst, 0, len * sizeof(V *));
+    bool *d_status;
+    CUDA_CHECK(cudaMallocAsync(&d_dst, len * sizeof(V *), stream));
+    CUDA_CHECK(cudaMallocAsync((void **)&d_status, len * sizeof(bool), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_dst, 0, len * sizeof(V *), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_status, 0, len * sizeof(bool), stream));
 
     int N = len;
     int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    accum_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_vals_or_deltas, d_exists, len);
+    upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+        table_, d_keys, d_dst, d_exists, d_status, len);
 
     N = len * DIM;
     grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    write_kernel<K, V, M, DIM>
-        <<<grid_size, BLOCK_SIZE_, 0, stream>>>((const V *)d_vals, d_dst, N);
+    accum_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+        (const V *)d_vals_or_deltas, d_dst, d_exists, d_status, N);
 
-    CUDA_CHECK(cudaFree(d_dst));
+    CUDA_CHECK(cudaFreeAsync(d_dst, stream));
+    CUDA_CHECK(cudaFreeAsync(d_status, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 

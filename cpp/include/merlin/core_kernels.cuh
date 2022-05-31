@@ -40,7 +40,13 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t capacity = 134217728,
   cudaMallocManaged((void **)table, sizeof(Table<K, V, M, DIM>));
   (*table)->capacity = capacity;
   (*table)->buckets_size = buckets_size;
-  (*table)->buckets_num = 1 + (capacity - 1) / (*table)->buckets_size;
+  (*table)->buckets_num = 1;
+  while ((*table)->buckets_num * (*table)->buckets_size < capacity) {
+    (*table)->buckets_num *= 2;
+  }
+  std::cout << "[create_table] requested capacity=" << capacity
+            << ", real capacity="
+            << (*table)->buckets_num * (*table)->buckets_size << std::endl;
   (*table)->cache_size = 0;
   (*table)->vector_on_gpu = vector_on_gpu;
   (*table)->primary_table = true;
@@ -114,48 +120,52 @@ __global__ void write_kernel(const V *__restrict src, V **__restrict dst,
   }
 }
 
-/* Write the N data from src to each address in *dst,
-   usually called by upsert kernel.
+/* Write the values of delta_or_val into the table. If the key[i] is already in
+   the table indicted be @exists[i], a @delta_or_val[i] will be added to the the
+   existing value. if the key not exists, the value @val_or_delta[i] will be
+   assigned to the address @dst[i].
 
-   `src`: A continue memory pointer with Vector
-          which can be HBM.
+   `delta_or_val`: will be treated as val and accumlating should be executed.
    `dst`: A pointer of pointer to V which should be on HBM,
           but each value (a pointer of V) could point to a
           memory on HBM or HMEM.
+   `exists`: Flag of existence for each keys.
+
    `N`: number of vectors needed to be writen.
 */
 template <class K, class V, class M, size_t DIM>
-__global__ void accum_kernel(const V *__restrict src,
-                             const bool *__restrict exists, V **__restrict dst,
-                             int N) {
+__global__ void accum_kernel(const V *__restrict delta_or_val,
+                             V **__restrict dst, const bool *__restrict existed,
+                             const bool *__restrict now_exists, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
 
-    if (dst[vec_index] != nullptr) {
-      if (exists[vec_index]) {
-        (*(dst[vec_index])).value[dim_index] += src[vec_index].value[dim_index];
+    if (dst[vec_index] != nullptr &&
+        existed[vec_index] == now_exists[vec_index]) {
+      if (now_exists[vec_index]) {
+        (*(dst[vec_index])).value[dim_index] +=
+            delta_or_val[vec_index].value[dim_index];
       } else {
-        (*(dst[vec_index])).value[dim_index] = src[vec_index].value[dim_index];
+        (*(dst[vec_index])).value[dim_index] =
+            delta_or_val[vec_index].value[dim_index];
       }
     }
   }
 }
 
-/* Write the N data from src to each address in *dst,
-   usually called by upsert kernel.
+/* Add a @delta[i] to the the value saved in the address @dst[i].
 
-   `src`: A continue memory pointer with Vector
-          which can be HBM.
+   `delta`: a delta value which should be add to.
    `dst`: A pointer of pointer to V which should be on HBM,
           but each value (a pointer of V) could point to a
           memory on HBM or HMEM.
    `N`: number of vectors needed to be writen.
 */
 template <class K, class V, class M, size_t DIM>
-__global__ void accum_kernel(const V *__restrict src, V **__restrict dst,
+__global__ void accum_kernel(const V *__restrict delta, V **__restrict dst,
                              int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -164,8 +174,7 @@ __global__ void accum_kernel(const V *__restrict src, V **__restrict dst,
     int dim_index = tid % DIM;
 
     if (dst[vec_index] != nullptr) {
-      if (exists[vec_index]) {
-        (*(dst[vec_index])).value[dim_index] += src[vec_index].value[dim_index];
+      (*(dst[vec_index])).value[dim_index] += delta[vec_index].value[dim_index];
     }
   }
 }
@@ -187,7 +196,7 @@ __global__ void accum_kernel(const V *__restrict src, V **__restrict dst,
       a full size default value which shape must be (N, DIM).
 */
 template <class K, class V, class M, size_t DIM>
-__global__ void read_kernel(V **__restrict src, V *__restrict dst,
+__global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
                             const bool *mask, const V *__restrict default_val,
                             int N, bool full_size_default) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -196,7 +205,8 @@ __global__ void read_kernel(V **__restrict src, V *__restrict dst,
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
     int default_index = full_size_default ? vec_index : 0;
-    if (mask[vec_index]) {
+
+    if (mask[vec_index] && src[vec_index] != nullptr) {
       dst[vec_index].value[dim_index] = (*(src[vec_index])).value[dim_index];
     } else {
       dst[vec_index].value[dim_index] =
@@ -228,6 +238,67 @@ __global__ void read_kernel(V **__restrict src, V *__restrict dst, int N) {
   }
 }
 
+template <class K, class V, class M, size_t DIM>
+__inline__ __device__ void find_in_bucket(const Bucket<K, V, M, DIM> *bucket,
+                                          const uint64_t buckets_size,
+                                          const K &insert_key, int *key_pos,
+                                          bool *found) {
+  for (int i = 0; i < buckets_size; i++) {
+    if (bucket->keys[i] == insert_key) {
+      *found = true;
+      *key_pos = i;
+      return;
+    }
+  }
+  for (int i = 0; i < buckets_size; i++) {
+    K old_key = atomicCAS(&(bucket->keys[i]), EMPTY_KEY, insert_key);
+    if (old_key == EMPTY_KEY) {
+      *key_pos = i;
+      break;
+    }
+  }
+}
+
+template <class K, class V, class M, size_t DIM>
+__inline__ __device__ void find_in_bucket(const Bucket<K, V, M, DIM> *bucket,
+                                          const uint64_t buckets_size,
+                                          const K &insert_key, int *key_pos,
+                                          bool *found, const bool existed) {
+  for (int i = 0; i < buckets_size; i++) {
+    if (bucket->keys[i] == insert_key) {
+      *found = true;
+      *key_pos = i;
+      return;
+    }
+  }
+  if (*found != existed) return;
+  for (int i = 0; i < buckets_size; i++) {
+    K old_key = atomicCAS(&(bucket->keys[i]), EMPTY_KEY, insert_key);
+    if (old_key == EMPTY_KEY) {
+      *key_pos = i;
+      break;
+    }
+  }
+}
+
+template <class K, class V, class M, size_t DIM>
+__inline__ __device__ void refresh_bucket_meta(Bucket<K, V, M, DIM> *bucket,
+                                               const uint64_t buckets_size) {
+  M min_val = MAX_META;
+  int min_pos = 0;
+  for (int i = 0; i < buckets_size; i++) {
+    if (bucket->keys[i] == EMPTY_KEY) {
+      continue;
+    }
+    if (bucket->metas[i].val < min_val) {
+      min_pos = i;
+      min_val = bucket->metas[i].val;
+    }
+  }
+  atomicExch(&(bucket->min_pos), min_pos);
+  atomicExch(&(bucket->min_meta), min_val);
+}
+
 /* Insert or update a Key-Value in the table,
    this operation will not really write the vector data
    into buckets and only return the address in bucket for each key
@@ -254,7 +325,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 
   if (tid < N) {
     int key_idx = tid;
-    int hashed_key = Murmur3HashDevice(keys[tid]);
+    K hashed_key = Murmur3HashDevice(keys[tid]);
     int bkt_idx = hashed_key % table->buckets_num;
     const uint64_t buckets_size = table->buckets_size;
     const K insert_key = keys[tid];
@@ -263,21 +334,9 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
     while (!release_lock) {
       if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
         Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        for (int i = 0; i < buckets_size; i++) {
-          if (bucket->keys[i] == insert_key) {
-            found = true;
-            key_pos = i;
-            break;
-          }
-        }
-        for (int i = 0; i < buckets_size; i++) {
-          if (found) break;
-          K old_key = atomicCAS(&(bucket->keys[i]), EMPTY_KEY, insert_key);
-          if (old_key == EMPTY_KEY) {
-            key_pos = i;
-            break;
-          }
-        }
+        find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
+                                     &found);
+
         if (metas[key_idx] >= bucket->min_meta || found ||
             bucket->size < buckets_size) {
           if (!found) {
@@ -288,19 +347,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
           atomicExch(&(bucket->keys[key_pos]), insert_key);
           atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
 
-          M tmp_min_val = MAX_META;
-          int tmp_min_pos = 0;
-          for (int i = 0; i < buckets_size; i++) {
-            if (bucket->keys[i] == EMPTY_KEY) {
-              continue;
-            }
-            if (bucket->metas[i].val < tmp_min_val) {
-              tmp_min_pos = i;
-              tmp_min_val = bucket->metas[i].val;
-            }
-          }
-          atomicExch(&(bucket->min_pos), tmp_min_pos);
-          atomicExch(&(bucket->min_meta), tmp_min_val);
+          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
           atomicCAS((uint64_t *)&(vectors[tid]), (uint64_t)(nullptr),
                     (uint64_t)((V *)(bucket->vectors) + key_pos));
         }
@@ -326,7 +373,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 
   if (tid < N) {
     int key_idx = tid;
-    int hashed_key = Murmur3HashDevice(keys[tid]);
+    K hashed_key = Murmur3HashDevice(keys[tid]);
     int bkt_idx = hashed_key % table->buckets_num;
     const uint64_t buckets_size = table->buckets_size;
     const K insert_key = keys[tid];
@@ -335,21 +382,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
     while (!release_lock) {
       if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
         Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        for (int i = 0; i < buckets_size; i++) {
-          if (bucket->keys[i] == insert_key) {
-            found = true;
-            key_pos = i;
-            break;
-          }
-        }
-        for (int i = 0; i < buckets_size; i++) {
-          if (found) break;
-          K old_key = atomicCAS(&(bucket->keys[i]), EMPTY_KEY, insert_key);
-          if (old_key == EMPTY_KEY) {
-            key_pos = i;
-            break;
-          }
-        }
+        find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
+                                     &found);
         if (found || bucket->size < buckets_size) {
           if (!found) {
             key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
@@ -360,19 +394,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
           M cur_meta = atomicAdd(&(bucket->cur_meta), 1);
           atomicExch(&(bucket->metas[key_pos].val), cur_meta);
 
-          M tmp_min_val = MAX_META;
-          int tmp_min_pos = 0;
-          for (int i = 0; i < buckets_size; i++) {
-            if (bucket->keys[i] == EMPTY_KEY) {
-              continue;
-            }
-            if (bucket->metas[i].val < tmp_min_val) {
-              tmp_min_pos = i;
-              tmp_min_val = bucket->metas[i].val;
-            }
-          }
-          atomicExch(&(bucket->min_pos), tmp_min_pos);
-          atomicExch(&(bucket->min_meta), tmp_min_val);
+          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
           atomicCAS((uint64_t *)&(vectors[tid]), (uint64_t)(nullptr),
                     (uint64_t)((V *)(bucket->vectors) + key_pos));
         }
@@ -383,6 +405,103 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
   }
 }
 
+/* Upsert with no user specified meta and return if the keys already exists.
+   The meta will be specified by kernel internally according to
+   the `bucket->cur_meta` which always increment by 1 when insert happens,
+   we assume the cur_meta with `uint64_t` type will never overflow.
+*/
+template <class K, class V, class M, size_t DIM>
+__global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
+                              const K *__restrict keys, V **__restrict vectors,
+                              bool *__restrict exists, int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  int key_pos = -1;
+  bool found = false;
+
+  if (tid < N) {
+    int key_idx = tid;
+    K hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % table->buckets_num;
+    const uint64_t buckets_size = table->buckets_size;
+    const K insert_key = keys[tid];
+
+    bool release_lock = false;
+    while (!release_lock) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+        find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
+                                     &found);
+        if (found || bucket->size < buckets_size) {
+          if (!found) {
+            key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
+            atomicAdd(&(bucket->size), 1);
+            atomicMin(&(bucket->size), buckets_size);
+          }
+          atomicExch(&(bucket->keys[key_pos]), insert_key);
+          exists[key_idx] = found;
+          M cur_meta = atomicAdd(&(bucket->cur_meta), 1);
+          atomicExch(&(bucket->metas[key_pos].val), cur_meta);
+
+          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+          atomicCAS((uint64_t *)&(vectors[tid]), (uint64_t)(nullptr),
+                    (uint64_t)((V *)(bucket->vectors) + key_pos));
+        }
+        release_lock = true;
+        atomicExch(&(table->locks[bkt_idx]), 0u);
+      }
+    }
+  }
+}
+
+/* Upsert with no user specified meta and return if the keys already exists.
+   The meta will be specified by kernel internally according to
+   the `bucket->cur_meta` which always increment by 1 when insert happens,
+   we assume the cur_meta with `uint64_t` type will never overflow.
+*/
+template <class K, class V, class M, size_t DIM>
+__global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
+                              const K *__restrict keys, V **__restrict vectors,
+                              const bool *__restrict existed,
+                              bool *__restrict now_exists, int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  int key_pos = -1;
+  bool found = false;
+
+  if (tid < N) {
+    int key_idx = tid;
+    K hashed_key = Murmur3HashDevice(keys[tid]);
+    int bkt_idx = hashed_key % table->buckets_num;
+    const uint64_t buckets_size = table->buckets_size;
+    const K insert_key = keys[tid];
+
+    bool release_lock = false;
+    while (!release_lock) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+        find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
+                                     &found, existed[key_idx]);
+        now_exists[key_idx] = found;
+        if (found == existed[key_idx] &&
+            (found || bucket->size < buckets_size)) {
+          if (!found) {
+            key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
+            atomicAdd(&(bucket->size), 1);
+            atomicMin(&(bucket->size), buckets_size);
+          }
+          atomicExch(&(bucket->keys[key_pos]), insert_key);
+          M cur_meta = atomicAdd(&(bucket->cur_meta), 1);
+          atomicExch(&(bucket->metas[key_pos].val), cur_meta);
+
+          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+          atomicCAS((uint64_t *)&(vectors[tid]), (uint64_t)(nullptr),
+                    (uint64_t)((V *)(bucket->vectors) + key_pos));
+        }
+        release_lock = true;
+        atomicExch(&(table->locks[bkt_idx]), 0u);
+      }
+    }
+  }
+}
 /* Lookup keys from the table,
    this operation will not really read the vector and meta data
    from buckets and only return the address in bucket for each key
@@ -410,7 +529,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int hashed_key = Murmur3HashDevice(keys[tid]);
+    K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
@@ -434,7 +553,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int hashed_key = Murmur3HashDevice(keys[tid]);
+    K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
@@ -457,7 +576,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int hashed_key = Murmur3HashDevice(keys[tid]);
+    K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
@@ -510,7 +629,7 @@ __global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
   if (tid < N) {
     int key_idx = tid / buckets_size;
     int key_pos = tid % buckets_size;
-    int hashed_key = Murmur3HashDevice(keys[tid]);
+    K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);

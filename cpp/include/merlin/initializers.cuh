@@ -36,7 +36,7 @@ inline void cuda_rand_check_(curandStatus_t val, const char *file, int line) {
 }
 
 #define CURAND_CHECK(val) \
-  { cuda_rand_check_((val), __FILE__, __LINE__); }
+  { nv::merlin::initializers::cuda_rand_check_((val), __FILE__, __LINE__); }
 
 template <class T>
 void zeros(T *d_data, size_t len, cudaStream_t stream) {
@@ -79,6 +79,7 @@ void random_uniform(T *d_data, size_t len, cudaStream_t stream, T minval = 0.0,
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
+template <class T>
 __global__ void init_states(curandStatePhilox4_32_10_t *states,
                             unsigned long long seed, size_t N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -115,7 +116,7 @@ void truncated_normal(T *d_data, size_t len, cudaStream_t stream,
   curandStatePhilox4_32_10_t *d_states;
   cudaMalloc(&d_states, N);
 
-  init_states<<<grid_size, block_size, 0, stream>>>(d_states, seed, N);
+  init_states<T><<<grid_size, block_size, 0, stream>>>(d_states, seed, N);
 
   make_truncated_normal<T>
       <<<grid_size, block_size, 0, stream>>>(d_data, d_states, N);
