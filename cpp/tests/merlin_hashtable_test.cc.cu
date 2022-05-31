@@ -32,20 +32,9 @@
 #include "merlin/optimizers.cuh"
 #include "merlin_hashtable.cuh"
 
-using std::begin;
-using std::cerr;
-using std::copy;
-using std::cout;
-using std::endl;
-using std::generate;
-using std::max;
-using std::min;
-
-using namespace std::chrono;
-using namespace nv::merlin;
-
 uint64_t getTimestamp() {
-  return duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
 
@@ -61,7 +50,7 @@ void create_random_keys(K *h_keys, M *h_metas, int KEY_NUM) {
     numbers.insert(distr(eng));
   }
   for (const K num : numbers) {
-    h_keys[i] = Murmur3HashHost(num);
+    h_keys[i] = nv::merlin::Murmur3HashHost(num);
     h_metas[i] = getTimestamp() + i;
     i++;
   }
@@ -87,14 +76,15 @@ int test_main() {
   using K = uint64_t;
   using M = uint64_t;
   using Vector = ValueArray<float, DIM>;
-  using Table = HashTable<K, Vector, ValueArrayBase<float>, float, M, DIM>;
+  using Table =
+      nv::merlin::HashTable<K, Vector, ValueArrayBase<float>, float, M, DIM>;
 
   K *h_keys;
   M *h_metas;
   Vector *h_vectors;
   bool *h_found;
 
-  Table *table_ = new Table(INIT_SIZE);
+  std::unique_ptr<Table> table_ = std::make_unique<Table>(INIT_SIZE);
 
   cudaMallocHost(&h_keys, KEY_NUM * sizeof(K));          // 8MB
   cudaMallocHost(&h_metas, KEY_NUM * sizeof(M));         // 8MB
@@ -137,7 +127,7 @@ int test_main() {
   for (int i = 0; i < TEST_TIMES; i++) {
     total_size = table_->get_size(stream);
 
-    cout << "before upsert: total_size = " << total_size << endl;
+    std::cout << "before upsert: total_size = " << total_size << std::endl;
     auto start_upsert = std::chrono::steady_clock::now();
     table_->upsert(d_keys, (ValueArrayBase<float> *)d_vectors, d_metas, KEY_NUM,
                    stream, false);
@@ -149,7 +139,7 @@ int test_main() {
                    stream);
 
     total_size = table_->get_size(stream);
-    cout << "after upsert: total_size = " << total_size << endl;
+    std::cout << "after upsert: total_size = " << total_size << std::endl;
 
     auto start_lookup = std::chrono::steady_clock::now();
     table_->get(d_keys, (ValueArrayBase<float> *)d_vectors, d_found, KEY_NUM,
@@ -190,12 +180,12 @@ int test_main() {
     if (h_found[i]) found_num++;
   }
 
-  cout << "Capacity = " << table_->get_capacity()
-       << ", total_size = " << total_size
-       << ", h_dump_counter = " << h_dump_counter
-       << ", max_bucket_len = " << max_bucket_len
-       << ", min_bucket_len = " << min_bucket_len
-       << ", found_num = " << found_num << endl;
+  std::cout << "Capacity = " << table_->get_capacity()
+            << ", total_size = " << total_size
+            << ", h_dump_counter = " << h_dump_counter
+            << ", max_bucket_len = " << max_bucket_len
+            << ", min_bucket_len = " << min_bucket_len
+            << ", found_num = " << found_num << std::endl;
 
   cudaFreeHost(h_keys);
   cudaFreeHost(h_metas);
@@ -209,7 +199,7 @@ int test_main() {
   cudaFree(d_vectors_ptr);
   cudaFree(d_found);
 
-  cout << "COMPLETED SUCCESSFULLY\n";
+  std::cout << "COMPLETED SUCCESSFULLY" << std::endl;
 
   return 0;
 }
