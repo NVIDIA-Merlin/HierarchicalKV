@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iostream>
 #include <random>
+#include <set>
 #include <thread>
 #include <unordered_set>
 
@@ -13,12 +14,29 @@ constexpr int DIM = 64;
 struct Vector {
   V values[DIM];
 };
+constexpr int VECTOR_SIZE = sizeof(Vector);
 
 void create_random_offset(int *offset, int num, int range) {
   std::unordered_set<int> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
-  std::uniform_int_distribution<int> distr;
+  std::uniform_int_distribution<unsigned int> distr;
+  int i = 0;
+
+  while (numbers.size() < num) {
+    numbers.insert(distr(eng) % range);
+  }
+
+  for (const int num : numbers) {
+    offset[i++] = num;
+  }
+}
+
+void create_random_offset_ordered(int *offset, int num, int range) {
+  std::set<int> numbers;
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<unsigned int> distr;
   int i = 0;
 
   while (numbers.size() < num) {
@@ -38,12 +56,14 @@ __global__ void d2h_const_data(const Vector *__restrict src,
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
 
-    (*(dst[vec_index])).values[dim_index] = 0.1f;
+    //     (*(dst[vec_index])).values[dim_index] = 0.1f;
+    V *vector_addr = (V *)*(dst + vec_index);
+    *(vector_addr + dim_index) = 0.1f;
   }
 }
 
 __global__ void d2h_hbm_data(
-    const Vector *__restrict src, Vector **__restrict dst,
+    Vector *__restrict src, Vector **__restrict dst,
     int N) {  // dst is a set of Vector* in the pinned memory
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
@@ -58,6 +78,20 @@ __global__ void d2h_hbm_data(
   }
 }
 
+__global__ void d2h_hbm_data_with_random_src(
+    const Vector *__restrict src, Vector **__restrict dst, int *src_idx,
+    int N) {  // dst is a set of Vector* in the pinned memory
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  if (tid < N) {
+    int vec_index = int(tid / DIM);
+    int dim_index = tid % DIM;
+
+    (*(dst[vec_index])).values[dim_index] =
+        src[src_idx[vec_index]].values[dim_index];
+  }
+}
+
 __global__ void create_fake_ptr(const Vector *__restrict dst,
                                 Vector **__restrict vectors, int *offset,
                                 int N) {
@@ -67,6 +101,11 @@ __global__ void create_fake_ptr(const Vector *__restrict dst,
     vectors[tid] = (Vector *)((Vector *)dst + offset[tid]);
   }
 }
+
+// void sort_keys(){
+//   int A[N] = {1, 4, 2, 8, 5, 7};
+//   thrust::sort(thrust::host, A, A + N);
+// }
 
 int main() {
   constexpr int KEY_NUM = 1024 * 1024;
@@ -81,10 +120,18 @@ int main() {
   int *h_offset;
   int *d_offset;
 
+  int *h_src_idx;
+  int *d_src_idx;
+
   cudaMallocHost(&h_offset, sizeof(int) * KEY_NUM);
   cudaMalloc(&d_offset, sizeof(int) * KEY_NUM);
   cudaMemset(&h_offset, 0, sizeof(int) * KEY_NUM);
   cudaMemset(&d_offset, 0, sizeof(int) * KEY_NUM);
+
+  cudaMallocHost(&h_src_idx, sizeof(int) * KEY_NUM);
+  cudaMalloc(&d_src_idx, sizeof(int) * KEY_NUM);
+  cudaMemset(&h_src_idx, 0, sizeof(int) * KEY_NUM);
+  cudaMemset(&d_src_idx, 0, sizeof(int) * KEY_NUM);
 
   Vector *src;
   Vector *dst;
@@ -93,9 +140,14 @@ int main() {
   cudaMalloc(&dst_ptr, KEY_NUM * sizeof(Vector *));
   cudaMallocHost(&dst, vectors_size);
 
-  create_random_offset(h_offset, KEY_NUM, INIT_SIZE);
+  create_random_offset_ordered(h_offset, KEY_NUM, INIT_SIZE);
   cudaMemcpy(d_offset, h_offset, sizeof(int) * KEY_NUM, cudaMemcpyHostToDevice);
   create_fake_ptr<<<1024, 1024>>>(dst, dst_ptr, d_offset, KEY_NUM);
+
+  //   create_random_offset_ordered(h_src_idx, KEY_NUM, KEY_NUM);
+  //   cudaMemcpy(d_src_idx, h_src_idx, sizeof(int) * KEY_NUM,
+  //   cudaMemcpyHostToDevice);
+
   std::chrono::time_point<std::chrono::steady_clock> start_test;
   std::chrono::duration<double> diff_test;
 
@@ -120,9 +172,11 @@ int main() {
 
   cudaFreeHost(dst);
   cudaFreeHost(h_offset);
+  cudaFreeHost(h_src_idx);
   cudaFree(dst_ptr);
   cudaFree(src);
   cudaFree(d_offset);
+  cudaFree(d_src_idx);
 
   std::cout << "COMPLETED SUCCESSFULLY\n";
 
