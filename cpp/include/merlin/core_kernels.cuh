@@ -200,8 +200,7 @@ __global__ void accum_kernel(const V *__restrict delta, V **__restrict dst,
 template <class K, class V, class M, size_t DIM>
 __global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
                             const bool *mask, const V *__restrict default_val,
-                            const int *dst_offset, int N,
-                            bool full_size_default) {
+                            int N, bool full_size_default) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
@@ -209,11 +208,10 @@ __global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
     int dim_index = tid % DIM;
     int default_index = full_size_default ? vec_index : 0;
 
-    if (mask[dst_offset[vec_index]] && src[vec_index] != nullptr) {
-      dst[dst_offset[vec_index]].value[dim_index] =
-          (*(src[vec_index])).value[dim_index];
+    if (mask[vec_index] && src[vec_index] != nullptr) {
+      dst[vec_index].value[dim_index] = (*(src[vec_index])).value[dim_index];
     } else {
-      dst[dst_offset[vec_index]].value[dim_index] =
+      dst[vec_index].value[dim_index] =
           default_val[default_index].value[dim_index];
     }
   }
@@ -230,16 +228,14 @@ __global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
    `N`: The number of vectors needed to be read.
 */
 template <class K, class V, class M, size_t DIM>
-__global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
-                            const int *dst_offset, int N) {
+__global__ void read_kernel(V **__restrict src, V *__restrict dst, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
     if (src[vec_index] != nullptr) {
-      dst[dst_offset[vec_index]].value[dim_index] =
-          (*(src[vec_index])).value[dim_index];
+      dst[vec_index].value[dim_index] = (*(src[vec_index])).value[dim_index];
     }
   }
 }
@@ -532,7 +528,7 @@ template <class K, class V, class M, size_t DIM>
 __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
                               M *__restrict metas, bool *__restrict found,
-                              int *src_offset, int N) {
+                              int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const uint64_t buckets_num = table->buckets_num;
   const uint64_t buckets_size = table->buckets_size;
@@ -548,7 +544,6 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
       metas[key_idx] = bucket->metas[key_pos].val;
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
       found[key_idx] = true;
-      src_offset[key_idx] = key_idx;
     }
   }
 }
@@ -557,7 +552,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
 template <class K, class V, class M, size_t DIM>
 __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
-                              bool *__restrict found, int *src_offset, int N) {
+                              bool *__restrict found, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const uint64_t buckets_num = table->buckets_num;
   const uint64_t buckets_size = table->buckets_size;
@@ -572,7 +567,6 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
     if (bucket->keys[key_pos] == target_key) {
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
       found[key_idx] = true;
-      src_offset[key_idx] = key_idx;
     }
   }
 }
@@ -581,7 +575,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
 template <class K, class V, class M, size_t DIM>
 __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
-                              int *src_offset, int N) {
+                              int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const uint64_t buckets_num = table->buckets_num;
   const uint64_t buckets_size = table->buckets_size;
@@ -595,7 +589,6 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
 
     if (bucket->keys[key_pos] == target_key) {
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
-      src_offset[key_idx] = key_idx;
     }
   }
 }

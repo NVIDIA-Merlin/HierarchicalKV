@@ -124,11 +124,8 @@ class HashTable {
       return;
     }
     V **d_src;
-    int *d_dst_offset;
     CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(V *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_dst_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_dst_offset, 0, len * sizeof(int), stream));
     CUDA_CHECK(
         cudaMemsetAsync((void *)d_status, 0, len * sizeof(bool), stream));
 
@@ -136,22 +133,14 @@ class HashTable {
     int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
 
     lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_src, d_status, d_dst_offset, N);
-
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    thrust::device_ptr<uint64_t> d_src_ptr((uint64_t *)(d_src));
-    thrust::device_ptr<int> d_dst_offset_ptr(d_dst_offset);
-    thrust::sort_by_key(d_src_ptr, d_src_ptr + len, d_dst_offset_ptr,
-                        thrust::less<uint64_t>());
+        table_, d_keys, d_src, d_status, N);
 
     N = len * DIM;
     grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
     read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        d_src, (V *)d_vals, d_status, (V *)d_def_val, d_dst_offset, N,
-        full_size_default);
+        d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
 
     CUDA_CHECK(cudaFreeAsync(d_src, stream));
-    CUDA_CHECK(cudaFreeAsync(d_dst_offset, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
@@ -162,11 +151,8 @@ class HashTable {
       return;
     }
     V **d_src;
-    int *d_dst_offset;
     CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(V *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_dst_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_dst_offset, 0, len * sizeof(int), stream));
     CUDA_CHECK(
         cudaMemsetAsync((void *)d_status, 0, len * sizeof(bool), stream));
 
@@ -174,21 +160,14 @@ class HashTable {
     int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
 
     lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_src, d_metas, d_status, d_dst_offset, N);
+        table_, d_keys, d_src, d_metas, d_status, N);
 
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    thrust::device_ptr<uint64_t> d_src_ptr((uint64_t *)(d_src));
-    thrust::device_ptr<int> d_dst_offset_ptr(d_dst_offset);
-    thrust::sort_by_key(d_src_ptr, d_src_ptr + len, d_dst_offset_ptr,
-                        thrust::less<uint64_t>());
     N = len * DIM;
     grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
     read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        d_src, (V *)d_vals, d_status, (V *)d_def_val, d_dst_offset, N,
-        full_size_default);
+        d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
 
     CUDA_CHECK(cudaFreeAsync(d_src, stream));
-    CUDA_CHECK(cudaFreeAsync(d_dst_offset, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
@@ -199,33 +178,23 @@ class HashTable {
       return;
     }
     V **d_src;
-    int *d_dst_offset;
     CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(V *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_dst_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_dst_offset, 0, len * sizeof(int), stream));
 
     int N = len * table_->buckets_size;
     int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
 
     initializer_->initialize((T *)d_vals, len * sizeof(V), stream);
 
-    lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_src, d_dst_offset, N);
-
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    thrust::device_ptr<uint64_t> d_src_ptr((uint64_t *)(d_src));
-    thrust::device_ptr<int> d_dst_offset_ptr(d_dst_offset);
-    thrust::sort_by_key(d_src_ptr, d_src_ptr + len, d_dst_offset_ptr,
-                        thrust::less<uint64_t>());
+    lookup_kernel<K, V, M, DIM>
+        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_src, N);
 
     N = len * DIM;
     grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
-    read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        d_src, (V *)d_vals, d_dst_offset, N);
+    read_kernel<K, V, M, DIM>
+        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(d_src, (V *)d_vals, N);
 
     CUDA_CHECK(cudaFreeAsync(d_src, stream));
-    CUDA_CHECK(cudaFreeAsync(d_dst_offset, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
