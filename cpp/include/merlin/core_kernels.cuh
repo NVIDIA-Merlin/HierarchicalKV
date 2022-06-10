@@ -102,12 +102,12 @@ void destroy_table(Table<K, V, M, DIM> **table) {
 /* Write the N data from src to each address in *dst,
    usually called by upsert kernel.
 
-   `src`: A continue memory pointer with Vector
+   `src`: A continuous memory pointer with Vector
           which can be HBM.
    `dst`: A pointer of pointer to V which should be on HBM,
           but each value (a pointer of V) could point to a
           memory on HBM or HMEM.
-   `N`: number of vectors needed to be writen.
+   `N`: Number of vectors that need to be written.
 */
 template <class K, class V, class M, size_t DIM>
 __global__ void write_kernel(const V *__restrict src, V **__restrict dst,
@@ -217,8 +217,9 @@ __global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
     int dim_index = tid % DIM;
     int default_index = full_size_default ? vec_index : 0;
 
+    // Copy selected values and fill in default value for all others.
     if (mask[vec_index] && src[vec_index] != nullptr) {
-      dst[vec_index].value[dim_index] = (*(src[vec_index])).value[dim_index];
+      dst[vec_index].value[dim_index] = src[vec_index]->value[dim_index];
     } else {
       dst[vec_index].value[dim_index] =
           default_val[default_index].value[dim_index];
@@ -234,7 +235,7 @@ __global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
           memory on HBM or HMEM.
    `dst`: A continue memory pointer with Vector
           which should be HBM.
-   `N`: The number of vectors needed to be read.
+   `N`: Number of vectors needed to be read.
 */
 template <class K, class V, class M, size_t DIM>
 __global__ void read_kernel(V **__restrict src, V *__restrict dst, int N) {
@@ -244,7 +245,7 @@ __global__ void read_kernel(V **__restrict src, V *__restrict dst, int N) {
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
     if (src[vec_index] != nullptr) {
-      dst[vec_index].value[dim_index] = (*(src[vec_index])).value[dim_index];
+      dst[vec_index].value[dim_index] = src[vec_index]->value[dim_index];
     }
   }
 }
@@ -344,9 +345,9 @@ __inline__ __device__ void refresh_bucket_meta(Bucket<K, V, M, DIM> *bucket,
 
 /* Insert or update a Key-Value in the table,
    this operation will not really write the vector data
-   into buckets and only return the address in bucket for each key
-   through `vectors`. Usually caller should call the `write_kernel`
-   to really write the data the addresses in `vectors`.
+   into the bucket. Instead, it will only return the address in bucket for each
+   key through `vectors`. To actually write the data the addresses in `vectors`
+   the caller must call the `write_kernel`.
 
    `table`: The table to be operated.
    `keys`: Keys for upsert, if the key exists, will return
@@ -355,7 +356,7 @@ __inline__ __device__ void refresh_bucket_meta(Bucket<K, V, M, DIM> *bucket,
    `metas`: The corresponding meta value for each keys.
    `vectors`: The addresses in buckets for each keys where the
               corresponding vector values should be really saved into.
-   `N`: The number of key-value needed to be read.
+   `N`: Number of vectors needed to be read.
 */
 template <class K, class V, class M, size_t DIM>
 __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
@@ -377,6 +378,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 
     bool release_lock = false;
     while (!release_lock) {
+      // Spin-wait until we get access.
       if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
         Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
         if (found) {
@@ -385,6 +387,11 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
           insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty);
         }
 
+        // Insert if either of the following cases is fulfilled:
+        // 1) We found the key: Then, we override the associated value and meta.
+        // 2) The bucket is not yet full: Hence, we can append the key.
+        // 3) Meta of key to be insered is larger than smallest meta in bucket:
+        //    In this case we replace that key.
         if (metas[key_idx] >= bucket->min_meta || found || empty) {
           if (!found) {
             key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
@@ -392,7 +399,11 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
           atomicExch(&(bucket->keys[key_pos]), insert_key);
           atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
 
+          // Re-locate the smallest meta.
           refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+
+          // Record storage offset. This will be used by write_kernel to map
+          // the input to the output data.
           atomicCAS((uint64_t *)&(vectors[tid]), (uint64_t)(nullptr),
                     (uint64_t)((V *)(bucket->vectors) + key_pos));
           atomicExch(&(src_offset[key_idx]), key_idx);
@@ -758,6 +769,8 @@ __global__ void size_kernel(Table<K, V, M, DIM> *table, size_t *size, int N) {
   if (tid < N) {
     int key_idx = tid % buckets_size;
     int bkt_idx = tid / buckets_size;
+
+    // Just count non empty bucket cells.
     if (table->buckets[bkt_idx].keys[key_idx] != EMPTY_KEY) {
       atomicAdd((unsigned long long int *)(size), 1);
     }
@@ -774,9 +787,14 @@ __global__ void clear_kernel(Table<K, V, M, DIM> *__restrict table, int N) {
     int key_idx = tid % buckets_size;
     int bkt_idx = tid / buckets_size;
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+
     atomicExch((K *)&(bucket->keys[key_idx]), EMPTY_KEY);
+
+    // M_LANGER: Without lock, potential race condition here?
     atomicExch((K *)&(bucket->metas[key_idx].val), MAX_META);
-    if (key_idx == 0) atomicExch(&(bucket->size), 0);
+    if (key_idx == 0) {
+      atomicExch(&(bucket->size), 0);
+    }
   }
 }
 
@@ -796,8 +814,11 @@ __global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
+    // Prober the current key. Clear it if equal. Then clear metadata to
+    // indicate the field is free.
     K old_key = atomicCAS((K *)&bucket->keys[key_pos], target_key, EMPTY_KEY);
     if (old_key == target_key) {
+      // M_LANGER: Without lock, potential race condition here?
       atomicExch((K *)&(bucket->metas[key_pos].val), MAX_META);
       atomicDec((unsigned int *)&(bucket->size), buckets_size);
     }

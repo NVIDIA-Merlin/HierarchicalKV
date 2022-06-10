@@ -63,12 +63,12 @@ class Adam : public Optimizer<K, V, M, T, DIM> {
     CUDA_CHECK(cudaMalloc((void**)&d_m, len * sizeof(V)));
     CUDA_CHECK(cudaMalloc((void**)&d_v, len * sizeof(V)));
 
-    int N = len * DIM;
-    int grid_size = (N - 1) / block_size_ + 1;
     w_->get(d_keys, d_w, len, stream);
     m_->get(d_keys, d_m, len, stream);
     v_->get(d_keys, d_v, len, stream);
 
+    const int N = len * DIM;
+    const int grid_size = (N - 1) / block_size_ + 1;
     adam_update_kernel<T><<<grid_size, block_size_, 0, stream>>>(
         N, d_w, d_m, d_v, d_grad, alpha_, beta1_, beta2_, epsilon_, scaler_);
 

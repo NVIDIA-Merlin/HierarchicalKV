@@ -26,7 +26,6 @@ namespace initializers {
 template <class T>
 class RandomNormal final : public Initializer<T> {
  public:
- public:
   RandomNormal(T mean = 0.0, T stddev = 0.5, unsigned long long seed = 2022ULL)
       : mean_(mean), stddev_(stddev), seed_(seed) {}
   ~RandomNormal() {}

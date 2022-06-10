@@ -36,8 +36,8 @@ class HashTable {
  public:
   explicit HashTable(uint64_t max_size,
                      const Initializer *initializer = nullptr,
-                     bool master = true) {
-    capacity_ = max_size;
+                     bool master = true)
+      : capacity_{max_size} {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
@@ -71,29 +71,35 @@ class HashTable {
       CUDA_CHECK(cudaMemset(d_status, 0, len * sizeof(bool)));
     }
 
+    // Determine bucket insert locations.
     if (!allow_duplicate_keys) {
-      int N = len * table_->buckets_size;
-      int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      {
+        const int N = len * table_->buckets_size;
+        const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
 
-      lookup_for_upsert_kernel<K, V, M, DIM>
-          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
-                                                  d_bucket_offset, N);
+        lookup_for_upsert_kernel<K, V, M, DIM>
+            <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
+                                                    d_bucket_offset, N);
+      }
 
-      N = len;
-      grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-      upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-          table_, d_keys, d_metas, d_dst, d_src_offset, d_status,
-          d_bucket_offset, len);
+      {
+        const int N = len;
+        const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+        upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+            table_, d_keys, d_metas, d_dst, d_src_offset, d_status,
+            d_bucket_offset, len);
+      }
+
     } else {
-      int N = len;
-      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      const int N = len;
+      const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
       upsert_allow_duplicate_keys_kernel<K, V, M, DIM>
           <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_metas,
                                                   d_dst, d_src_offset, len);
     }
 
     {
-      int N = len;
+      const int N = len;
       CUDA_CHECK(cudaStreamSynchronize(stream));
       thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
       thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
@@ -101,9 +107,10 @@ class HashTable {
                           thrust::less<uint64_t>());
     }
 
+    // Copy provided data to the bucket.
     {
-      int N = len * DIM;
-      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      const int N = len * DIM;
+      const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
       write_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
           (const V *)d_vals, d_dst, d_src_offset, N);
     }
@@ -141,28 +148,34 @@ class HashTable {
       CUDA_CHECK(cudaMemset(d_status, 0, len * sizeof(bool)));
     }
 
+    // Determine bucket insert locations.
     if (!allow_duplicate_keys) {
-      int N = len * table_->buckets_size;
-      int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      {
+        const int N = len * table_->buckets_size;
+        const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+        lookup_for_upsert_kernel<K, V, M, DIM>
+            <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
+                                                    d_bucket_offset, N);
+      }
 
-      lookup_for_upsert_kernel<K, V, M, DIM>
-          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
-                                                  d_bucket_offset, N);
+      {
+        const int N = len;
+        const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+        upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+            table_, d_keys, d_dst, d_src_offset, d_status, d_bucket_offset,
+            len);
+      }
 
-      N = len;
-      grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-      upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-          table_, d_keys, d_dst, d_src_offset, d_status, d_bucket_offset, len);
     } else {
-      int N = len;
-      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      const int N = len;
+      const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
       upsert_allow_duplicate_keys_kernel<K, V, M, DIM>
           <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_dst,
                                                   d_src_offset, len);
     }
 
     {
-      int N = len;
+      const int N = len;
 
       CUDA_CHECK(cudaStreamSynchronize(stream));
       thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
@@ -171,9 +184,10 @@ class HashTable {
                           thrust::less<uint64_t>());
     }
 
+    // Copy provided data to the bucket.
     {
-      int N = len * DIM;
-      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      const int N = len * DIM;
+      const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
       write_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
           (const V *)d_vals, d_dst, d_src_offset, N);
     }
@@ -213,22 +227,26 @@ class HashTable {
     }
 
     if (!allow_duplicate_keys) {
-      int N = len * table_->buckets_size;
-      int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      {
+        const int N = len * table_->buckets_size;
+        const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
 
-      lookup_for_upsert_kernel<K, V, M, DIM>
-          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
-                                                  d_bucket_offset, N);
+        lookup_for_upsert_kernel<K, V, M, DIM>
+            <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
+                                                    d_bucket_offset, N);
+      }
 
-      N = len;
-      grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-      accum_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-          table_, d_keys, d_dst, d_exists, d_src_offset, d_status,
-          d_bucket_offset, len);
+      {
+        const int N = len;
+        const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+        accum_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+            table_, d_keys, d_dst, d_exists, d_src_offset, d_status,
+            d_bucket_offset, len);
+      }
 
     } else {
-      int N = len;
-      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      const int N = len;
+      const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
       accum_allow_duplicate_keys_kernel<K, V, M, DIM>
           <<<grid_size, BLOCK_SIZE_, 0, stream>>>(
               table_, d_keys, d_dst, d_exists, d_status, d_src_offset, len);
@@ -236,7 +254,7 @@ class HashTable {
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     {
-      int N = len;
+      const int N = len;
       thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
       thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
       thrust::sort_by_key(d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
@@ -244,8 +262,8 @@ class HashTable {
     }
 
     {
-      int N = len * DIM;
-      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      const int N = len * DIM;
+      const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
       write_with_accum_kernel<K, V, M, DIM>
           <<<grid_size, BLOCK_SIZE_, 0, stream>>>((const V *)d_vals_or_deltas,
                                                   d_dst, d_exists, d_status,
@@ -273,16 +291,22 @@ class HashTable {
     CUDA_CHECK(cudaMemset(d_src, 0, len * sizeof(V *)));
     CUDA_CHECK(cudaMemset((void *)d_status, 0, len * sizeof(bool)));
 
-    int N = len * table_->buckets_size;
-    int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+    // Determine bucket locations for reading.
+    {
+      const int N = len * table_->buckets_size;
+      const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
 
-    lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_src, d_status, N);
+      lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          table_, d_keys, d_src, d_status, N);
+    }
 
-    N = len * DIM;
-    grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
-    read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
+    // Copy data from bucket to the pointer to d_vals.
+    {
+      const int N = len * DIM;
+      const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaFree(d_src));
@@ -299,16 +323,21 @@ class HashTable {
     CUDA_CHECK(cudaMemset(d_src, 0, len * sizeof(V *)));
     CUDA_CHECK(cudaMemset((void *)d_status, 0, len * sizeof(bool)));
 
-    int N = len * table_->buckets_size;
-    int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+    // Determine bucket locations for reading.
+    {
+      const int N = len * table_->buckets_size;
+      const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          table_, d_keys, d_src, d_metas, d_status, N);
+    }
 
-    lookup_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_src, d_metas, d_status, N);
-
-    N = len * DIM;
-    grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
-    read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
+    // Copy data from bucket to the pointer to d_vals.
+    {
+      const int N = len * DIM;
+      const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaFree(d_src));
@@ -324,18 +353,23 @@ class HashTable {
     CUDA_CHECK(cudaMalloc(&d_src, len * sizeof(V *)));
     CUDA_CHECK(cudaMemset(d_src, 0, len * sizeof(V *)));
 
-    int N = len * table_->buckets_size;
-    int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
-
     initializer_->initialize((T *)d_vals, len * sizeof(V), stream);
 
-    lookup_kernel<K, V, M, DIM>
-        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_src, N);
+    // Determine bucket locations for reading.
+    {
+      const int N = len * table_->buckets_size;
+      const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      lookup_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_src, N);
+    }
 
-    N = len * DIM;
-    grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
-    read_kernel<K, V, M, DIM>
-        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(d_src, (V *)d_vals, N);
+    // Copy data from bucket to the pointer to d_vals.
+    {
+      const int N = len * DIM;
+      const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+      read_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(d_src, (V *)d_vals, N);
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaFree(d_src));
@@ -345,13 +379,15 @@ class HashTable {
     size_t h_size = 0;
     size_t *d_size;
 
-    const int N = table_->buckets_num * table_->buckets_size;
-    const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
     CUDA_CHECK(cudaMalloc((void **)&d_size, sizeof(size_t)));
     CUDA_CHECK(cudaMemset(d_size, 0, sizeof(size_t)));
 
-    size_kernel<K, V, M, DIM>
-        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_size, N);
+    {
+      const int N = table_->buckets_num * table_->buckets_size;
+      const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      size_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_size, N);
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(
@@ -360,7 +396,7 @@ class HashTable {
     return h_size;
   }
 
-  size_t get_capacity() const { return (size_t)capacity_; }
+  size_t get_capacity() const { return static_cast<size_t>(capacity_); }
 
   void clear(cudaStream_t stream) {
     const int N = table_->buckets_num * table_->buckets_size;
@@ -382,11 +418,13 @@ class HashTable {
             const size_t search_length, size_t *d_dump_counter,
             cudaStream_t stream) const {
     CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
-    size_t block_size = shared_mem_size_ * 0.5 / (sizeof(K) + sizeof(V));
-    block_size = block_size <= 1024 ? block_size : 1024;
+
+    // M_LANGER: Unsafe implicit type conversion.
+    const size_t block_size =
+        std::min(shared_mem_size_ * 0.5 / (sizeof(K) + sizeof(V)), 1024.0);
     assert(block_size > 0 &&
            "nv::merlinhash: block_size <= 0, the K-V size may be too large!");
-    size_t shared_size = sizeof(K) * block_size + sizeof(V) * block_size;
+    const size_t shared_size = sizeof(K) * block_size + sizeof(V) * block_size;
     const int grid_size = (search_length - 1) / (block_size) + 1;
 
     dump_kernel<K, V, M, DIM><<<grid_size, block_size, shared_size, stream>>>(
@@ -399,12 +437,14 @@ class HashTable {
             const size_t search_length, size_t *d_dump_counter,
             cudaStream_t stream) const {
     CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
-    size_t block_size =
-        shared_mem_size_ * 0.5 / (sizeof(K) + sizeof(V) + sizeof(M));
-    block_size = block_size <= 1024 ? block_size : 1024;
+
+    // M_LANGER: Unsafe implicit type conversion.
+    const size_t block_size = std::min(
+        shared_mem_size_ * 0.5 / (sizeof(K) + sizeof(V) + sizeof(M)), 1024.0);
     assert(block_size > 0 &&
            "nv::merlinhash: block_size <= 0, the K-V size may be too large!");
-    size_t shared_size = ((sizeof(K) + sizeof(V) + sizeof(M))) * block_size;
+    const size_t shared_size =
+        ((sizeof(K) + sizeof(V) + sizeof(M))) * block_size;
     const int grid_size = (search_length - 1) / (block_size) + 1;
 
     dump_kernel<K, V, M, DIM><<<grid_size, block_size, shared_size, stream>>>(
@@ -416,7 +456,7 @@ class HashTable {
 
  private:
   static const int BLOCK_SIZE_ = 1024;
-  uint64_t capacity_;
+  const uint64_t capacity_;
   size_t shared_mem_size_;
   Table *table_;
   std::shared_ptr<Initializer> initializer_;
