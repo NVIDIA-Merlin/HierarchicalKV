@@ -71,10 +71,10 @@ __global__ void d2h_hbm_data(
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
 
-    //     (*(dst[vec_index])).values[dim_index] =
-    //     src[vec_index].values[dim_index];
+    (*(dst[vec_index])).values[dim_index] = src[vec_index].values[dim_index];
 
-    src[vec_index].values[dim_index] = (*(dst[vec_index])).values[dim_index];
+    //     src[vec_index].values[dim_index] =
+    //     (*(dst[vec_index])).values[dim_index];
   }
 }
 

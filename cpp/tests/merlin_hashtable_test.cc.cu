@@ -28,9 +28,9 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "merlin/initializers.cuh"
+#include "merlin/optimizers.cuh"
 #include "merlin_hashtable.cuh"
-#include "merlin_initializers.cuh"
-#include "merlin_optimizers.cuh"
 
 using std::begin;
 using std::cerr;
@@ -140,7 +140,7 @@ int test_main() {
     cout << "before upsert: total_size = " << total_size << endl;
     auto start_upsert = std::chrono::steady_clock::now();
     table_->upsert(d_keys, (ValueArrayBase<float> *)d_vectors, d_metas, KEY_NUM,
-                   stream);
+                   stream, false);
     auto end_upsert = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
 
@@ -156,12 +156,22 @@ int test_main() {
                 d_def_val, stream, true);
     auto end_lookup = std::chrono::steady_clock::now();
 
+    auto start_accum = std::chrono::steady_clock::now();
+    table_->accum(d_keys, (ValueArrayBase<float> *)d_vectors, d_found, KEY_NUM,
+                  stream, false);
+    auto end_accum = std::chrono::steady_clock::now();
+
+    total_size = table_->get_size(stream);
+    cout << "after accum: total_size = " << total_size << endl;
+
     table_->dump(d_keys, (ValueArrayBase<float> *)d_vectors, 0,
                  table_->get_capacity(), d_dump_counter, stream);
 
     std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
+    std::chrono::duration<double> diff_accum = end_accum - start_accum;
     printf("[timing] upsert=%.2fms\n", diff_upsert.count() * 1000);
-    printf("[timing] lookup=%.2fms\n ", diff_lookup.count() * 1000);
+    printf("[timing] lookup=%.2fms\n", diff_lookup.count() * 1000);
+    printf("[timing] accum=%.2fms\n", diff_accum.count() * 1000);
   }
   cudaStreamDestroy(stream);
 

@@ -46,6 +46,24 @@ __inline__ __device__ int64_t atomicExch(int64_t* address, int64_t val) {
                              (unsigned long long)val);
 }
 
+__inline__ __device__ signed char atomicExch(signed char* address,
+                                             signed char val) {
+  signed char old = *address;
+  *address = val;
+  return old;
+}
+
+// TODO(jamesrong): this API will not confirm atomic, just for compiling
+// successfully with framework in the TensorFlow ecosystem.
+#ifdef GOOGLE_CUDA
+__inline__ __device__ Eigen::half atomicExch(Eigen::half* address,
+                                             Eigen::half val) {
+  Eigen::half old = *address;
+  *address = val;
+  return old;
+}
+#endif
+
 __inline__ __device__ int64_t atomicAdd(int64_t* address, const int64_t val) {
   return (int64_t)atomicAdd((unsigned long long*)address, val);
 }
@@ -73,6 +91,29 @@ inline void cuda_check_(cudaError_t val, const char* file, int line) {
 
 #define CUDA_CHECK(val) \
   { nv::merlin::cuda_check_((val), __FILE__, __LINE__); }
+
+inline void __cudaCheckError(const char* file, const int line) {
+#ifdef CUDA_ERROR_CHECK
+  cudaError err = cudaGetLastError();
+  if (cudaSuccess != err) {
+    fprintf(stderr, "cudaCheckError() failed at %s:%i : %s\n", file, line,
+            cudaGetErrorString(err));
+    exit(-1);
+  }
+
+  // More careful checking. However, this will affect performance.
+  // Comment away if needed.
+  err = cudaDeviceSynchronize();
+  if (cudaSuccess != err) {
+    fprintf(stderr, "cudaCheckError() with sync failed at %s:%i : %s\n", file,
+            line, cudaGetErrorString(err));
+    exit(-1);
+  }
+#endif
+
+  return;
+}
+#define CudaCheckError() nv::merlin::__cudaCheckError(__FILE__, __LINE__)
 
 inline uint64_t Murmur3HashHost(const uint64_t& key) {
   uint64_t k = key;

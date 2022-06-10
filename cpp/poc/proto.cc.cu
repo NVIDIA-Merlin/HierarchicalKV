@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <cooperative_groups.h>
+#include <cooperative_groups/reduce.h>
 #include <cuda_runtime.h>
 #include <device_launch_parameters.h>
 #include <math.h>
@@ -86,6 +87,29 @@ uint64_t getTimestamp() {
   return duration_cast<milliseconds>(system_clock::now().time_since_epoch())
       .count();
 }
+
+inline void __cudaCheckError(const char *file, const int line) {
+#ifdef CUDA_ERROR_CHECK
+  cudaError err = cudaGetLastError();
+  if (cudaSuccess != err) {
+    fprintf(stderr, "cudaCheckError() failed at %s:%i : %s\n", file, line,
+            cudaGetErrorString(err));
+    exit(-1);
+  }
+
+  // More careful checking. However, this will affect performance.
+  // Comment away if needed.
+  err = cudaDeviceSynchronize();
+  if (cudaSuccess != err) {
+    fprintf(stderr, "cudaCheckError() with sync failed at %s:%i : %s\n", file,
+            line, cudaGetErrorString(err));
+    exit(-1);
+  }
+#endif
+
+  return;
+}
+#define CudaCheckError() __cudaCheckError(__FILE__, __LINE__)
 
 template <typename T>
 class FlexMemory {
@@ -209,6 +233,23 @@ __global__ void read(Vector **__restrict src, Vector *__restrict dst, int N) {
   }
 }
 
+__inline__ __device__ void refresh_bucket_meta(Bucket *bucket,
+                                               const uint64_t buckets_size) {
+  M min_val = MAX_META;
+  int min_pos = 0;
+  for (int i = 0; i < buckets_size; i++) {
+    if (bucket->keys[i] == EMPTY_KEY) {
+      continue;
+    }
+    if (bucket->metas[i].val < min_val) {
+      min_pos = i;
+      min_val = bucket->metas[i].val;
+    }
+  }
+  atomicExch(&(bucket->min_pos), min_pos);
+  atomicExch(&(bucket->min_meta), min_val);
+}
+
 __global__ void upsert(const Table *__restrict table, const K *__restrict keys,
                        const M *__restrict metas, Vector **__restrict vectors,
                        int N) {
@@ -272,18 +313,242 @@ __global__ void upsert(const Table *__restrict table, const K *__restrict keys,
   }
 }
 
-__global__ void upsert(const Table *__restrict table, const K *__restrict keys,
-                       Vector **__restrict vectors, int N) {
+__global__ void upsert_fast(const Table *__restrict table,
+                            const K *__restrict keys, const M *__restrict metas,
+                            Vector **__restrict vectors,
+                            const bool *__restrict d_found,
+                            const int *__restrict offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  int key_pos = 0;
+  int key_pos = -1;
 
   if (tid < N) {
+    int key_idx = tid;
     int bkt_idx = keys[tid] % BUCKETS_NUM;
     const K insert_key = keys[tid];
+    bool release_lock = false;
+    bool found = d_found[key_idx];
+    bool unfilled = false;
+
+    while (!release_lock) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        Bucket *bucket = &(table->buckets[bkt_idx]);
+        if (found) {
+          key_pos = offset[key_idx];
+        } else {
+          for (int i = 0; i < BUCKETS_SIZE; i++) {
+            K old_key = atomicCAS(&(bucket->keys[i]), EMPTY_KEY, insert_key);
+            if (old_key == EMPTY_KEY) {
+              key_pos = i;
+              unfilled = true;
+              break;
+            }
+          }
+        }
+
+        if (metas[key_idx] >= bucket->min_meta || found || unfilled) {
+          if (!found) {
+            key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
+          }
+          atomicExch(&(bucket->keys[key_pos]), insert_key);
+          atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+
+          refresh_bucket_meta(bucket, BUCKETS_SIZE);
+          atomicCAS((uint64_t *)&(vectors[tid]), (uint64_t)(nullptr),
+                    (uint64_t)((Vector *)(bucket->vectors) + key_pos));
+        }
+        release_lock = true;
+        atomicExch(&(table->locks[bkt_idx]), 0u);
+      }
+    }
+  }
+}
+
+constexpr uint64_t NUM_THREADS = 1024;
+
+constexpr uint64_t NUM_THREADS_UPSERT = 256;
+
+__global__ void upsert_cg_sharedmem(const Table *__restrict table,
+                                    const K *__restrict keys,
+                                    const M *__restrict metas,
+                                    Vector **__restrict vectors, int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  int key_pos = -1;
+  bool found = false;
+  bool empty = false;
+
+  extern __shared__ unsigned char s[];
+  K *bucket_keys = (K *)s;
+  M *bucket_metas = (M *)s;
+
+  if (tid < N) {
+    int key_idx = tid / (BUCKETS_SIZE / 32);
+    int bkt_idx = keys[key_idx] % BUCKETS_NUM;
+    const K insert_key = keys[key_idx];
+    bool release_lock = false;
+
+    int start_pos = ((tid * (BUCKETS_SIZE / 32)) % BUCKETS_SIZE);
+
+    while (!release_lock && start_pos == 0) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        release_lock = true;
+      }
+    }
     Bucket *bucket = &(table->buckets[bkt_idx]);
-    key_pos = atomicInc((unsigned int *)&(bucket->min_pos), BUCKETS_SIZE - 1);
-    bucket->keys[key_pos] = insert_key;
-    vectors[tid] = (Vector *)((Vector *)(bucket->vectors) + key_pos);
+
+    printf("insert 222\n");
+// read to shared memory
+#pragma unroll
+    for (int i = 0; i < BUCKETS_SIZE / 32; i++) {
+      bucket_keys[start_pos + i] = bucket->keys[start_pos + i];
+    }
+    __syncthreads();
+
+// found if existed
+#pragma unroll
+    for (int i = 0; i < BUCKETS_SIZE / 32; i++) {
+      if (bucket_keys[start_pos + i] == insert_key) {
+        found = true;
+        key_pos = start_pos + i;
+        break;
+      }
+    }
+
+    int sync_found = __any_sync(0xFFFFFFFF, int(found));
+    if (!sync_found) {
+      // found a empty postion
+      if (start_pos == 0) {
+#pragma unroll
+        for (int i = 0; i < BUCKETS_SIZE; i++) {
+          if (bucket_keys[i] == EMPTY_KEY) {
+            key_pos = start_pos + i;
+            empty = true;
+            printf("insert 555, %d\n", int(empty));
+            atomicExch(&(bucket->keys[key_pos]), insert_key);
+            atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+            break;
+          }
+        }
+      }
+      printf("insert 444, %d\n", int(empty));
+      for (int i = 0; i < BUCKETS_SIZE / 32; i++) {
+        bucket_metas[start_pos + i] = bucket->metas[start_pos + i].val;
+      }
+      __syncthreads();
+
+      if (!empty && start_pos == 0) {
+        int min_meta_pos = -1;
+        M min_meta = MAX_META;
+#pragma unroll
+        for (int i = 0; i < BUCKETS_SIZE; i++) {
+          if (min_meta >= bucket_metas[i]) {
+            min_meta_pos = i;
+            min_meta = bucket_metas[i];
+          }
+        }
+        if (metas[key_idx] > min_meta) {
+          atomicExch(&(bucket->keys[min_meta_pos]), insert_key);
+          atomicExch(&(bucket->metas[min_meta_pos].val), metas[key_idx]);
+        }
+      }
+    }
+    //
+    //     // the found thread continue
+    //     if (found) {
+    //       printf("insert 2\n");
+    //       atomicExch(&(bucket->keys[key_pos]), insert_key);
+    //       atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+    //     }
+    //
+    if (start_pos == 0) {
+      atomicExch(&(table->locks[bkt_idx]), 0u);
+    }
+  }
+}
+
+__global__ void upsert_cg(const Table *__restrict table,
+                          const K *__restrict keys, const M *__restrict metas,
+                          Vector **__restrict vectors, int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  int key_pos = -1;
+  bool found = false;
+  bool empty = false;
+  extern __shared__ unsigned char s[];
+  K *bucket_keys = (K *)s;
+  M *bucket_metas =
+      (M *)(bucket_keys + NUM_THREADS_UPSERT * (BUCKETS_SIZE / 32));
+
+  int i;
+
+  if (tid < N) {
+    int key_idx = tid / (BUCKETS_SIZE / 32);
+    int bkt_idx = keys[key_idx] % BUCKETS_NUM;
+    const K insert_key = keys[key_idx];
+    bool release_lock = false;
+
+    int start_pos = ((tid * (BUCKETS_SIZE / 32)) % BUCKETS_SIZE);
+
+    while (!release_lock && start_pos == 0) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        release_lock = true;
+      }
+    }
+    Bucket *bucket = &(table->buckets[bkt_idx]);
+
+// read to shared memory
+#pragma unroll
+    for (i = 0; i < BUCKETS_SIZE / 32; i++) {
+      bucket_keys[start_pos + i] = bucket->keys[start_pos + i];
+      bucket_metas[start_pos + i] = bucket->metas[start_pos + i].val;
+    }
+
+// found if existed
+#pragma unroll
+    for (i = 0; i < BUCKETS_SIZE / 32; i++) {
+      if (bucket_keys[start_pos + i] == insert_key) {
+        found = true;
+        key_pos = start_pos + i;
+      }
+      if (bucket_keys[i] == EMPTY_KEY) {
+        key_pos = i;
+        empty = true;
+      }
+    }
+
+    int sync_found = __any_sync(0xFFFFFFFF, int(found));
+    if (!sync_found) {
+      // found a empty postion
+      if (start_pos == 0) {
+        atomicExch(&(bucket->keys[key_pos]), insert_key);
+        atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+      }
+
+      if (!empty && start_pos == 0) {
+        //         int min_meta_pos = -1;
+        key_pos = -1;
+        M min_meta = MAX_META;
+#pragma unroll
+        for (i = 0; i < BUCKETS_SIZE; i++) {
+          if (min_meta >= bucket_metas[i]) {
+            key_pos = i;
+            min_meta = bucket_metas[i];
+          }
+        }
+        if (metas[key_idx] > min_meta) {
+          atomicExch(&(bucket->keys[key_pos]), insert_key);
+          atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+        }
+      }
+    }
+
+    // the found thread continue
+    if (found) {
+      atomicExch(&(bucket->keys[key_pos]), insert_key);
+      atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+    }
+
+    if (start_pos == 0) {
+      atomicExch(&(table->locks[bkt_idx]), 0u);
+    }
   }
 }
 
@@ -305,6 +570,40 @@ __global__ void lookup(const Table *__restrict table, const K *__restrict keys,
   }
 }
 
+__global__ void lookup_fast(const Table *__restrict table,
+                            const K *__restrict keys,
+                            Vector **__restrict vectors, bool *__restrict found,
+                            int N) {
+  extern __shared__ unsigned char s[];
+  int *possible_key_pos = (int *)s;
+  //   int possible_key_pos[4];
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (tid < N) {
+    int key_idx = tid / BUCKETS_SIZE;
+    int key_pos = tid % BUCKETS_SIZE;
+    int bkt_idx = keys[key_idx] % BUCKETS_NUM;
+    K target_key = keys[key_idx];
+    Bucket *bucket = &(table->buckets[bkt_idx]);
+
+    //     unsigned int pre =
+    //         __ballot_sync(0xFFFFFFFF, int(bucket->keys[key_pos] ==
+    //         target_key));
+    //       __syncthreads();
+    possible_key_pos[tid % BUCKETS_SIZE] =
+        int(bucket->keys[key_pos] == target_key);
+    int max_pos = -1;
+    if (tid % BUCKETS_SIZE == 0) {
+      for (int i = 0; i < BUCKETS_SIZE; i++) {
+        if (possible_key_pos[i] > 0) {
+          vectors[key_idx] = (Vector *)&(bucket->vectors[i]);
+          found[key_idx] = true;
+          break;
+        }
+      }
+    }
+  }
+}
+
 __global__ void lookup(const Table *__restrict table, const K *__restrict keys,
                        M *__restrict metas, Vector **__restrict vectors,
                        bool *__restrict found, int N) {
@@ -320,6 +619,25 @@ __global__ void lookup(const Table *__restrict table, const K *__restrict keys,
       metas[key_idx] = bucket->metas[key_pos].val;
       vectors[key_idx] = (Vector *)&(bucket->vectors[key_pos]);
       found[key_idx] = true;
+    }
+  }
+}
+
+__global__ void lookup_for_upsert(const Table *__restrict table,
+                                  const K *__restrict keys,
+                                  bool *__restrict found,
+                                  int *__restrict offset, int N) {
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (tid < N) {
+    int key_idx = tid / BUCKETS_SIZE;
+    int key_pos = tid % BUCKETS_SIZE;
+    int bkt_idx = keys[key_idx] % BUCKETS_NUM;
+    K target_key = keys[key_idx];
+    Bucket *bucket = &(table->buckets[bkt_idx]);
+
+    if (bucket->keys[key_pos] == target_key) {
+      found[key_idx] = true;
+      atomicExch((int *)&(offset[key_idx]), key_pos);
     }
   }
 }
@@ -511,6 +829,7 @@ int main() {
   size_t *d_size;
   size_t *d_counter;
   bool *d_found;
+  int *d_offset;
 
   cudaMalloc(&d_dump_keys, KEY_NUM * sizeof(K));           // 8MB
   cudaMalloc(&d_keys, KEY_NUM * sizeof(K));                // 8MB
@@ -520,6 +839,7 @@ int main() {
   cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(Vector *));  // 8MB
   cudaMalloc(&d_size, BUCKETS_NUM * sizeof(size_t));       // 8MB
   cudaMalloc(&d_found, KEY_NUM * sizeof(bool));            // 4MB
+  cudaMalloc(&d_offset, KEY_NUM * sizeof(int));            // 4MB
   cudaMalloc(&d_counter, sizeof(size_t));                  // 4MB
 
   cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice);
@@ -529,27 +849,61 @@ int main() {
   cudaMemset(d_dump_vectors, 0, KEY_NUM * sizeof(Vector));
   cudaMemset(d_vectors_ptr, 0, KEY_NUM * sizeof(Vector *));
   cudaMemset(d_found, 0, KEY_NUM * sizeof(bool));
+  cudaMemset(d_offset, 0, KEY_NUM * sizeof(int));
   cudaMemset(d_counter, 0, sizeof(size_t));
   cudaMemset(d_size, 0, BUCKETS_NUM * sizeof(size_t));
 
   cudaStream_t stream;
   cudaStreamCreate(&stream);
 
-  uint64_t NUM_THREADS = 1024;
   uint64_t N = KEY_NUM;
   uint64_t NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
 
   create_table(&d_table);
+
+  cudaDeviceProp deviceProp;
+  cudaGetDeviceProperties(&deviceProp, 0);
+  size_t shared_mem_size = deviceProp.sharedMemPerBlock;
+
   for (int i = 0; i < TEST_TIMES; i++) {
     found_num = 0;
     // upsert test
+
+    // lookup test
+    N = BUCKETS_SIZE * KEY_NUM;
+    NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
+    cudaMemset(d_found, 0, KEY_NUM * sizeof(bool));
+    cudaDeviceSynchronize();
+
+    auto start_lookup_for_upsert = std::chrono::steady_clock::now();
+    lookup_for_upsert<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_keys, d_found,
+                                                   d_offset, N);
+    cudaDeviceSynchronize();
+    auto end_lookup_for_upsert = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff_lookup_for_upsert =
+        end_lookup_for_upsert - start_lookup_for_upsert;
+
     N = KEY_NUM;
     NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
 
     auto start_upsert = std::chrono::steady_clock::now();
-    upsert<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_keys, d_metas, d_vectors_ptr,
-                                        N);
+    upsert_fast<<<NUM_BLOCKS, NUM_THREADS>>>(
+        d_table, d_keys, d_metas, d_vectors_ptr, d_found, d_offset, N);
 
+    //     N = KEY_NUM * 32;
+    //     NUM_BLOCKS = (N + NUM_THREADS_UPSERT - 1) / NUM_THREADS_UPSERT;
+    //     int upsert_cg_shared_mem_size =
+    //         (sizeof(K) + sizeof(M)) * NUM_THREADS_UPSERT * (BUCKETS_SIZE /
+    //         32);
+    //     std::cout << "shared mem=" << shared_mem_size << ", "
+    //               << upsert_cg_shared_mem_size << std::endl;
+    //     std::cout << "num blocks & num threads=" << NUM_BLOCKS << ", "
+    //               << NUM_THREADS_UPSERT << std::endl;
+    //
+    //     upsert_cg<<<NUM_BLOCKS, NUM_THREADS_UPSERT,
+    //     upsert_cg_shared_mem_size, 0>>>(
+    //         d_table, d_keys, d_metas, d_vectors_ptr, N);
+    //     CudaCheckError();
     cudaDeviceSynchronize();
     auto end_upsert = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
@@ -583,9 +937,7 @@ int main() {
     cudaMemset(d_counter, 0, sizeof(d_counter));
     cudaMemset(d_vectors, 0, KEY_NUM * sizeof(Vector));
 
-    cudaDeviceProp deviceProp;
-    cudaGetDeviceProperties(&deviceProp, 0);
-    size_t shared_mem_size = deviceProp.sharedMemPerBlock;
+    std::cout << "shared_mem_size=" << shared_mem_size << std::endl;
 
     size_t search_length = INIT_SIZE;
     size_t block_size = shared_mem_size * 0.5 / (sizeof(K) + sizeof(Vector));
@@ -634,6 +986,8 @@ int main() {
     cudaDeviceSynchronize();
     lookup<<<NUM_BLOCKS, NUM_THREADS>>>(d_table, d_keys, d_metas, d_vectors_ptr,
                                         d_found, N);
+    //     lookup_fast<<<NUM_BLOCKS, NUM_THREADS, 4 * NUM_THREADS, 0>>>(
+    //         d_table, d_keys, d_vectors_ptr, d_found, N);
     cudaDeviceSynchronize();
     auto end_lookup = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
@@ -677,7 +1031,8 @@ int main() {
                cudaMemcpyDeviceToHost);
     cout << "after clear, size=" << h_size[0] << endl;
 
-    printf("[timing] upsert=%.2fms, write=%.2fms\n", diff_upsert.count() * 1000,
+    printf("[timing] upsert=%.2fms, lookup_for_upsert=%.2fms, write=%.2fms\n",
+           diff_upsert.count() * 1000, diff_lookup_for_upsert.count() * 1000,
            diff_write.count() * 1000);
     printf("[timing] lookup=%.2fms, read = % .2fms\n ",
            diff_lookup.count() * 1000, diff_read.count() * 1000);
@@ -764,6 +1119,7 @@ int main() {
   cudaFree(d_vectors_ptr);
   cudaFree(d_size);
   cudaFree(d_found);
+  cudaFree(d_offset);
   cudaFree(d_counter);
 
   cout << "COMPLETED SUCCESSFULLY\n";

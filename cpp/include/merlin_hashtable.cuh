@@ -34,8 +34,9 @@ class HashTable {
   using Zeros = nv::merlin::initializers::Zeros<T>;
 
  public:
-  HashTable(uint64_t max_size, const Initializer *initializer = nullptr,
-            bool master = true) {
+  explicit HashTable(uint64_t max_size,
+                     const Initializer *initializer = nullptr,
+                     bool master = true) {
     capacity_ = max_size;
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
@@ -49,41 +50,76 @@ class HashTable {
   HashTable &operator=(const HashTable &) = delete;
 
   void upsert(const K *d_keys, const BaseV *d_vals, const M *d_metas,
-              size_t len, cudaStream_t stream) {
+              size_t len, cudaStream_t stream,
+              bool allow_duplicate_keys = true) {
     if (len == 0) {
       return;
     }
 
     V **d_dst;
     int *d_src_offset;
-    CUDA_CHECK(cudaMallocAsync(&d_dst, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_dst, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_src_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, len * sizeof(int), stream));
+    int *d_bucket_offset;
+    bool *d_status;
+    CUDA_CHECK(cudaMalloc(&d_dst, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset(d_dst, 0, len * sizeof(V *)));
+    CUDA_CHECK(cudaMalloc(&d_src_offset, len * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_src_offset, 0, len * sizeof(int)));
+    if (!allow_duplicate_keys) {
+      CUDA_CHECK(cudaMalloc(&d_bucket_offset, len * sizeof(int)));
+      CUDA_CHECK(cudaMemset(d_bucket_offset, 0, len * sizeof(int)));
+      CUDA_CHECK(cudaMalloc(&d_status, len * sizeof(bool)));
+      CUDA_CHECK(cudaMemset(d_status, 0, len * sizeof(bool)));
+    }
 
-    int N = len;
-    int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_metas, d_dst, d_src_offset, len);
+    if (!allow_duplicate_keys) {
+      int N = len * table_->buckets_size;
+      int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+
+      lookup_for_upsert_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
+                                                  d_bucket_offset, N);
+
+      N = len;
+      grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          table_, d_keys, d_metas, d_dst, d_src_offset, d_status,
+          d_bucket_offset, len);
+    } else {
+      int N = len;
+      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      upsert_allow_duplicate_keys_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_metas,
+                                                  d_dst, d_src_offset, len);
+    }
+
+    {
+      int N = len;
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
+      thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
+      thrust::sort_by_key(d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
+                          thrust::less<uint64_t>());
+    }
+
+    {
+      int N = len * DIM;
+      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      write_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          (const V *)d_vals, d_dst, d_src_offset, N);
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
-    thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
-    thrust::sort_by_key(d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
-                        thrust::less<uint64_t>());
+    CUDA_CHECK(cudaFree(d_dst));
+    CUDA_CHECK(cudaFree(d_src_offset));
 
-    N = len * DIM;
-    grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    write_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        (const V *)d_vals, d_dst, d_src_offset, N);
-
-    CUDA_CHECK(cudaFreeAsync(d_dst, stream));
-    CUDA_CHECK(cudaFreeAsync(d_src_offset, stream));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+    if (!allow_duplicate_keys) {
+      CUDA_CHECK(cudaFree(d_bucket_offset));
+      CUDA_CHECK(cudaFree(d_status));
+    }
   }
 
   void upsert(const K *d_keys, const BaseV *d_vals, size_t len,
-              cudaStream_t stream) {
+              cudaStream_t stream, bool allow_duplicate_keys = true) {
     // TODO(jamesrong): split when len is too huge.
     if (len == 0) {
       return;
@@ -91,30 +127,139 @@ class HashTable {
 
     V **d_dst;
     int *d_src_offset;
-    CUDA_CHECK(cudaMallocAsync(&d_dst, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_dst, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_src_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, len * sizeof(int), stream));
+    int *d_bucket_offset;
+    bool *d_status;
+    CUDA_CHECK(cudaMalloc(&d_dst, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset(d_dst, 0, len * sizeof(V *)));
+    CUDA_CHECK(cudaMalloc(&d_src_offset, len * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_src_offset, 0, len * sizeof(int)));
 
-    int N = len;
-    int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_dst, d_src_offset, len);
+    if (!allow_duplicate_keys) {
+      CUDA_CHECK(cudaMalloc(&d_bucket_offset, len * sizeof(int)));
+      CUDA_CHECK(cudaMemset(d_bucket_offset, 0, len * sizeof(int)));
+      CUDA_CHECK(cudaMalloc(&d_status, len * sizeof(bool)));
+      CUDA_CHECK(cudaMemset(d_status, 0, len * sizeof(bool)));
+    }
+
+    if (!allow_duplicate_keys) {
+      int N = len * table_->buckets_size;
+      int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+
+      lookup_for_upsert_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
+                                                  d_bucket_offset, N);
+
+      N = len;
+      grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          table_, d_keys, d_dst, d_src_offset, d_status, d_bucket_offset, len);
+    } else {
+      int N = len;
+      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      upsert_allow_duplicate_keys_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_dst,
+                                                  d_src_offset, len);
+    }
+
+    {
+      int N = len;
+
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
+      thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
+      thrust::sort_by_key(d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
+                          thrust::less<uint64_t>());
+    }
+
+    {
+      int N = len * DIM;
+      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      write_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          (const V *)d_vals, d_dst, d_src_offset, N);
+    }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
-    thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
-    thrust::sort_by_key(d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
-                        thrust::less<uint64_t>());
+    CUDA_CHECK(cudaFree(d_dst));
+    CUDA_CHECK(cudaFree(d_src_offset));
 
-    N = len * DIM;
-    grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    write_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        (const V *)d_vals, d_dst, d_src_offset, N);
+    if (!allow_duplicate_keys) {
+      CUDA_CHECK(cudaFree(d_bucket_offset));
+      CUDA_CHECK(cudaFree(d_status));
+    }
+  }
 
-    CUDA_CHECK(cudaFreeAsync(d_dst, stream));
-    CUDA_CHECK(cudaFreeAsync(d_src_offset, stream));
+  void accum(const K *d_keys, const BaseV *d_vals_or_deltas,
+             const bool *d_exists, size_t len, cudaStream_t stream,
+             bool allow_duplicate_keys = true) {
+    if (len == 0) {
+      return;
+    }
+
+    V **d_dst;
+    int *d_src_offset;
+    int *d_bucket_offset;
+    bool *d_status;
+
+    CUDA_CHECK(cudaMalloc(&d_dst, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset(d_dst, 0, len * sizeof(V *)));
+    CUDA_CHECK(cudaMalloc(&d_src_offset, len * sizeof(int)));
+    CUDA_CHECK(cudaMemset(d_src_offset, 0, len * sizeof(int)));
+    CUDA_CHECK(cudaMalloc(&d_status, len * sizeof(bool)));
+    CUDA_CHECK(cudaMemset(d_status, 0, len * sizeof(bool)));
+
+    if (!allow_duplicate_keys) {
+      CUDA_CHECK(cudaMalloc(&d_bucket_offset, len * sizeof(int)));
+      CUDA_CHECK(cudaMemset(d_bucket_offset, 0, len * sizeof(int)));
+    }
+
+    if (!allow_duplicate_keys) {
+      int N = len * table_->buckets_size;
+      int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
+
+      lookup_for_upsert_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_status,
+                                                  d_bucket_offset, N);
+
+      N = len;
+      grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      accum_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          table_, d_keys, d_dst, d_exists, d_src_offset, d_status,
+          d_bucket_offset, len);
+
+    } else {
+      int N = len;
+      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      accum_allow_duplicate_keys_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+              table_, d_keys, d_dst, d_exists, d_status, d_src_offset, len);
+    }
+
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    {
+      int N = len;
+      thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
+      thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
+      thrust::sort_by_key(d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
+                          thrust::less<uint64_t>());
+    }
+
+    {
+      int N = len * DIM;
+      int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
+      write_with_accum_kernel<K, V, M, DIM>
+          <<<grid_size, BLOCK_SIZE_, 0, stream>>>((const V *)d_vals_or_deltas,
+                                                  d_dst, d_exists, d_status,
+                                                  d_src_offset, N);
+    }
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaFree(d_dst));
+    CUDA_CHECK(cudaFree(d_src_offset));
+
+    if (!allow_duplicate_keys) {
+      CUDA_CHECK(cudaFree(d_bucket_offset));
+      CUDA_CHECK(cudaFree(d_status));
+    }
   }
 
   void get(const K *d_keys, BaseV *d_vals, bool *d_status, size_t len,
@@ -124,10 +269,9 @@ class HashTable {
       return;
     }
     V **d_src;
-    CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(
-        cudaMemsetAsync((void *)d_status, 0, len * sizeof(bool), stream));
+    CUDA_CHECK(cudaMalloc(&d_src, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset(d_src, 0, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset((void *)d_status, 0, len * sizeof(bool)));
 
     int N = len * table_->buckets_size;
     int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
@@ -140,8 +284,8 @@ class HashTable {
     read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
         d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
 
-    CUDA_CHECK(cudaFreeAsync(d_src, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaFree(d_src));
   }
 
   void get(const K *d_keys, BaseV *d_vals, M *d_metas, bool *d_status,
@@ -151,10 +295,9 @@ class HashTable {
       return;
     }
     V **d_src;
-    CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(
-        cudaMemsetAsync((void *)d_status, 0, len * sizeof(bool), stream));
+    CUDA_CHECK(cudaMalloc(&d_src, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset(d_src, 0, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset((void *)d_status, 0, len * sizeof(bool)));
 
     int N = len * table_->buckets_size;
     int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
@@ -167,8 +310,8 @@ class HashTable {
     read_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
         d_src, (V *)d_vals, d_status, (V *)d_def_val, N, full_size_default);
 
-    CUDA_CHECK(cudaFreeAsync(d_src, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaFree(d_src));
   }
 
   /* when missing, this `get` will return values by using initializer.*/
@@ -178,8 +321,8 @@ class HashTable {
       return;
     }
     V **d_src;
-    CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(V *), stream));
+    CUDA_CHECK(cudaMalloc(&d_src, len * sizeof(V *)));
+    CUDA_CHECK(cudaMemset(d_src, 0, len * sizeof(V *)));
 
     int N = len * table_->buckets_size;
     int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
@@ -194,8 +337,8 @@ class HashTable {
     read_kernel<K, V, M, DIM>
         <<<grid_size, BLOCK_SIZE_, 0, stream>>>(d_src, (V *)d_vals, N);
 
-    CUDA_CHECK(cudaFreeAsync(d_src, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaFree(d_src));
   }
 
   size_t get_size(cudaStream_t stream) const {
@@ -210,9 +353,9 @@ class HashTable {
     size_kernel<K, V, M, DIM>
         <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_size, N);
 
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(
         cudaMemcpy(&h_size, d_size, sizeof(size_t), cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaFree(d_size));
     return h_size;
   }
@@ -222,13 +365,16 @@ class HashTable {
   void clear(cudaStream_t stream) {
     const int N = table_->buckets_num * table_->buckets_size;
     const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    clear_kernel<<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, N);
+    clear_kernel<K, V, M, DIM>
+        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, N);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
   void remove(const K *d_keys, size_t len, cudaStream_t stream) {
     const int N = len * table_->buckets_size;
     const int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    remove_kernel<<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, N);
+    remove_kernel<K, V, M, DIM>
+        <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, N);
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
@@ -243,8 +389,9 @@ class HashTable {
     size_t shared_size = sizeof(K) * block_size + sizeof(V) * block_size;
     const int grid_size = (search_length - 1) / (block_size) + 1;
 
-    dump_kernel<<<grid_size, block_size, shared_size, stream>>>(
+    dump_kernel<K, V, M, DIM><<<grid_size, block_size, shared_size, stream>>>(
         table_, d_key, (V *)d_val, offset, search_length, d_dump_counter);
+    CudaCheckError();
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
@@ -257,50 +404,13 @@ class HashTable {
     block_size = block_size <= 1024 ? block_size : 1024;
     assert(block_size > 0 &&
            "nv::merlinhash: block_size <= 0, the K-V size may be too large!");
-    size_t shared_size = sizeof(K) * block_size + sizeof(V) * block_size;
+    size_t shared_size = ((sizeof(K) + sizeof(V) + sizeof(M))) * block_size;
     const int grid_size = (search_length - 1) / (block_size) + 1;
 
-    dump_kernel<<<grid_size, block_size, shared_size, stream>>>(
+    dump_kernel<K, V, M, DIM><<<grid_size, block_size, shared_size, stream>>>(
         table_, d_key, (V *)d_val, (M *)d_metas, offset, search_length,
         d_dump_counter);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-  }
-
-  void accum(const K *d_keys, const BaseV *d_vals_or_deltas,
-             const bool *d_exists, size_t len, cudaStream_t stream) {
-    if (len == 0) {
-      return;
-    }
-
-    V **d_dst;
-    bool *d_status;
-    int *d_src_offset;
-    CUDA_CHECK(cudaMallocAsync(&d_dst, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMallocAsync((void **)&d_status, len * sizeof(bool), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_dst, 0, len * sizeof(V *), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_status, 0, len * sizeof(bool), stream));
-    CUDA_CHECK(cudaMallocAsync(&d_src_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, len * sizeof(int), stream));
-
-    int N = len;
-    int grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    upsert_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        table_, d_keys, d_dst, d_exists, d_status, d_src_offset, len);
-
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    thrust::device_ptr<uint64_t> d_dst_ptr((uint64_t *)(d_dst));
-    thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
-    thrust::sort_by_key(d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
-                        thrust::less<uint64_t>());
-    N = len * DIM;
-    grid_size = (N - 1) / BLOCK_SIZE_ + 1;
-    accum_kernel<K, V, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-        (const V *)d_vals_or_deltas, d_dst, d_exists, d_status, d_src_offset,
-        N);
-
-    CUDA_CHECK(cudaFreeAsync(d_dst, stream));
-    CUDA_CHECK(cudaFreeAsync(d_status, stream));
-    CUDA_CHECK(cudaFreeAsync(d_src_offset, stream));
+    CudaCheckError();
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
