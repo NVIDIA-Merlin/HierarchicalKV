@@ -50,6 +50,6 @@ file(GLOB_RECURSE merlin_hkvs_src RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.c
 # target_compile_features(merlin_hkvs PUBLIC cxx_std_17)
 # target_link_libraries(merlin_hkvs PUBLIC ...)
 
-add_executable(merlin_hashtable_test cpp/src/merlin_hashtable_test.cc.cu)
+add_executable(merlin_hashtable_test cpp/tests/merlin_hashtable_test.cc.cu)
 target_compile_features(merlin_hashtable_test PUBLIC cxx_std_17)
 set_target_properties(merlin_hashtable_test PROPERTIES  CUDA_ARCHITECTURES OFF)

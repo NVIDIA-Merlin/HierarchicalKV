@@ -388,7 +388,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
         }
 
         /// Insert if either of the following cases is fulfilled:
-        /// 1) We found the key: Then, we override the associated value and meta.
+        /// 1) We found the key: Then, we override the associated value and
+        ///    meta.
         /// 2) The bucket is not yet full: Hence, we can append the key.
         /// 3) Meta of key to be insered is larger than smallest meta in bucket:
         ///    In this case we replace that key.
@@ -930,5 +931,5 @@ __global__ void dump_kernel(const Table<K, V, M, DIM> *__restrict table,
   }
 }
 
-}  /// namespace merlin
-}  /// namespace nv
+}  // namespace merlin
+}  // namespace nv
