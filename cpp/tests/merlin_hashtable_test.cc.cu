@@ -76,8 +76,7 @@ int test_main() {
   using K = uint64_t;
   using M = uint64_t;
   using Vector = ValueArray<float, DIM>;
-  using Table =
-      nv::merlin::HashTable<K, Vector, ValueArrayBase<float>, float, M, DIM>;
+  using Table = nv::merlin::HashTable<K, float, M, DIM>;
 
   K *h_keys;
   M *h_metas;
@@ -129,32 +128,32 @@ int test_main() {
 
     std::cout << "before upsert: total_size = " << total_size << std::endl;
     auto start_upsert = std::chrono::steady_clock::now();
-    table_->upsert(d_keys, (ValueArrayBase<float> *)d_vectors, d_metas, KEY_NUM,
-                   stream, false);
+    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
+                   KEY_NUM, stream, false);
     auto end_upsert = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
 
     cudaMemset(d_vectors, 2, KEY_NUM * sizeof(Vector));
-    table_->upsert(d_keys, (ValueArrayBase<float> *)d_vectors, d_metas, KEY_NUM,
-                   stream);
+    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
+                   KEY_NUM, stream);
 
     total_size = table_->get_size(stream);
     std::cout << "after upsert: total_size = " << total_size << std::endl;
 
     auto start_lookup = std::chrono::steady_clock::now();
-    table_->get(d_keys, (ValueArrayBase<float> *)d_vectors, d_found, KEY_NUM,
-                d_def_val, stream, true);
+    table_->get(d_keys, reinterpret_cast<float *>(d_vectors), d_found, KEY_NUM,
+                reinterpret_cast<float *>(d_def_val), stream, true);
     auto end_lookup = std::chrono::steady_clock::now();
 
     auto start_accum = std::chrono::steady_clock::now();
-    table_->accum(d_keys, (ValueArrayBase<float> *)d_vectors, d_found, KEY_NUM,
-                  stream, false);
+    table_->accum(d_keys, reinterpret_cast<float *>(d_vectors), d_found,
+                  KEY_NUM, stream, false);
     auto end_accum = std::chrono::steady_clock::now();
 
     total_size = table_->get_size(stream);
-    cout << "after accum: total_size = " << total_size << endl;
+    std::cout << "after accum: total_size = " << total_size << std::endl;
 
-    table_->dump(d_keys, (ValueArrayBase<float> *)d_vectors, 0,
+    table_->dump(d_keys, reinterpret_cast<float *>(d_vectors), 0,
                  table_->get_capacity(), d_dump_counter, stream);
 
     std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
