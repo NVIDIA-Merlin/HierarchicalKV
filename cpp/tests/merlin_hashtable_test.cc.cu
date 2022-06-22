@@ -68,8 +68,8 @@ template <class T>
 using ValueType = ValueArrayBase<T>;
 
 int test_main() {
-  constexpr uint64_t INIT_SIZE = 32 * 1024 * 1024;
-  constexpr uint64_t KEY_NUM = 1 * 1024 * 1024;
+  constexpr uint64_t INIT_SIZE = 32 * 1024 * 1024ul;
+  constexpr uint64_t KEY_NUM = 1 * 1024 * 1024ul;
   constexpr uint64_t TEST_TIMES = 1;
   constexpr uint64_t DIM = 64;
 
