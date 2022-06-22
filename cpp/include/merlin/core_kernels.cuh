@@ -61,6 +61,54 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t capacity = 134217728,
   CUDA_CHECK(cudaMemset((*table)->locks, 0,
                         (*table)->buckets_num * sizeof(unsigned int)));
 
+  /* As testing results show us, when the number of buckets is greater than
+   * the 4 million the performance will drop significantly, we believe the
+   * to many pinned memory allocation causes this issue, so we change the
+   * strategy to allocate some memory slices whose size is not greater than
+   * 64GB, and put the buckets pointer point to the slices.
+   */
+  const size_t total_size_of_vectors =
+      (*table)->buckets_num * (*table)->buckets_size * sizeof(V);
+  const size_t num_of_memory_slices =
+      1 + (total_size_of_vectors - 1) / 68719476736;  // 64GB for one slice.
+  size_t num_of_buckets_in_one_slice =
+      68719476736 /
+      ((*table)->buckets_size * sizeof(V));  // 64GB for one slice.
+  size_t num_of_allocated_buckets = 0;
+
+  (*table)->num_of_memory_slices = num_of_memory_slices;
+  CUDA_CHECK(cudaMallocManaged((void **)&((*table)->vectors),
+                               num_of_memory_slices * sizeof(V *)));
+  CUDA_CHECK(
+      cudaMemset((*table)->vectors, 0, num_of_memory_slices * sizeof(V *)));
+
+  std::cout << "num_of_memory_slices=" << num_of_memory_slices << std::endl;
+  for (size_t i = 0; i < num_of_memory_slices; i++) {
+    if (i == num_of_memory_slices - 1) {
+      num_of_buckets_in_one_slice =
+          (*table)->buckets_num - num_of_allocated_buckets;
+    }
+    std::cout << " - num_of_buckets_in_one_slice="
+              << num_of_buckets_in_one_slice << " allocate size="
+              << num_of_buckets_in_one_slice * (*table)->buckets_size *
+                     sizeof(V)
+              << std::endl;
+    if ((*table)->vector_on_gpu) {
+      CUDA_CHECK(cudaMalloc(
+          &((*table)->vectors[i]),
+          num_of_buckets_in_one_slice * (*table)->buckets_size * sizeof(V)));
+    } else {
+      CUDA_CHECK(cudaMallocHost(
+          &((*table)->vectors[i]),
+          num_of_buckets_in_one_slice * (*table)->buckets_size * sizeof(V),
+          cudaHostRegisterMapped));
+    }
+    for (int j = 0; j < num_of_buckets_in_one_slice; j++) {
+      (*table)->buckets[j + num_of_allocated_buckets].vectors =
+          (*table)->vectors[i] + j * (*table)->buckets_size;
+    }
+    num_of_allocated_buckets += num_of_buckets_in_one_slice;
+  }
   for (int i = 0; i < (*table)->buckets_num; i++) {
     CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].keys),
                           (*table)->buckets_size * sizeof(K)));
@@ -70,14 +118,6 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t capacity = 134217728,
                           (*table)->buckets_size * sizeof(M)));
     CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].cache),
                           (*table)->cache_size * sizeof(V)));
-    if ((*table)->vector_on_gpu) {
-      CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].vectors),
-                            (*table)->buckets_size * sizeof(V)));
-    } else {
-      CUDA_CHECK(cudaMallocHost(&((*table)->buckets[i].vectors),
-                                (*table)->buckets_size * sizeof(V),
-                                cudaHostRegisterMapped));
-    }
   }
 }
 
@@ -88,12 +128,17 @@ void destroy_table(Table<K, V, M, DIM> **table) {
     CUDA_CHECK(cudaFree((*table)->buckets[i].keys));
     CUDA_CHECK(cudaFree((*table)->buckets[i].metas));
     CUDA_CHECK(cudaFree((*table)->buckets[i].cache));
+  }
+
+  for (int i = 0; i < (*table)->num_of_memory_slices; i++) {
     if ((*table)->vector_on_gpu) {
-      CUDA_CHECK(cudaFree((*table)->buckets[i].vectors));
+      CUDA_CHECK(cudaFree((*table)->vectors[i]));
     } else {
-      CUDA_CHECK(cudaFreeHost((*table)->buckets[i].vectors));
+      CUDA_CHECK(cudaFreeHost((*table)->vectors[i]));
     }
   }
+
+  CUDA_CHECK(cudaFree((*table)->vectors));
   CUDA_CHECK(cudaFree((*table)->locks));
   CUDA_CHECK(cudaFree((*table)->buckets));
   CUDA_CHECK(cudaFree(*table));
