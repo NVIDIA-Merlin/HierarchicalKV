@@ -53,6 +53,8 @@ template <class K, class V, class M, size_t DIM>
 struct Table {
   Bucket<K, V, M, DIM> *buckets;
   unsigned int *locks;            // Write lock for each bucket.
+  V **vectors;                    // Handles of the vectors on HBM or HMEM.
+  uint64_t num_of_memory_slices;  // Number of vectors memory slices.
   uint64_t capacity = 134217728;  // Initial capacity.
   uint64_t buckets_num;
   uint64_t buckets_size = 128;
