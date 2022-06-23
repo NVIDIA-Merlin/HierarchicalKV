@@ -78,19 +78,29 @@ class HashTable {
    * @brief Construct a new merlin::HashTable.
    *
    * @param max_size The maximum number of pairs the map may hold.
+   * @param cache_size No used.
+   * @param buckets_size The length of each buckets.
+   * @param vector_on_gpu If true, the Vectors will be placed in HBM, false by
+   * default.
    * @param initializer Initializer used when getting a key fail.
    * @param master No used.
    */
-  explicit HashTable(uint64_t max_size,
+  explicit HashTable(uint64_t max_size, uint64_t cache_size = 0,
+                     uint64_t buckets_size = 128, bool vector_on_gpu = false,
                      const Initializer *initializer = nullptr,
                      bool master = true)
-      : capacity_{max_size} {
+      : capacity_(max_size),
+        cache_size_(cache_size),
+        buckets_size_(buckets_size),
+        vector_on_gpu_(vector_on_gpu),
+        master_(master) {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
     initializer_ = std::make_shared<Initializer>(
         (initializer != nullptr) ? *initializer : Zeros());
-    create_table<K, Vector, M, DIM>(&table_, capacity_);
+    create_table<K, Vector, M, DIM>(&table_, capacity_, cache_size_,
+                                    buckets_size_, vector_on_gpu_, master_);
   }
 
   /**
@@ -444,9 +454,12 @@ class HashTable {
     }
 
     Vector **d_src;
+    int *d_dst_offset;
     CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(Vector *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(Vector *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_status, 0, len * sizeof(bool), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_dst_offset, len * sizeof(int), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_dst_offset, 0, len * sizeof(int), stream));
 
     // Determine bucket locations for reading.
     {
@@ -454,7 +467,25 @@ class HashTable {
       const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
 
       lookup_kernel<K, Vector, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-          table_, d_keys, d_src, d_status, N);
+          table_, d_keys, d_src, d_status, d_dst_offset, N);
+    }
+
+    {
+      static_assert(sizeof(V *) == sizeof(uint64_t),
+                    "Illegal conversation. V pointer must be 64 bit!");
+
+      const int N = len;
+      thrust::device_ptr<uint64_t> d_src_ptr(
+          reinterpret_cast<uint64_t *>(d_src));
+      thrust::device_ptr<int> d_dst_offset_ptr(d_dst_offset);
+
+#if THRUST_VERSION >= 101600
+      auto policy = thrust::cuda::par_nosync.on(stream);
+#else
+      auto policy = thrust::cuda::par.on(stream);
+#endif
+      thrust::sort_by_key(policy, d_src_ptr, d_src_ptr + N, d_dst_offset_ptr,
+                          thrust::less<uint64_t>());
     }
 
     // Copy data from bucket to the pointer to d_vals.
@@ -463,10 +494,12 @@ class HashTable {
       const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
       read_kernel<K, Vector, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
           d_src, reinterpret_cast<Vector *>(d_vals), d_status,
-          reinterpret_cast<const Vector *>(d_def_val), N, full_size_default);
+          reinterpret_cast<const Vector *>(d_def_val), d_dst_offset, N,
+          full_size_default);
     }
 
     CUDA_CHECK(cudaFreeAsync(d_src, stream));
+    CUDA_CHECK(cudaFreeAsync(d_dst_offset, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
@@ -504,16 +537,37 @@ class HashTable {
     }
 
     Vector **d_src;
+    int *d_dst_offset;
     CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(Vector *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(Vector *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_status, 0, len * sizeof(bool), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_dst_offset, len * sizeof(int), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_dst_offset, 0, len * sizeof(int), stream));
 
     // Determine bucket locations for reading.
     {
       const int N = len * table_->buckets_size;
       const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
       lookup_kernel<K, Vector, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-          table_, d_keys, d_src, d_metas, d_status, N);
+          table_, d_keys, d_src, d_metas, d_status, d_dst_offset, N);
+    }
+
+    {
+      static_assert(sizeof(V *) == sizeof(uint64_t),
+                    "Illegal conversation. V pointer must be 64 bit!");
+
+      const int N = len;
+      thrust::device_ptr<uint64_t> d_src_ptr(
+          reinterpret_cast<uint64_t *>(d_src));
+      thrust::device_ptr<int> d_dst_offset_ptr(d_dst_offset);
+
+#if THRUST_VERSION >= 101600
+      auto policy = thrust::cuda::par_nosync.on(stream);
+#else
+      auto policy = thrust::cuda::par.on(stream);
+#endif
+      thrust::sort_by_key(policy, d_src_ptr, d_src_ptr + N, d_dst_offset_ptr,
+                          thrust::less<uint64_t>());
     }
 
     // Copy data from bucket to the pointer to d_vals.
@@ -522,10 +576,12 @@ class HashTable {
       const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
       read_kernel<K, Vector, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
           d_src, reinterpret_cast<Vector *>(d_vals), d_status,
-          reinterpret_cast<const Vector *>(d_def_val), N, full_size_default);
+          reinterpret_cast<const Vector *>(d_def_val), d_dst_offset, N,
+          full_size_default);
     }
 
     CUDA_CHECK(cudaFreeAsync(d_src, stream));
+    CUDA_CHECK(cudaFreeAsync(d_dst_offset, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
@@ -550,8 +606,11 @@ class HashTable {
     }
 
     Vector **d_src;
+    int *d_dst_offset;
     CUDA_CHECK(cudaMallocAsync(&d_src, len * sizeof(Vector *), stream));
     CUDA_CHECK(cudaMemsetAsync(d_src, 0, len * sizeof(Vector *), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_dst_offset, len * sizeof(int), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_dst_offset, 0, len * sizeof(int), stream));
 
     initializer_->initialize(d_vals, len * sizeof(V), stream);
 
@@ -559,8 +618,26 @@ class HashTable {
     {
       const int N = len * table_->buckets_size;
       const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
-      lookup_kernel<K, Vector, M, DIM>
-          <<<grid_size, BLOCK_SIZE_, 0, stream>>>(table_, d_keys, d_src, N);
+      lookup_kernel<K, Vector, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
+          table_, d_keys, d_src, d_dst_offset, N);
+    }
+
+    {
+      static_assert(sizeof(V *) == sizeof(uint64_t),
+                    "Illegal conversation. V pointer must be 64 bit!");
+
+      const int N = len;
+      thrust::device_ptr<uint64_t> d_src_ptr(
+          reinterpret_cast<uint64_t *>(d_src));
+      thrust::device_ptr<int> d_dst_offset_ptr(d_dst_offset);
+
+#if THRUST_VERSION >= 101600
+      auto policy = thrust::cuda::par_nosync.on(stream);
+#else
+      auto policy = thrust::cuda::par.on(stream);
+#endif
+      thrust::sort_by_key(policy, d_src_ptr, d_src_ptr + N, d_dst_offset_ptr,
+                          thrust::less<uint64_t>());
     }
 
     // Copy data from bucket to the pointer to d_vals.
@@ -568,10 +645,11 @@ class HashTable {
       const int N = len * DIM;
       const int grid_size = (N + BLOCK_SIZE_ - 1) / BLOCK_SIZE_;
       read_kernel<K, Vector, M, DIM><<<grid_size, BLOCK_SIZE_, 0, stream>>>(
-          d_src, reinterpret_cast<Vector *>(d_vals), N);
+          d_src, reinterpret_cast<Vector *>(d_vals), d_dst_offset, N);
     }
 
     CUDA_CHECK(cudaFreeAsync(d_src, stream));
+    CUDA_CHECK(cudaFreeAsync(d_dst_offset, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
@@ -720,9 +798,13 @@ class HashTable {
  private:
   static const int BLOCK_SIZE_ = 1024;
   const uint64_t capacity_;
+  const uint64_t cache_size_;
+  const uint64_t buckets_size_;
+  const bool vector_on_gpu_;
+  std::shared_ptr<Initializer> initializer_;
+  const bool master_;
   size_t shared_mem_size_;
   Table *table_;
-  std::shared_ptr<Initializer> initializer_;
 };
 
 }  // namespace merlin

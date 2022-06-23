@@ -36,7 +36,10 @@ namespace merlin {
 template <class K, class V, class M, size_t DIM>
 void create_table(Table<K, V, M, DIM> **table, uint64_t capacity = 134217728,
                   uint64_t cache_size = 0, uint64_t buckets_size = 128,
-                  bool vector_on_gpu = false) {
+                  bool vector_on_gpu = false, bool master = true,
+                  size_t bytes_per_slice =
+                      (2 * 1024 * 1024 * 1024ul) /* 2GB per slice by default.*/
+) {
   CUDA_CHECK(cudaMallocManaged((void **)table, sizeof(Table<K, V, M, DIM>)));
   (*table)->buckets_size = buckets_size;
   (*table)->buckets_num = 1;
@@ -49,7 +52,7 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t capacity = 134217728,
   (*table)->capacity = (*table)->buckets_num * (*table)->buckets_size;
   (*table)->cache_size = 0;
   (*table)->vector_on_gpu = vector_on_gpu;
-  (*table)->primary_table = true;
+  (*table)->primary_table = master;
   CUDA_CHECK(
       cudaMallocManaged((void **)&((*table)->buckets),
                         (*table)->buckets_num * sizeof(Bucket<K, V, M, DIM>)));
@@ -70,9 +73,9 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t capacity = 134217728,
   const size_t total_size_of_vectors =
       (*table)->buckets_num * (*table)->buckets_size * sizeof(V);
   const size_t num_of_memory_slices =
-      1 + (total_size_of_vectors - 1) / 68719476736;  // 64GB for one slice.
+      1 + (total_size_of_vectors - 1) / bytes_per_slice;
   size_t num_of_buckets_in_one_slice =
-      68719476736 /
+      bytes_per_slice /
       ((*table)->buckets_size * sizeof(V));  // 64GB for one slice.
   size_t num_of_allocated_buckets = 0;
 
@@ -156,7 +159,7 @@ void destroy_table(Table<K, V, M, DIM> **table) {
 */
 template <class K, class V, class M, size_t DIM>
 __global__ void write_kernel(const V *__restrict src, V **__restrict dst,
-                             const int *src_offset, int N) {
+                             const int *__restrict src_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
@@ -190,7 +193,8 @@ __global__ void write_with_accum_kernel(const V *__restrict delta_or_val,
                                         V **__restrict dst,
                                         const bool *__restrict existed,
                                         const bool *__restrict status,
-                                        const int *src_offset, int N) {
+                                        const int *__restrict src_offset,
+                                        int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
@@ -221,7 +225,8 @@ __global__ void write_with_accum_kernel(const V *__restrict delta_or_val,
 template <class K, class V, class M, size_t DIM>
 __global__ void write_with_accum_kernel(const V *__restrict delta,
                                         V **__restrict dst,
-                                        const int *src_offset, int N) {
+                                        const int *__restrict src_offset,
+                                        int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
@@ -254,19 +259,21 @@ __global__ void write_with_accum_kernel(const V *__restrict delta,
 template <class K, class V, class M, size_t DIM>
 __global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
                             const bool *mask, const V *__restrict default_val,
-                            int N, bool full_size_default) {
+                            const int *__restrict dst_offset, int N,
+                            bool full_size_default) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
-    int default_index = full_size_default ? vec_index : 0;
+    int default_index = full_size_default ? dst_offset[vec_index] : 0;
 
     /// Copy selected values and fill in default value for all others.
-    if (mask[vec_index] && src[vec_index] != nullptr) {
-      dst[vec_index].value[dim_index] = src[vec_index]->value[dim_index];
+    if (mask[dst_offset[vec_index]] && src[vec_index] != nullptr) {
+      dst[dst_offset[vec_index]].value[dim_index] =
+          src[vec_index]->value[dim_index];
     } else {
-      dst[vec_index].value[dim_index] =
+      dst[dst_offset[vec_index]].value[dim_index] =
           default_val[default_index].value[dim_index];
     }
   }
@@ -283,14 +290,16 @@ __global__ void read_kernel(const V *const *__restrict src, V *__restrict dst,
    `N`: Number of vectors needed to be read.
 */
 template <class K, class V, class M, size_t DIM>
-__global__ void read_kernel(V **__restrict src, V *__restrict dst, int N) {
+__global__ void read_kernel(V **__restrict src, V *__restrict dst,
+                            const int *__restrict dst_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   if (tid < N) {
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
     if (src[vec_index] != nullptr) {
-      dst[vec_index].value[dim_index] = src[vec_index]->value[dim_index];
+      dst[dst_offset[vec_index]].value[dim_index] =
+          src[vec_index]->value[dim_index];
     }
   }
 }
@@ -407,7 +416,8 @@ template <class K, class V, class M, size_t DIM>
 __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys,
                               const M *__restrict metas, V **__restrict vectors,
-                              int *src_offset, const bool *__restrict status,
+                              int *__restrict src_offset,
+                              const bool *__restrict status,
                               const int *__restrict bucket_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   int key_pos = -1;
@@ -469,7 +479,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 template <class K, class V, class M, size_t DIM>
 __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
-                              int *src_offset, const bool *__restrict status,
+                              int *__restrict src_offset,
+                              const bool *__restrict status,
                               const int *__restrict bucket_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   int key_pos = -1;
@@ -512,7 +523,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 template <class K, class V, class M, size_t DIM>
 __global__ void upsert_allow_duplicate_keys_kernel(
     const Table<K, V, M, DIM> *__restrict table, const K *__restrict keys,
-    const M *__restrict metas, V **__restrict vectors, int *src_offset, int N) {
+    const M *__restrict metas, V **__restrict vectors,
+    int *__restrict src_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   int key_pos = -1;
   bool found = false;
@@ -561,7 +573,7 @@ __global__ void upsert_allow_duplicate_keys_kernel(
 template <class K, class V, class M, size_t DIM>
 __global__ void upsert_allow_duplicate_keys_kernel(
     const Table<K, V, M, DIM> *__restrict table, const K *__restrict keys,
-    V **__restrict vectors, int *src_offset, int N) {
+    V **__restrict vectors, int *__restrict src_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   int key_pos = -1;
   bool found = false;
@@ -609,7 +621,8 @@ __global__ void upsert_allow_duplicate_keys_kernel(
 template <class K, class V, class M, size_t DIM>
 __global__ void accum_kernel(const Table<K, V, M, DIM> *__restrict table,
                              const K *__restrict keys, V **__restrict vectors,
-                             const bool *__restrict existed, int *src_offset,
+                             const bool *__restrict existed,
+                             int *__restrict src_offset,
                              const bool *__restrict status,
                              const int *__restrict bucket_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -656,7 +669,7 @@ template <class K, class V, class M, size_t DIM>
 __global__ void accum_allow_duplicate_keys_kernel(
     const Table<K, V, M, DIM> *__restrict table, const K *__restrict keys,
     V **__restrict vectors, const bool *__restrict existed,
-    bool *__restrict now_exists, int *src_offset, int N) {
+    bool *__restrict now_exists, int *__restrict src_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   int key_pos = -1;
   bool found = false;
@@ -718,7 +731,7 @@ template <class K, class V, class M, size_t DIM>
 __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
                               M *__restrict metas, bool *__restrict found,
-                              int N) {
+                              int *__restrict dst_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const uint64_t buckets_num = table->buckets_num;
   const uint64_t buckets_size = table->buckets_size;
@@ -734,6 +747,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
       metas[key_idx] = bucket->metas[key_pos].val;
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
       found[key_idx] = true;
+      atomicExch(&(dst_offset[key_idx]), key_idx);
     }
   }
 }
@@ -742,7 +756,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
 template <class K, class V, class M, size_t DIM>
 __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
-                              bool *__restrict found, int N) {
+                              bool *__restrict found,
+                              int *__restrict dst_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const uint64_t buckets_num = table->buckets_num;
   const uint64_t buckets_size = table->buckets_size;
@@ -753,6 +768,10 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+
+    if (key_pos == 0) {
+      atomicExch(&(dst_offset[key_idx]), key_idx);
+    }
 
     if (bucket->keys[key_pos] == target_key) {
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
@@ -765,7 +784,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
 template <class K, class V, class M, size_t DIM>
 __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
-                              int N) {
+                              int *__restrict dst_offset, int N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const uint64_t buckets_num = table->buckets_num;
   const uint64_t buckets_size = table->buckets_size;
@@ -776,6 +795,10 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+
+    if (key_pos == 0) {
+      atomicExch(&(dst_offset[key_idx]), key_idx);
+    }
 
     if (bucket->keys[key_pos] == target_key) {
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
