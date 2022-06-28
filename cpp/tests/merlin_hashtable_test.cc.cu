@@ -50,8 +50,16 @@ void create_random_keys(K *h_keys, M *h_metas, int KEY_NUM) {
     numbers.insert(distr(eng));
   }
   for (const K num : numbers) {
-    h_keys[i] = nv::merlin::Murmur3HashHost(num);
+    h_keys[i] = num;
     h_metas[i] = getTimestamp() + i;
+    i++;
+  }
+}
+
+template <class K>
+void create_continuous_keys(K *h_keys, int KEY_NUM, K start = 0) {
+  for (K i = 0; i < KEY_NUM; i++) {
+    h_keys[i] = start + static_cast<K>(i);
     i++;
   }
 }
@@ -68,10 +76,11 @@ template <class T>
 using ValueType = ValueArrayBase<T>;
 
 int test_main() {
-  constexpr uint64_t INIT_SIZE = 32 * 1024 * 1024ul;
+  constexpr uint64_t INIT_SIZE = 128 * 1024 * 1024ul;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024ul;
   constexpr uint64_t TEST_TIMES = 1;
   constexpr uint64_t DIM = 64;
+  constexpr float target_load_factor = 0.5;
 
   using K = uint64_t;
   using M = uint64_t;
@@ -83,7 +92,7 @@ int test_main() {
   Vector *h_vectors;
   bool *h_found;
 
-  std::unique_ptr<Table> table_ = std::make_unique<Table>(INIT_SIZE);
+  std::unique_ptr<Table> table_ = std::make_unique<Table>(INIT_SIZE, 0, 128);
 
   cudaMallocHost(&h_keys, KEY_NUM * sizeof(K));          // 8MB
   cudaMallocHost(&h_metas, KEY_NUM * sizeof(M));         // 8MB
@@ -122,6 +131,34 @@ int test_main() {
   cudaStream_t stream;
   cudaStreamCreate(&stream);
 
+  K start = 0UL;
+  float cur_load_factor =
+      static_cast<float>(table_->get_size(stream) / table_->get_capacity());
+  while (cur_load_factor < target_load_factor) {
+    create_continuous_keys<K>(h_keys, KEY_NUM, start);
+    cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice);
+
+    auto start_upsert = std::chrono::steady_clock::now();
+    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
+                   KEY_NUM, stream, false);
+    auto end_upsert = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
+
+    auto start_lookup = std::chrono::steady_clock::now();
+    table_->get(d_keys, reinterpret_cast<float *>(d_vectors), d_found, KEY_NUM,
+                reinterpret_cast<float *>(d_def_val), stream, true);
+    auto end_lookup = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
+
+    cur_load_factor = static_cast<float>(table_->get_size(stream) * 1.0 /
+                                         (table_->get_capacity() * 1.0));
+
+    printf("[prepare] upsert=%.2fms, lookup=%.2fms, cur_load_factor=%f\n",
+           diff_upsert.count() * 1000, diff_lookup.count() * 1000,
+           cur_load_factor);
+    start += KEY_NUM;
+  }
+
   uint64_t total_size = 0;
   for (int i = 0; i < TEST_TIMES; i++) {
     total_size = table_->get_size(stream);
@@ -152,6 +189,10 @@ int test_main() {
 
     total_size = table_->get_size(stream);
     std::cout << "after accum: total_size = " << total_size << std::endl;
+
+    table_->clear(stream);
+    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
+                   KEY_NUM, stream, false);
 
     table_->dump(d_keys, reinterpret_cast<float *>(d_vectors), 0,
                  table_->get_capacity(), d_dump_counter, stream);
