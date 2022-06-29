@@ -76,7 +76,7 @@ template <class T>
 using ValueType = ValueArrayBase<T>;
 
 int test_main() {
-  constexpr uint64_t INIT_SIZE = 128 * 1024 * 1024ul;
+  constexpr uint64_t INIT_SIZE = 64 * 1024 * 1024ul;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024ul;
   constexpr uint64_t TEST_TIMES = 1;
   constexpr uint64_t DIM = 64;
@@ -92,7 +92,7 @@ int test_main() {
   Vector *h_vectors;
   bool *h_found;
 
-  std::unique_ptr<Table> table_ = std::make_unique<Table>(INIT_SIZE, 0, 128);
+  std::unique_ptr<Table> table_ = std::make_unique<Table>(INIT_SIZE);
 
   cudaMallocHost(&h_keys, KEY_NUM * sizeof(K));          // 8MB
   cudaMallocHost(&h_metas, KEY_NUM * sizeof(M));         // 8MB
@@ -132,8 +132,8 @@ int test_main() {
   cudaStreamCreate(&stream);
 
   K start = 0UL;
-  float cur_load_factor =
-      static_cast<float>(table_->get_size(stream) / table_->get_capacity());
+  float cur_load_factor = table_->load_factor();
+
   while (cur_load_factor < target_load_factor) {
     create_continuous_keys<K>(h_keys, KEY_NUM, start);
     cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice);
@@ -150,8 +150,7 @@ int test_main() {
     auto end_lookup = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
 
-    cur_load_factor = static_cast<float>(table_->get_size(stream) * 1.0 /
-                                         (table_->get_capacity() * 1.0));
+    cur_load_factor = table_->load_factor();
 
     printf("[prepare] upsert=%.2fms, lookup=%.2fms, cur_load_factor=%f\n",
            diff_upsert.count() * 1000, diff_lookup.count() * 1000,
@@ -169,6 +168,13 @@ int test_main() {
                    KEY_NUM, stream, false);
     auto end_upsert = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
+
+    auto start_reserve = std::chrono::steady_clock::now();
+    table_->reserve(table_->get_capacity() * 2, stream);
+    auto end_reserve = std::chrono::steady_clock::now();
+
+    total_size = table_->get_size(stream);
+    std::cout << "after reserve: total_size = " << total_size << std::endl;
 
     cudaMemset(d_vectors, 2, KEY_NUM * sizeof(Vector));
     table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
@@ -199,7 +205,9 @@ int test_main() {
 
     std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
     std::chrono::duration<double> diff_accum = end_accum - start_accum;
+    std::chrono::duration<double> diff_reserve = end_reserve - start_reserve;
     printf("[timing] upsert=%.2fms\n", diff_upsert.count() * 1000);
+    printf("[timing] reserve=%.2fms\n", diff_reserve.count() * 1000);
     printf("[timing] lookup=%.2fms\n", diff_lookup.count() * 1000);
     printf("[timing] accum=%.2fms\n", diff_accum.count() * 1000);
   }
