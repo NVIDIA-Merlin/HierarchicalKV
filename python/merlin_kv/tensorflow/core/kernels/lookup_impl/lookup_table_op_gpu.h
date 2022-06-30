@@ -127,6 +127,7 @@ class TableWrapper final : public TableWrapperBase<K, V, M> {
   void get(const K* d_keys, ValueType<V>* d_vals, M* d_metas, bool* d_status,
            size_t len, const ValueType<V>* d_def_val, cudaStream_t stream,
            bool is_full_size_default) const override {
+    cudaMemset(d_vals, 0, len * sizeof(V) * DIM);
     table_->get(d_keys, (V*)d_vals, d_metas, d_status, len, (const V*)d_def_val,
                 stream, is_full_size_default);
   }

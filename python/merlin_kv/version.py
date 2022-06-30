@@ -16,15 +16,16 @@
 """Define NVIDIA Merin-KV version information."""
 
 import os
+import tensorflow as tf
 
 # Required TensorFlow version [min, max)
-MIN_TF_VERSION = os.getenv("TF_VERSION", "2.5.0")
-MAX_TF_VERSION = os.getenv("TF_VERSION", "2.7.0")
+MIN_TF_VERSION = os.getenv("TF_VERSION", tf.__version__)
+MAX_TF_VERSION = os.getenv("TF_VERSION", "2.9.0")
 
 # We follow Semantic Versioning (https://semver.org/)
 _MAJOR_VERSION = "0"
-_MINOR_VERSION = "1"
-_PATCH_VERSION = "0"
+_MINOR_VERSION = "0"
+_PATCH_VERSION = "1"
 
 # When building releases, we can update this value on the release branch to
 # reflect the current release candidate ('rc0', 'rc1') or, finally, the official

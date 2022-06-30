@@ -4,9 +4,8 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda", "if_cuda_is_configure
 
 package(default_visibility = ["//visibility:public"])
 
-load("//merlin_kv:merlin_kv.bzl", "custom_op_library", "if_cuda_for_tf_serving")
+load("//merlin_kv:merlin_kv.bzl", "custom_op_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_tf//:build_defs.bzl", "FOR_TF_SERVING")
 
 custom_op_library(
     name = "_merlin_kv_ops.so",
@@ -16,9 +15,7 @@ custom_op_library(
         "ops/merlin_kv_ops.cc",
         "utils/types.h",
     ] + glob(["kernels/lookup_impl/lookup_table_op_gpu*"]),
-    cuda_deps = if_cuda_for_tf_serving(
-        ["//merlin_kv/tensorflow/core/lib/merlin-kv:merlinkv"],
-        [],
-        FOR_TF_SERVING,
-    ),
+    cuda_deps = [
+        "//merlin_kv/tensorflow/core/lib/merlin-kv:merlinkv"
+    ],
 )

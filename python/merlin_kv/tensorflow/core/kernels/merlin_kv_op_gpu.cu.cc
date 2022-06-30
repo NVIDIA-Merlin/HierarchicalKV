@@ -157,6 +157,7 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
 
     auto value_flat = value->flat_inner_dims<V, 2>();
     const auto default_flat = default_value.flat<V>();
+    auto d_metas = metas->tensor_data().data();
     int64 total = value_flat.size();
     int64 default_total = default_flat.size();
     bool is_full_default = (total == default_total);
@@ -168,6 +169,7 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
           is_full_default ? default_value.shape().dim_size(0) : 1;
       CUDA_CHECK(cudaStreamCreate(&_stream));
       CUDA_CHECK(cudaMallocManaged((void**)&d_status, sizeof(bool) * len));
+      CUDA_CHECK(cudaMemset((void*)d_metas, 0, sizeof(M) * len));
       {
         tf_shared_lock l(mu_);
         table_->get((const K*)d_keys.tensor_data().data(),
@@ -466,6 +468,15 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
 
 }  // namespace lookup
 
+Status CheckKeyMetasShape(const Tensor& keys, const Tensor& metas) {
+  if (!(keys.shape() == metas.shape())) {
+    return errors::InvalidArgument("Input key shape ", keys.shape(),
+                                   "and metas shape ", metas.shape(),
+                                   " must the same shape!");
+  }
+  return Status::OK();
+}
+
 // Table lookup op. Perform the lookup operation on the given table.
 class HashTableFindGpuOp : public OpKernel {
  public:
@@ -503,7 +514,7 @@ REGISTER_KERNEL_BUILDER(Name("MerlinKVFind").Device(DEVICE_GPU),
                         HashTableFindGpuOp);
 
 // Table lookup op with return metas.
-template <class K, class V>
+template <class K, class V, class M = uint64_t>
 class HashTableFindWithMetasGpuOp : public OpKernel {
  public:
   explicit HashTableFindWithMetasGpuOp(OpKernelConstruction* ctx)
@@ -521,7 +532,7 @@ class HashTableFindWithMetasGpuOp : public OpKernel {
     DataType expected_input_0 = DT_RESOURCE;
     DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
-    DataTypeVector expected_outputs = {table->value_dtype()};
+    DataTypeVector expected_outputs = {table->value_dtype(), DT_INT64};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& keys = ctx->input(1);
@@ -624,7 +635,7 @@ class HashTableInsertGpuOp : public OpKernel {
 };
 
 // Table insert with metas op.
-template <class K, class V>
+template <class K, class V, class M = uint64_t>
 class HashTableInsertWithMetasGpuOp : public OpKernel {
  public:
   explicit HashTableInsertWithMetasGpuOp(OpKernelConstruction* ctx)
@@ -643,14 +654,16 @@ class HashTableInsertWithMetasGpuOp : public OpKernel {
 
     DataType expected_input_0 = DT_RESOURCE;
     DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
-                                      table->value_dtype()};
+                                      table->value_dtype(), DT_INT64};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
     const Tensor& keys = ctx->input(1);
     const Tensor& values = ctx->input(2);
     const Tensor& metas = ctx->input(3);
+
     OP_REQUIRES_OK(
         ctx, table_merlin->CheckKeyAndValueTensorsForInsert(keys, values));
+    OP_REQUIRES_OK(ctx, CheckKeyMetasShape(keys, metas));
     OP_REQUIRES_OK(ctx, table_merlin->InsertWithMetas(ctx, keys, values, metas,
                                                       allow_duplicated_keys_));
   }

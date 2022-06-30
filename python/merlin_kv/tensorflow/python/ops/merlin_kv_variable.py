@@ -510,7 +510,7 @@ class Variable(base.Trackable):
           format(str(self.name), str(e)))
     return init_op
 
-  def lookup(self, keys, return_exists=False, name=None):
+  def lookup(self, keys, return_exists=False, return_metas=False, name=None):
     """
     Looks up `keys` in a Variable, outputs the corresponding values.
 
@@ -521,6 +521,8 @@ class Variable(base.Trackable):
         table's key_dtype.
       return_exists: if True, will return a additional Tensor which indicates
         if keys are existing in the table.
+      return_metas: if True, will return a additional Tensor which indicates
+        if metas in the table.
       name: A name for the operation (optional).
 
     Returns:
@@ -531,12 +533,16 @@ class Variable(base.Trackable):
           if keys are existing in the table.
           Only provided if `return_exists` is True.
     """
+    if return_exists and return_metas:
+      raise ValueError("Not support return exists and metas at the same time.")
+
     partition_index = self.partition_fn(keys, self.shard_num)
     keys_partitions, keys_indices = make_partition(keys, partition_index,
                                                    self.shard_num)
 
     _values = []
     _exists = []
+    _metas = []
     for idx in range(len(self.devices)):
       with ops.device(self.devices[idx]):
         dynamic_default_values = self._create_default_values_by_initializer(
@@ -550,18 +556,25 @@ class Variable(base.Trackable):
             keys_partitions[idx],
             dynamic_default_values=dynamic_default_values,
             return_exists=return_exists,
+            return_metas=return_metas,
             name=name,
         )
         if return_exists:
           _values.append(ops_[0])
           _exists.append(ops_[1])
+        elif return_metas:
+          _values.append(ops_[0])
+          _metas.append(ops_[1])
         else:
           _values.append(ops_)
 
     if return_exists:
       result = (_stitch(_values, keys_indices), _stitch(_exists, keys_indices))
+    elif return_metas:
+      result = (_stitch(_values, keys_indices), _stitch(_metas, keys_indices))
     else:
       result = _stitch(_values, keys_indices)
+
     return result
 
   def export(self, name=None):

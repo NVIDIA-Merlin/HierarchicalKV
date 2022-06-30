@@ -51,34 +51,17 @@ _TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = {
+    "11.6": [
+        "8.0",
+        "8.6",
+    ],
     "11.5": [
-        "6.0",
-        "6.1",
-        "7.0",
-        "7.5",
         "8.0",
         "8.6",
     ],
     "11.2": [
-        "6.0",
-        "6.1",
-        "7.0",
-        "7.5",
         "8.0",
         "8.6",
-    ],
-    "11.0": [
-        "6.0",
-        "6.1",
-        "7.0",
-        "7.5",
-        "8.0",
-    ],
-    "10.0": [
-        "6.0",
-        "6.1",
-        "7.0",
-        "7.5",
     ],
 }
 
@@ -670,9 +653,9 @@ def _get_cuda_config(repository_ctx):
     cudnn_version = ("64_%s" if is_windows else "%s") % config["cudnn_version"]
 
     if int(cuda_major) >= 11:
-        # The libcudart soname in CUDA 11.x is versioned as 11.0 for backward compatability.
+        # The libcudart soname in CUDA 11.x is versioned as 11.2 for backward compatability.
         if int(cuda_major) == 11:
-            cudart_version = "64_110" if is_windows else "11.0"
+            cudart_version = "64_110" if is_windows else ""
         else:
             cudart_version = ("64_%s" if is_windows else "%s") % cuda_major
         cublas_version = ("64_%s" if is_windows else "%s") % config["cublas_version"].split(".")[0]

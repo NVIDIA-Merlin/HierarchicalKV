@@ -22,6 +22,8 @@ from __future__ import print_function
 import glob
 import itertools
 import math
+import time
+
 import numpy as np
 import os
 import six
@@ -38,27 +40,25 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import initializers as kinit
-from tensorflow.python.keras import layers
-from tensorflow.python.keras import optimizer_v2
-from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import adam
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import util as track_util
-from tensorflow.python.util import compat
+
+import tensorflow as tf
+
+physical_devices = tf.config.list_physical_devices('GPU')
+try:
+  for d in physical_devices:
+    tf.config.experimental.set_memory_growth(d, True)
+except:
+  pass
 
 
 # pylint: disable=missing-class-docstring
@@ -77,6 +77,26 @@ def _type_converter(tf_type):
   return mapper[tf_type]
 
 
+g_start = 0
+
+
+def _create_dynamic_shape_continous_tensor(
+    start=100000000,
+    length=8192,
+    dtype=np.int64,
+):
+  global g_start
+  g_start = start
+
+  def _func():
+    global g_start
+    tensor = np.arange(g_start, g_start + length, dtype=dtype)
+    g_start += length
+    return tensor
+
+  return _func
+
+
 def _get_devices():
   return ["/gpu:0" if test_util.is_gpu_available() else "/cpu:0"]
 
@@ -85,45 +105,37 @@ def _check_device(op, expexted_device="gpu"):
   return expexted_device.upper() in op.device
 
 
-def embedding_result(params, id_vals, weight_vals=None):
-  if weight_vals is None:
-    weight_vals = np.copy(id_vals)
-    weight_vals.fill(1)
-  values = []
-  weights = []
-  weights_squared = []
-  for pms, ids, wts in zip(params, id_vals, weight_vals):
-    value_aggregation = None
-    weight_aggregation = None
-    squared_weight_aggregation = None
-    if isinstance(ids, compat.integral_types):
-      pms = [pms]
-      ids = [ids]
-      wts = [wts]
-    for val, i, weight_value in zip(pms, ids, wts):
-      if value_aggregation is None:
-        assert weight_aggregation is None
-        assert squared_weight_aggregation is None
-        value_aggregation = val * weight_value
-        weight_aggregation = weight_value
-        squared_weight_aggregation = weight_value * weight_value
-      else:
-        assert weight_aggregation is not None
-        assert squared_weight_aggregation is not None
-        value_aggregation += val * weight_value
-        weight_aggregation += weight_value
-        squared_weight_aggregation += weight_value * weight_value
-    values.append(value_aggregation)
-    weights.append(weight_aggregation)
-    weights_squared.append(squared_weight_aggregation)
-  values = np.array(values).astype(np.float32)
-  weights = np.array(weights).astype(np.float32)
-  weights_squared = np.array(weights_squared).astype(np.float32)
-  return values, weights, weights_squared
-
-
 def data_fn(shape, maxval):
   return random_ops.random_uniform(shape, maxval=maxval, dtype=dtypes.int64)
+
+
+def Murmur3Hash(key):
+
+  def uint64_right_shift(key, bits=33):
+    k = np.int64(key)
+    k = np.right_shift(k, bits)
+    k = k & 0x7FFFFFFF
+    return np.int64(k)
+
+  def uint64_xor(a, b):
+    _a = np.int64(a)
+    _b = np.int64(b)
+    _a_abs = np.abs(a)
+    _b_abs = np.abs(b)
+    py_int = int(_a_abs) ^ int(_b_abs)
+    return py_int
+
+  k = np.int64(key)
+  k ^= uint64_right_shift(k, 33)
+  k = np.ulonglong(k)
+  k *= 0xff51afd7ed558ccd
+  xk = uint64_right_shift(k, 33)
+  k = uint64_xor(k, xk)
+  k = np.ulonglong(k)
+  k *= 0xc4ceb9fe1a85ec53
+  xk = uint64_right_shift(k, 33)
+  k = uint64_xor(k, xk)
+  return k
 
 
 def ids_and_weights_2d(embed_dim=4):
@@ -189,75 +201,6 @@ def ids_and_weights_3d(embed_dim=4):
   return sparse_ids, sparse_weights
 
 
-def _random_weights(
-    key_dtype=dtypes.int64,
-    value_dtype=dtypes.float32,
-    vocab_size=4,
-    embed_dim=4,
-    num_shards=1,
-):
-  assert vocab_size > 0
-  assert embed_dim > 0
-  assert num_shards > 0
-  assert num_shards <= vocab_size
-
-  initializer = init_ops.truncated_normal_initializer(mean=0.0,
-                                                      stddev=1.0 /
-                                                      math.sqrt(vocab_size),
-                                                      dtype=dtypes.float32)
-  embedding_weights = mkv.get_variable(
-      key_dtype=key_dtype,
-      value_dtype=value_dtype,
-      devices=_get_devices() * num_shards,
-      name="embedding_weights",
-      initializer=initializer,
-      dim=embed_dim,
-  )
-  return embedding_weights
-
-
-def _test_dir(temp_dir, test_name):
-  """Create an empty dir to use for tests.
-
-    Args:
-      temp_dir: Tmp directory path.
-      test_name: Name of the test.
-
-    Returns:
-      Absolute path to the test directory.
-    """
-  test_dir = os.path.join(temp_dir, test_name)
-  if os.path.isdir(test_dir):
-    for f in glob.glob("%s/*" % test_dir):
-      os.remove(f)
-  else:
-    os.makedirs(test_dir)
-  return test_dir
-
-
-def _create_dynamic_shape_tensor(
-    max_len=100,
-    min_len=2,
-    min_val=0x0000F00000000001,
-    max_val=0x0000F00000000020,
-    dtype=np.int64,
-):
-
-  def _func():
-    length = np.random.randint(min_len, max_len)
-    tensor = np.random.randint(min_val, max_val, max_len, dtype=dtype)
-    tensor = np.array(tensor[0:length], dtype=dtype)
-    return tensor
-
-  return _func
-
-
-def _write_checkpoint(test, session):
-  save = saver.Saver()
-  ckpt_prefix = os.path.join(test.get_temp_dir(), 'model')
-  save.save(session, ckpt_prefix, global_step=0)
-
-
 def _get_meta_file(ckpt_dir):
   for fname in os.listdir(ckpt_dir):
     if fname.endswith(".meta"):
@@ -276,22 +219,10 @@ class VariableTest(test.TestCase):
 
   def test_variable(self):
     id = 0
-    if test_util.is_gpu_available():
-      dim_list = [1, 2, 4, 8, 10, 16, 32, 64, 100, 200]
-      kv_list = [[dtypes.int64, dtypes.float32], [dtypes.int64, dtypes.int32],
-                 [dtypes.int64, dtypes.half], [dtypes.int64, dtypes.int8],
-                 [dtypes.int64, dtypes.int64]]
-    else:
-      dim_list = [1, 8, 16, 128]
-      kv_list = [[dtypes.int32, dtypes.double], [dtypes.int32, dtypes.float32],
-                 [dtypes.int32, dtypes.int32], [dtypes.int64, dtypes.double],
-                 [dtypes.int64, dtypes.float32], [dtypes.int64, dtypes.int32],
-                 [dtypes.int64, dtypes.int64], [dtypes.int64, dtypes.string],
-                 [dtypes.int64, dtypes.int8], [dtypes.int64, dtypes.half],
-                 [dtypes.string, dtypes.double],
-                 [dtypes.string, dtypes.float32], [dtypes.string, dtypes.int32],
-                 [dtypes.string, dtypes.int64], [dtypes.string, dtypes.int8],
-                 [dtypes.string, dtypes.half]]
+    dim_list = [1, 2, 4, 8, 10, 16, 32, 64, 100, 200]
+    kv_list = [[dtypes.int64, dtypes.float32], [dtypes.int64, dtypes.int32],
+               [dtypes.int64, dtypes.half], [dtypes.int64, dtypes.int8],
+               [dtypes.int64, dtypes.int64]]
 
     def _convert(v, t):
       return np.array(v).astype(_type_converter(t))
@@ -351,20 +282,9 @@ class VariableTest(test.TestCase):
 
   def test_variable_find_with_exists_and_accum(self):
     id = 0
-    if test_util.is_gpu_available():
-      dim_list = [1, 2, 4, 8, 10, 16, 32, 64, 100, 200]
-      kv_list = [[dtypes.int64, dtypes.float32], [dtypes.int64, dtypes.int32],
-                 [dtypes.int64, dtypes.half], [dtypes.int64, dtypes.int8]]
-    else:
-      dim_list = [1, 8, 16, 128]
-      kv_list = [[dtypes.int32, dtypes.double], [dtypes.int32, dtypes.float32],
-                 [dtypes.int32, dtypes.int32], [dtypes.int64, dtypes.double],
-                 [dtypes.int64, dtypes.float32], [dtypes.int64, dtypes.int32],
-                 [dtypes.int64, dtypes.int64], [dtypes.int64, dtypes.int8],
-                 [dtypes.int64, dtypes.half], [dtypes.string, dtypes.double],
-                 [dtypes.string, dtypes.float32], [dtypes.string, dtypes.int32],
-                 [dtypes.string, dtypes.int64], [dtypes.string, dtypes.int8],
-                 [dtypes.string, dtypes.half]]
+    dim_list = [1, 2, 4, 8, 10, 16, 32, 64, 100, 200]
+    kv_list = [[dtypes.int64, dtypes.float32], [dtypes.int64, dtypes.int32],
+               [dtypes.int64, dtypes.half], [dtypes.int64, dtypes.int8]]
 
     def _convert(v, t):
       return np.array(v).astype(_type_converter(t))
@@ -1088,6 +1008,415 @@ class VariableTest(test.TestCase):
 
       result = self.evaluate(output)
       self.assertNotEqual([-1.0], result[2])
+
+  def test_merlin_kv_variable_insert_lookup_with_default_metas(self):
+    for allow_duplicated_keys in [False]:
+      with self.session(use_gpu=test_util.is_gpu_available(),
+                        config=default_config):
+        DIM = 2
+        default_val = [0.1] * DIM
+        default_buckets_size = 128
+        key_num_for_base = default_buckets_size
+        key_num_for_test = 2
+
+        def create_keys_in_one_bucket(
+            num=128,
+            min=0,
+            max=0x7FFFFFFFFFFFFFFF,
+            bucket_num=2,
+            target_bucket=0,
+        ):
+          keys = set()
+          while len(keys) < num:
+            key = np.random.randint(min, max, size=1, dtype=np.int64)[0]
+            hashed_key = Murmur3Hash(key)
+            if hashed_key % bucket_num == target_bucket:
+              keys.add(key)
+          return list(keys)
+
+        raw_base_keys = create_keys_in_one_bucket(key_num_for_base,
+                                                  min=0,
+                                                  max=0x3FFFFFFFFFFFFFFF)
+
+        raw_test_keys = create_keys_in_one_bucket(
+            key_num_for_test, min=0x3FFFFFFFFFFFFFFF,
+            max=0x7FFFFFFFFFFFFFFF) + raw_base_keys[72:74]
+        key_num_for_test = 4
+
+        base_keys = constant_op.constant(raw_base_keys, dtypes.int64)
+        base_values = constant_op.constant(
+            [[i * 0.1] * DIM for i in range(key_num_for_base)], dtypes.float32)
+
+        test_keys = constant_op.constant(raw_test_keys, dtypes.int64)
+        test_values = constant_op.constant(
+            [[i * 100.0] * DIM for i in range(key_num_for_test)],
+            dtypes.float32)
+        table = mkv.get_variable("y001" + str(allow_duplicated_keys),
+                                 dtypes.int64,
+                                 dtypes.float32,
+                                 dim=DIM,
+                                 init_size=256,
+                                 initializer=default_val)
+        self.assertAllEqual(0, self.evaluate(table.size()))
+
+        self.evaluate(
+            table.upsert(base_keys,
+                         base_values,
+                         allow_duplicated_keys=allow_duplicated_keys))
+        self.assertAllEqual(min(default_buckets_size, key_num_for_base),
+                            self.evaluate(table.size()))
+
+        export_keys, export_values = table.export()
+        export_keys_np = self.evaluate(export_keys)
+
+        lookup_values, lookup_metas = table.lookup(base_keys, return_metas=True)
+
+        lookup_values_np = self.evaluate(lookup_values)
+        lookup_metas_np = self.evaluate(lookup_metas)
+
+        all_keys_np = self.evaluate(base_keys)
+        all_values_np = self.evaluate(base_values)
+        expected_values = all_values_np[np.where(
+            np.in1d(all_keys_np, export_keys_np))[0]]
+
+        sorted_metas = np.sort(lookup_metas_np, axis=0)
+        self.assertAllEqual(list(range(1, key_num_for_base + 1)), sorted_metas)
+        self.assertAllCloseAccordingToType(expected_values, lookup_values_np)
+
+        # simulate upsert when the buckets are full.
+        self.evaluate(
+            table.upsert(test_keys,
+                         test_values,
+                         allow_duplicated_keys=allow_duplicated_keys))
+        self.assertAllEqual(default_buckets_size, self.evaluate(table.size()))
+
+        export_keys, export_values = table.export()
+        export_keys_np = self.evaluate(export_keys)
+
+        lookup_values, lookup_metas = table.lookup(test_keys, return_metas=True)
+
+        lookup_values_np = self.evaluate(lookup_values)
+        lookup_metas_np = self.evaluate(lookup_metas)
+
+        all_keys_np = self.evaluate(test_keys)
+        all_values_np = self.evaluate(test_values)
+        expected_values = all_values_np[np.where(
+            np.in1d(all_keys_np, export_keys_np))[0]]
+
+        sorted_metas = np.sort(lookup_metas_np, axis=0)
+        self.assertAllEqual(
+            list(
+                range(key_num_for_base + 1,
+                      key_num_for_base + key_num_for_test + 1)), sorted_metas)
+        self.assertAllCloseAccordingToType(expected_values, lookup_values_np)
+
+  def test_merlin_kv_variable_with_customized_metas_regular_test(self):
+    for allow_duplicated_keys in [True, False]:
+      with self.session(use_gpu=test_util.is_gpu_available(),
+                        config=default_config):
+        DIM = 64
+        default_val = [0.1] * DIM
+        default_buckets_size = 128
+        key_num_for_base = default_buckets_size
+        key_num_for_test = 64
+
+        def create_keys_in_one_bucket(
+            num=128,
+            min=0,
+            max=0x7FFFFFFFFFFFFFFF,
+            bucket_num=2,
+            target_bucket=0,
+        ):
+          keys = set()
+          while len(keys) < num:
+            key = np.random.randint(min, max, size=1, dtype=np.int64)[0]
+            hashed_key = Murmur3Hash(key)
+            if hashed_key % bucket_num == target_bucket:
+              keys.add(key)
+          return list(keys)
+
+        raw_base_keys = create_keys_in_one_bucket(key_num_for_base,
+                                                  min=0,
+                                                  max=0x3FFFFFFFFFFFFFFF)
+        raw_test_keys = create_keys_in_one_bucket(
+            key_num_for_test, min=0x3FFFFFFFFFFFFFFF,
+            max=0x7FFFFFFFFFFFFFFF) + raw_base_keys[64:]
+        key_num_for_test += (key_num_for_base - 64)
+
+        base_meta_start = 1000
+        base_meta_end = base_meta_start + key_num_for_base
+        base_keys = constant_op.constant(raw_base_keys, dtypes.int64)
+        base_values = constant_op.constant(
+            [[i * 0.1] * DIM for i in range(key_num_for_base)], dtypes.float32)
+        base_metas = constant_op.constant(
+            [i for i in range(base_meta_start, base_meta_end)], dtypes.int64)
+
+        test_meta_start = base_meta_end
+        test_meta_end = test_meta_start + key_num_for_test
+        test_keys = constant_op.constant(raw_test_keys, dtypes.int64)
+        test_values = constant_op.constant(
+            [[i * 1.0] * DIM for i in range(key_num_for_test)], dtypes.float32)
+
+        raw_test_metas = [i for i in range(test_meta_start, test_meta_end)]
+        test_metas = constant_op.constant(raw_test_metas, dtypes.int64)
+
+        table = mkv.get_variable("y002" + str(allow_duplicated_keys),
+                                 dtypes.int64,
+                                 dtypes.float32,
+                                 dim=DIM,
+                                 init_size=256,
+                                 initializer=default_val)
+        self.assertAllEqual(0, self.evaluate(table.size()))
+
+        self.evaluate(
+            table.upsert(base_keys,
+                         base_values,
+                         base_metas,
+                         allow_duplicated_keys=allow_duplicated_keys))
+        self.assertAllEqual(min(default_buckets_size, key_num_for_base),
+                            self.evaluate(table.size()))
+
+        export_keys, export_values = table.export()
+        export_keys_np = self.evaluate(export_keys)
+
+        lookup_values, lookup_metas = table.lookup(base_keys, return_metas=True)
+
+        lookup_values_np = self.evaluate(lookup_values)
+        lookup_metas_np = self.evaluate(lookup_metas)
+
+        all_keys_np = self.evaluate(base_keys)
+        all_values_np = self.evaluate(base_values)
+        expected_values = all_values_np[np.where(
+            np.in1d(all_keys_np, export_keys_np))[0]]
+
+        sorted_metas = np.sort(lookup_metas_np, axis=0)
+        self.assertAllEqual(list(range(base_meta_start, base_meta_end)),
+                            sorted_metas)
+        self.assertAllCloseAccordingToType(expected_values, lookup_values_np)
+
+        # simulate upsert when the buckets are full.
+        self.evaluate(
+            table.upsert(test_keys,
+                         test_values,
+                         test_metas,
+                         allow_duplicated_keys=allow_duplicated_keys))
+        self.assertAllEqual(default_buckets_size, self.evaluate(table.size()))
+
+        export_keys, export_values = table.export()
+        export_keys_np = self.evaluate(export_keys)
+
+        lookup_values, lookup_metas = table.lookup(test_keys, return_metas=True)
+
+        lookup_values_np = self.evaluate(lookup_values)
+        lookup_metas_np = self.evaluate(lookup_metas)
+
+        all_keys_np = self.evaluate(test_keys)
+        all_values_np = self.evaluate(test_values)
+        expected_values = all_values_np[np.where(
+            np.in1d(all_keys_np, export_keys_np))[0]]
+
+        sorted_metas = np.sort(lookup_metas_np, axis=0)
+        self.assertAllEqual(list(range(test_meta_start, test_meta_end)),
+                            sorted_metas)
+        self.assertAllCloseAccordingToType(expected_values, lookup_values_np)
+
+  def test_merlin_kv_variable_with_customized_metas_special_test(self):
+    for allow_duplicated_keys in [True, False]:
+      with self.session(use_gpu=test_util.is_gpu_available(),
+                        config=default_config):
+        DIM = 2
+        default_val = [0.1] * DIM
+        default_buckets_size = 128
+        key_num_for_base = default_buckets_size
+        key_num_for_test = 4
+
+        def create_keys_in_one_bucket(
+            num=128,
+            min=0,
+            max=0x7FFFFFFFFFFFFFFF,
+            bucket_num=2,
+            target_bucket=0,
+        ):
+          keys = set()
+          while len(keys) < num:
+            key = np.random.randint(min, max, size=1, dtype=np.int64)[0]
+            hashed_key = Murmur3Hash(key)
+            if hashed_key % bucket_num == target_bucket:
+              keys.add(key)
+          return list(keys)
+
+        raw_base_keys = create_keys_in_one_bucket(key_num_for_base,
+                                                  min=0,
+                                                  max=0x3FFFFFFFFFFFFFFF)
+        raw_test_keys = create_keys_in_one_bucket(
+            key_num_for_test, min=0x3FFFFFFFFFFFFFFF,
+            max=0x7FFFFFFFFFFFFFFF) + raw_base_keys[72:76]
+        key_num_for_test += 4
+        raw_test_values = [[i * 1.0] * DIM for i in range(key_num_for_test)]
+
+        base_meta_start = 1000
+        base_meta_end = base_meta_start + key_num_for_base
+        base_keys = constant_op.constant(raw_base_keys, dtypes.int64)
+        base_values = constant_op.constant(
+            [[i * 0.1] * DIM for i in range(key_num_for_base)], dtypes.float32)
+        base_metas = constant_op.constant(
+            [i for i in range(base_meta_start, base_meta_end)], dtypes.int64)
+
+        test_meta_start = base_meta_end
+        test_meta_end = test_meta_start + key_num_for_test
+        test_keys = constant_op.constant(raw_test_keys, dtypes.int64)
+        test_values = constant_op.constant(raw_test_values, dtypes.float32)
+
+        raw_test_metas = [i for i in range(test_meta_start, test_meta_end)]
+        # replace three new keys to lower metas, would not be inserted.
+        raw_test_metas[0] = 200
+        raw_test_metas[1] = 78
+        raw_test_metas[2] = 101
+
+        # replace three exist keys to lower metas, just refresh the meta for them.
+        raw_test_metas[4] = 99
+        raw_test_metas[5] = 98
+        raw_test_metas[6] = 100
+
+        test_metas = constant_op.constant(raw_test_metas, dtypes.int64)
+        test_expected_metas = [
+            0, 0, 0, raw_test_metas[3], 99, 98, 100, raw_test_metas[7]
+        ]
+        test_expected_values = [default_val, default_val, default_val
+                               ] + raw_test_values[3:]
+
+        table = mkv.get_variable("y004" + str(allow_duplicated_keys),
+                                 dtypes.int64,
+                                 dtypes.float32,
+                                 dim=DIM,
+                                 init_size=256,
+                                 initializer=default_val)
+        self.assertAllEqual(0, self.evaluate(table.size()))
+
+        self.evaluate(
+            table.upsert(base_keys,
+                         base_values,
+                         base_metas,
+                         allow_duplicated_keys=allow_duplicated_keys))
+        self.assertAllEqual(min(default_buckets_size, key_num_for_base),
+                            self.evaluate(table.size()))
+
+        export_keys, export_values = table.export()
+        export_keys_np = self.evaluate(export_keys)
+
+        lookup_values, lookup_metas = table.lookup(base_keys, return_metas=True)
+
+        lookup_values_np = self.evaluate(lookup_values)
+        lookup_metas_np = self.evaluate(lookup_metas)
+
+        all_keys_np = self.evaluate(base_keys)
+        all_values_np = self.evaluate(base_values)
+        expected_values = all_values_np[np.where(
+            np.in1d(all_keys_np, export_keys_np))[0]]
+
+        sorted_metas = np.sort(lookup_metas_np, axis=0)
+        self.assertAllEqual(list(range(base_meta_start, base_meta_end)),
+                            sorted_metas)
+        self.assertAllCloseAccordingToType(expected_values, lookup_values_np)
+
+        # simulate upsert when the buckets are full.
+        self.evaluate(
+            table.upsert(test_keys,
+                         test_values,
+                         test_metas,
+                         allow_duplicated_keys=allow_duplicated_keys))
+        self.assertAllEqual(default_buckets_size, self.evaluate(table.size()))
+
+        lookup_values, lookup_metas = table.lookup(test_keys, return_metas=True)
+
+        lookup_values_np = self.evaluate(lookup_values)
+        lookup_metas_np = self.evaluate(lookup_metas)
+
+        self.assertAllCloseAccordingToType(test_expected_values,
+                                           lookup_values_np)
+        self.assertAllEqual(test_expected_metas, lookup_metas_np)
+
+  def test_merlin_kv_variable_customized_metas_on_big_table(self):
+    if context.executing_eagerly():
+      self.skipTest('skip eager test when using legacy Saver.')
+
+    print(
+        '\033[93m' +
+        "[Warning]: the case of 'test_merlin_kv_variable_customized_metas_on_big_table' could take several minutes!"
+        + '\033[0m')
+    for allow_duplicated_keys in [False]:
+      with self.session(use_gpu=test_util.is_gpu_available(),
+                        config=default_config):
+        DIM = 2
+        default_val = [0.8] * DIM
+        batch_size = 1048576
+        capacity = batch_size * 128  # capacity = 134,217,728
+        steps = 128
+        start = 1000000000
+        rounds = 3
+        expected_correct_rate = 0.964
+
+        keys = script_ops.py_func(
+            _create_dynamic_shape_continous_tensor(start=start,
+                                                   length=batch_size),
+            inp=[],
+            Tout=dtypes.int64,
+            stateful=True,
+        )
+        values = math_ops.cast(
+            array_ops.repeat(array_ops.reshape(keys, [-1, 1]),
+                             repeats=DIM,
+                             axis=1), dtypes.float32) / (1.0 * start)
+        metas = keys
+
+        table = mkv.get_variable("y006" + str(allow_duplicated_keys),
+                                 dtypes.int64,
+                                 dtypes.float32,
+                                 dim=DIM,
+                                 init_size=capacity,
+                                 initializer=default_val)
+        self.assertAllEqual(0, self.evaluate(table.size()))
+        np.set_printoptions(suppress=True)
+
+        upsert_op = table.upsert(keys,
+                                 values,
+                                 metas,
+                                 allow_duplicated_keys=allow_duplicated_keys)
+        size_op = table.size()
+        export_keys, export_values = table.export()
+        lookup_values, lookup_metas = table.lookup(export_keys,
+                                                   return_metas=True)
+        for r in range(rounds):
+          expected_min_key = start + capacity * r
+          expected_max_key = start + capacity * (r + 1) - 1
+          expected_table_size = int(expected_correct_rate *
+                                    capacity) if r == 0 else capacity
+          for s in range(steps):
+            self.evaluate(upsert_op)
+          self.assertAllGreaterEqual(self.evaluate(size_op),
+                                     expected_table_size)
+
+          export_keys_np, lookup_values_np, lookup_metas_np = self.evaluate(
+              [export_keys, lookup_values, lookup_metas])
+          expeted_values_np = np.repeat(np.reshape(export_keys_np,
+                                                   [-1, 1]).astype(float),
+                                        repeats=DIM,
+                                        axis=1) / (1.0 * start)
+
+          self.assertAllCloseAccordingToType(export_keys_np, lookup_metas_np)
+          self.assertAllCloseAccordingToType(expeted_values_np,
+                                             lookup_values_np,
+                                             rtol=1e-03,
+                                             atol=1e-03)
+
+          correct_rate = (lookup_metas_np >= expected_min_key).sum() / capacity
+
+          self.assertAllGreaterEqual(correct_rate, expected_correct_rate)
+          max_key_np = np.max(export_keys_np)
+          self.assertAllEqual(expected_max_key, max_key_np)
+          print('\033[92m' +
+                "[Round {}] correct_rate={:.4f}".format(r, correct_rate) +
+                '\033[0m')
 
 
 if __name__ == "__main__":

@@ -356,7 +356,7 @@ def _find_cublas_config(base_paths, required_version, cuda_version):
 
 def _find_cusolver_config(base_paths, required_version, cuda_version):
 
-  if _at_least_version(cuda_version, "11.0"):
+  if _at_least_version(cuda_version, "11.2"):
 
     def get_header_version(path):
       version = (_get_header_version(path, name) for name in (
@@ -387,7 +387,7 @@ def _find_cusolver_config(base_paths, required_version, cuda_version):
 
 def _find_curand_config(base_paths, required_version, cuda_version):
 
-  if _at_least_version(cuda_version, "11.0"):
+  if _at_least_version(cuda_version, "11.2"):
 
     def get_header_version(path):
       version = (_get_header_version(path, name)
@@ -416,7 +416,7 @@ def _find_curand_config(base_paths, required_version, cuda_version):
 
 def _find_cufft_config(base_paths, required_version, cuda_version):
 
-  if _at_least_version(cuda_version, "11.0"):
+  if _at_least_version(cuda_version, "11.2"):
 
     def get_header_version(path):
       version = (_get_header_version(path, name)
@@ -469,7 +469,7 @@ def _find_cudnn_config(base_paths, required_version):
 
 def _find_cusparse_config(base_paths, required_version, cuda_version):
 
-  if _at_least_version(cuda_version, "11.0"):
+  if _at_least_version(cuda_version, "11.2"):
 
     def get_header_version(path):
       version = (_get_header_version(path, name) for name in (

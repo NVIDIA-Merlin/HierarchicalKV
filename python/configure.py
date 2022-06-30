@@ -236,10 +236,7 @@ def create_build_configuration():
 
   if os.path.isfile(_MKV_BAZELRC):
     os.remove(_MKV_BAZELRC)
-  if is_linux():
-    check_bazel_version()
-  if is_macos() and is_arm64():
-    check_bazel_version_for_macOS_arm64()
+
   extract_tf_header()
   logging.disable(logging.WARNING)
 
@@ -251,8 +248,6 @@ def create_build_configuration():
   tf_version_integer = get_tf_version_integer()
   # This is used to trace the difference between Tensorflow versions.
   write_action_env("TF_VERSION_INTEGER", tf_version_integer)
-
-  write_action_env("FOR_TF_SERVING", os.getenv("FOR_TF_SERVING", "0"))
 
   write("build --spawn_strategy=standalone")
   write("build --strategy=Genrule=standalone")
@@ -290,8 +285,8 @@ def configure_cuda():
       "CUDNN_INSTALL_PATH",
       os.getenv("CUDNN_INSTALL_PATH", "/usr/lib/x86_64-linux-gnu"),
   )
-  write_action_env("TF_CUDA_VERSION", os.getenv("TF_CUDA_VERSION", "11.0"))
-  write_action_env("TF_CUDNN_VERSION", os.getenv("TF_CUDNN_VERSION", "8.0"))
+  write_action_env("TF_CUDA_VERSION", os.getenv("TF_CUDA_VERSION", "11.2"))
+  write_action_env("TF_CUDNN_VERSION", os.getenv("TF_CUDNN_VERSION", "8.1"))
 
   write("test --config=cuda")
   write("build --config=cuda")

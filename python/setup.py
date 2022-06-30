@@ -46,7 +46,7 @@ def get_project_name_version():
     exec(fp.read(), version)
 
   project_name = "merlin-kv"
-  version["tf_project_name"] = "tensorflow-gpu"
+  version["tf_project_name"] = "tensorflow"
 
   if "--nightly" in sys.argv:
     project_name = "mkv-nightly"

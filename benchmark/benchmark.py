@@ -62,7 +62,7 @@ os.environ['TF_HASHTABLE_INIT_SIZE'] = "33554432"
 test_list = []
 for dim, test_times, items_num in \
     itertools.product(
-      [8, 64, 128],  [20, ], [1024, 8192, 16384, 32768, 65536, 131072, 1048576
+      [8, 64, 128],  [20, ], [1024, 8192, 16384, 65536, 131072, 1048576
                 ]):
   maxval = items_num * test_times * 10
   upsert_cpu, lookup_cpu, size_cpu = one_test(dim, items_num, '/GPU:0',
