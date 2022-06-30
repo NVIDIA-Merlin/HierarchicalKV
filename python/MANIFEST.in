@@ -1,0 +1,2 @@
+recursive-include merlin_kv *.so
+include docs/*

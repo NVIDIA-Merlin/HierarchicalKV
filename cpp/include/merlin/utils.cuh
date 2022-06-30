@@ -126,6 +126,10 @@ inline void merlin_check_(bool cond, const std::string& msg, const char* file,
 #define MERLIN_CHECK(cond, msg) \
   { nv::merlin::merlin_check_((cond), (msg), __FILE__, __LINE__); }
 
+#define GET_GRID_SIZE(N)                                                      \
+  ((N) > std::numeric_limits<int>::max()) ? ((1 << 30 - 1) / block_size_ + 1) \
+                                          : (((N)-1) / block_size_ + 1);
+
 inline uint64_t Murmur3HashHost(const uint64_t& key) {
   uint64_t k = key;
   k ^= k >> 33;

@@ -193,7 +193,9 @@ int test_main() {
                   KEY_NUM, stream, false);
     auto end_accum = std::chrono::steady_clock::now();
 
+    auto start_size = std::chrono::steady_clock::now();
     total_size = table_->get_size(stream);
+    auto end_size = std::chrono::steady_clock::now();
     std::cout << "after accum: total_size = " << total_size << std::endl;
 
     table_->clear(stream);
