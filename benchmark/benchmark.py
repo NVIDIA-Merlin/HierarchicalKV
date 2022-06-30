@@ -1,5 +1,5 @@
 import tensorflow.compat.v1 as tf
-import tensorflow_recommenders_addons as tfra
+from merlin_kv import tensorflow as mkv
 import time
 import itertools, os
 from tabulate import tabulate
@@ -23,15 +23,17 @@ def one_test(dim, items_num, device, test_times, maxval):
                                       dtype=tf.int64,
                                       seed=None,
                                       name=None)
-      de = tfra.dynamic_embedding.get_variable("benchmark",
-                                               tf.int64,
-                                               tf.float32,
-                                               devices=[device],
-                                               initializer=0.0,
-                                               dim=dim)
+      de = mkv.get_variable("tf_benchmark",
+                            tf.int64,
+                            tf.float32,
+                            devices=[device],
+                            initializer=0.0,
+                            dim=dim)
       default_vals_for_insert = tf.constant([[0.0] * dim] * items_num)
       lookup_op = de.lookup(random_keys)
-      insert_op = de.upsert(random_keys, default_vals_for_insert)
+      insert_op = de.upsert(random_keys,
+                            default_vals_for_insert,
+                            allow_duplicated_keys=False)
       size_op = de.size()
     sess.run(random_keys)
     start_time = time.time()
@@ -63,7 +65,7 @@ for dim, test_times, items_num in \
       [8, 64, 128],  [20, ], [1024, 8192, 16384, 32768, 65536, 131072, 1048576
                 ]):
   maxval = items_num * test_times * 10
-  upsert_cpu, lookup_cpu, size_cpu = one_test(dim, items_num, '/CPU:0',
+  upsert_cpu, lookup_cpu, size_cpu = one_test(dim, items_num, '/GPU:0',
                                               test_times, maxval)
   upsert_gpu, lookup_gpu, size_gpu = one_test(dim, items_num, '/GPU:0',
                                               test_times, maxval)

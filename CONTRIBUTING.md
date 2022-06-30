@@ -1,13 +1,15 @@
 # Contributing
 
-TensorFlow Recommender Addons are a collection of projects related to
-large-scale recommendation systems built upon TensorFlow. They are contributed
-and maintained by the community. Those contributions will be complementary to
-TensorFlow Core and TensorFlow Recommenders etc.
+What's the Merlin-HKVS?
+
+- A hierarchical key-value storage library designed for the large models in recommenders systems
+- Storing the key-value (embedding) on the HBM and Host memory (support SSD/NVMe in the future)
+- The performance is close to those implementations running on pure HBM thru innovative design
+- Can also be used as a generic key-value storage
 
 ## Maintainership
 
-We adopt proxy maintainership as in [Merlin HKVS](https://github.com/nvidia/merlin-hkvs):
+We adopt proxy maintainership as in [Merlin KV](https://github.com/NVIDIA-Merlin/merlin-kv):
 
 *Projects and subpackages are compartmentalized and each is maintained by those
 with expertise and vested interest in that component.*
@@ -21,16 +23,15 @@ the repo.*
 
 ## Contributing
 
-Merlin HVKS is a community-led open source project. As such,
+Merlin-KV is a community-led open source project. As such,
 the project depends on public contributions, bug fixes, and documentation. This
-project adheres to TensorFlow's Code of Conduct.
+project adheres to NVIDIA's Code of Conduct.
 
 ### Pull Requests
 We welcome contributions via pull requests.
 Before sending out a pull request, we recommend that you open an issue and
 discuss your proposed change. Some changes may require a design review.
-All submissions require review by project owners or TensorFlow Recommenders SIG
-leads.
+All submissions require review by project owners.
 
 **NOTE**:
 If your PR cannot be mereged, and system indicate you like "Merging is blocked, 
@@ -40,7 +41,7 @@ You have to configure your git and GPG key to sign your commit. [Sign your commi
 ### Design Review
 A new project in this repository or a significant change to an existing project
 requires a design review. We recommend that you discuss your idea in the mailing
-list (recommenders@tensorflow.org) before moving forward.
+list (merlinteam@nvidia.com) before moving forward.
 
 The centerpiece of a design review is a design doc which needs to include the following:
 * Motivation of the change
@@ -51,12 +52,11 @@ The centerpiece of a design review is a design doc which needs to include the fo
 * [Optional] maintenance plan
 
 The author needs to send out the design doc via a pull request. Project owners or
-TensorFlow SIG Recommenders leads will discuss proposals in a monthly meeting
+Merlin Team members will discuss proposals in a monthly meeting
 or an ad-hoc design review meeting. After a proposal is approved, the author
 could then start contributing the implementation.
 
 ### Coding Style
-We require all contribution conforms to [TensorFlow Style Guide](https://www.tensorflow.org/community/contribute/code_style#tensorflow_conventions_and_special_uses).
 See our [Style Guide](STYLE_GUIDE.md) for more details.
 
 ### Additional Requirements
@@ -66,7 +66,7 @@ In addition to the above requirements, contribution also needs to meet the follo
 
 ## Community
 
-* Merlin-HKVS code (github.com/nvidia/merlin-hkvs)
+* Merlin-KV code (https://github.com/NVIDIA-Merlin/merlin-kv)
 
 ## Licence
 Apache License 2.0

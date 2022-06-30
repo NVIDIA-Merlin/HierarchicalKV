@@ -45,6 +45,8 @@ struct Bucket {
      meta and its pos in the bucket. */
   M min_meta;
   int min_pos;
+
+  /* The number of saved key-value in this buckets */
   int size;
 };
 

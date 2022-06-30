@@ -1,7 +1,7 @@
 #### C++
 C++ code should conform to [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
 
-Addons uses [clang-format](https://clang.llvm.org/docs/ClangFormat.html)
+Merlin-KV uses [clang-format](https://clang.llvm.org/docs/ClangFormat.html)
 to check your C/C++ changes. Sometimes you have some manually formatted
 code that you don’t want clang-format to touch.
 You can disable formatting like this:
@@ -24,7 +24,7 @@ sudo apt install clang-format-9
 
 format all with:
 ```bash
-clang-format-9 -i --style=google ./tensorflow_recommenders_addons/**/*.cc ./tensorflow_recommenders_addons/**/*.h
+find ./ -iname *.h -o -iname *.cpp -o -iname *.cc -o -iname *.cu -o -iname *.cuh | xargs clang-format-9 -i --style=google
 ```
 
 Install Clang-format for MacOS:
@@ -35,11 +35,11 @@ brew install clang-format
 
 format all with:
 ```bash
-clang-format -i --style=google **/*.cc tensorflow_recommenders_addons/**/*.h
+clang-format -i --style=google **/*.cc merlin_kv/**/*.h
 ```
 
 #### Python
-Recommenders Addons use [Yapf](https://github.com/google/yapf) to format our code.
+Merlin-KV use [Yapf](https://github.com/google/yapf) to format our code.
 The continuous integration check will fail if you do not use it.
 
 Install them with:
@@ -50,7 +50,7 @@ pip install yapf
 Be sure to run it before you push your commits, otherwise the CI will fail!
 
 ```
-yapf --style=./.yapf -ir ./**/*.py
+find . -name '*.py' -print0 | xargs -0 yapf --style=./.yapf -ir
 ```
 
 #### Bazel BUILD
