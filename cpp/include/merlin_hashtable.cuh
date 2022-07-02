@@ -67,7 +67,6 @@ struct Vector {
  *  - Support the semantics of iterator::begin() and iterator::end()
  *  - Support SSD/NVMe device as part of storage
  */
-#define CUDA_ERROR_CHECK
 template <class K, class V, class M, size_t DIM>
 class HashTable {
  public:
