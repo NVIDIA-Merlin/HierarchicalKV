@@ -126,9 +126,27 @@ inline void merlin_check_(bool cond, const std::string& msg, const char* file,
 #define MERLIN_CHECK(cond, msg) \
   { nv::merlin::merlin_check_((cond), (msg), __FILE__, __LINE__); }
 
-#define GET_GRID_SIZE(N)                                                      \
-  ((N) > std::numeric_limits<int>::max()) ? ((1 << 30 - 1) / block_size_ + 1) \
-                                          : (((N)-1) / block_size_ + 1);
+static inline size_t SAFE_GET_GRID_SIZE(size_t N, int block_size) {
+  return ((N) > std::numeric_limits<int>::max())
+             ? ((1 << 30 - 1) / block_size + 1)
+             : (((N)-1) / block_size + 1);
+}
+
+static inline int SAFE_GET_BLOCK_SIZE(int block_size, int device = -1) {
+  cudaDeviceProp prop;
+  int current_device = device;
+  if (current_device == -1) {
+    CUDA_CHECK(cudaGetDevice(&current_device));
+  }
+  CUDA_CHECK(cudaGetDeviceProperties(&prop, current_device));
+  if (block_size > prop.maxThreadsPerBlock) {
+    fprintf(stdout,
+            "The requested block_size=%d exceeds the device limit, "
+            "the maxThreadsPerBlock=%d will be applied.\n",
+            block_size, prop.maxThreadsPerBlock);
+  }
+  return std::min(prop.maxThreadsPerBlock, block_size);
+}
 
 inline uint64_t Murmur3HashHost(const uint64_t& key) {
   uint64_t k = key;
