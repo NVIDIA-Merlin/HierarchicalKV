@@ -98,9 +98,9 @@ void initialize_buckets(Table<K, V, M, DIM> **table, size_t start, size_t end) {
    DIM: Vector dimension.
 */
 template <class K, class V, class M, size_t DIM>
-void create_table(Table<K, V, M, DIM> **table, uint64_t init_size = 134217728,
-                  uint64_t max_size = std::numeric_limits<uint64_t>::max(),
-                  uint64_t cache_size = 0, uint64_t buckets_size = 128,
+void create_table(Table<K, V, M, DIM> **table, size_t init_size = 134217728,
+                  size_t max_size = std::numeric_limits<size_t>::max(),
+                  size_t cache_size = 0, size_t buckets_size = 128,
                   bool vector_on_gpu = false, bool master = true,
                   size_t bytes_per_slice = kDefaultBytesPerSlice) {
   CUDA_CHECK(cudaMallocManaged((void **)table, sizeof(Table<K, V, M, DIM>)));
@@ -113,7 +113,7 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t init_size = 134217728,
   while ((*table)->buckets_num * (*table)->buckets_size < init_size) {
     (*table)->buckets_num *= 2;
   }
-  std::cout << "[merlin-kv] init requested capacity=" << init_size
+  std::cout << "[merlin-kv] requested capacity=" << init_size
             << ", real capacity="
             << (*table)->buckets_num * (*table)->buckets_size << std::endl;
   (*table)->capacity = (*table)->buckets_num * (*table)->buckets_size;
@@ -183,29 +183,40 @@ template <class K, class V, class M, size_t DIM>
 __global__ void rehash_kernel(const Table<K, V, M, DIM> *__restrict table,
                               size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_num = table->buckets_num;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_num = table->buckets_num;
+  const size_t buckets_size = table->buckets_size;
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int bkt_idx = t / buckets_size;
     int key_idx = t % buckets_size;
-    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-    K target_key = bucket->keys[key_idx];
-    if (target_key != EMPTY_KEY) {
-      K hashed_key = Murmur3HashDevice(target_key);
-      int key_bkt_idx = hashed_key % buckets_num;
+    bool release_lock = false;
+    while (!release_lock) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+        K target_key = bucket->keys[key_idx];
+        if (target_key != EMPTY_KEY) {
+          K hashed_key = Murmur3HashDevice(target_key);
+          int key_bkt_idx = hashed_key % buckets_num;
 
-      if (key_bkt_idx != bkt_idx) {
-        Bucket<K, V, M, DIM> *new_bucket = &(table->buckets[key_bkt_idx]);
-        atomicExch(&(new_bucket->keys[key_idx]), target_key);
-        atomicExch(&(bucket->keys[key_idx]), EMPTY_KEY);
+          if (key_bkt_idx != bkt_idx) {
+            Bucket<K, V, M, DIM> *new_bucket = &(table->buckets[key_bkt_idx]);
+            atomicExch(&(new_bucket->keys[key_idx]), target_key);
+            atomicExch(&(bucket->keys[key_idx]), EMPTY_KEY);
 
-        atomicExch(&(new_bucket->metas[key_idx].val),
-                   bucket->metas[key_idx].val);
-        atomicExch(&(bucket->metas[key_idx].val), 0ul);
-        for (int i = 0; i < DIM; i++) {
-          new_bucket->vectors[key_idx].value[i] =
-              bucket->vectors[key_idx].value[i];
+            atomicSub(&(bucket->size), 1);
+            atomicMax(&(bucket->size), 0);
+
+            atomicExch(&(new_bucket->metas[key_idx].val),
+                       bucket->metas[key_idx].val);
+            for (int i = 0; i < DIM; i++) {
+              new_bucket->vectors[key_idx].value[i] =
+                  bucket->vectors[key_idx].value[i];
+            }
+            atomicAdd(&(new_bucket->size), 1);
+            atomicMin(&(new_bucket->size), buckets_size);
+          }
         }
+        release_lock = true;
+        atomicExch(&(table->locks[bkt_idx]), 0u);
       }
     }
   }
@@ -369,10 +380,9 @@ __global__ void read_kernel(V **__restrict src, V *__restrict dst,
 }
 
 template <class K, class V, class M, size_t DIM>
-__inline__ __device__ void find_in_bucket(const Bucket<K, V, M, DIM> *bucket,
-                                          const uint64_t buckets_size,
-                                          const K &insert_key, int *key_pos,
-                                          bool *found, bool *empty) {
+__forceinline__ __device__ void find_in_bucket(
+    const Bucket<K, V, M, DIM> *bucket, const size_t buckets_size,
+    const K &insert_key, int *key_pos, bool *found, bool *empty) {
   for (int i = 0; i < buckets_size; i++) {
     if (bucket->keys[i] == insert_key) {
       *found = true;
@@ -391,11 +401,10 @@ __inline__ __device__ void find_in_bucket(const Bucket<K, V, M, DIM> *bucket,
 }
 
 template <class K, class V, class M, size_t DIM>
-__inline__ __device__ void find_in_bucket(const Bucket<K, V, M, DIM> *bucket,
-                                          const uint64_t buckets_size,
-                                          const K &insert_key, int *key_pos,
-                                          bool *found, bool *empty,
-                                          const bool existed) {
+__forceinline__ __device__ void find_in_bucket(
+    const Bucket<K, V, M, DIM> *bucket, const size_t buckets_size,
+    const K &insert_key, int *key_pos, bool *found, bool *empty,
+    const bool existed) {
   for (int i = 0; i < buckets_size; i++) {
     if (bucket->keys[i] == insert_key) {
       *found = true;
@@ -415,10 +424,9 @@ __inline__ __device__ void find_in_bucket(const Bucket<K, V, M, DIM> *bucket,
 }
 
 template <class K, class V, class M, size_t DIM>
-__inline__ __device__ void insert_if_empty(const Bucket<K, V, M, DIM> *bucket,
-                                           const uint64_t buckets_size,
-                                           const K &insert_key, int *key_pos,
-                                           bool *empty) {
+__forceinline__ __device__ void insert_if_empty(
+    const Bucket<K, V, M, DIM> *bucket, const size_t buckets_size,
+    const K &insert_key, int *key_pos, bool *empty) {
   for (int i = 0; i < buckets_size; i++) {
     K old_key = atomicCAS(&(bucket->keys[i]), EMPTY_KEY, insert_key);
     if (old_key == EMPTY_KEY) {
@@ -430,11 +438,10 @@ __inline__ __device__ void insert_if_empty(const Bucket<K, V, M, DIM> *bucket,
 }
 
 template <class K, class V, class M, size_t DIM>
-__inline__ __device__ void insert_if_empty(const Bucket<K, V, M, DIM> *bucket,
-                                           const uint64_t buckets_size,
-                                           const K &insert_key, int *key_pos,
-                                           bool *empty, const bool found,
-                                           const bool existed) {
+__forceinline__ __device__ void insert_if_empty(
+    const Bucket<K, V, M, DIM> *bucket, const size_t buckets_size,
+    const K &insert_key, int *key_pos, bool *empty, const bool found,
+    const bool existed) {
   if (found != existed) return;
   for (int i = 0; i < buckets_size; i++) {
     K old_key = atomicCAS(&(bucket->keys[i]), EMPTY_KEY, insert_key);
@@ -447,8 +454,8 @@ __inline__ __device__ void insert_if_empty(const Bucket<K, V, M, DIM> *bucket,
 }
 
 template <class K, class V, class M, size_t DIM>
-__inline__ __device__ void refresh_bucket_meta(Bucket<K, V, M, DIM> *bucket,
-                                               const uint64_t buckets_size) {
+__forceinline__ __device__ void refresh_bucket_meta(
+    Bucket<K, V, M, DIM> *bucket, const size_t buckets_size) {
   M min_val = MAX_META;
   int min_pos = 0;
   for (int i = 0; i < buckets_size; i++) {
@@ -493,7 +500,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
     int key_idx = t;
     K hashed_key = Murmur3HashDevice(keys[t]);
     int bkt_idx = hashed_key % table->buckets_num;
-    const uint64_t buckets_size = table->buckets_size;
+    const size_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
     bool found = status[key_idx];
     bool empty = false;
@@ -507,6 +514,10 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
           key_pos = bucket_offset[key_idx];
         } else {
           insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty);
+          if (empty) {
+            atomicAdd(&(bucket->size), 1);
+            atomicMin(&(bucket->size), buckets_size);
+          }
         }
 
         /// Insert if either of the following cases is fulfilled:
@@ -527,8 +538,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 
           /// Record storage offset. This will be used by write_kernel to map
           /// the input to the output data.
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
+          atomicCAS((size_t *)&(vectors[t]), (size_t)(nullptr),
+                    (size_t)((V *)(bucket->vectors) + key_pos));
           atomicExch(&(src_offset[key_idx]), key_idx);
         }
         release_lock = true;
@@ -541,7 +552,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 /* Upsert with no user specified meta.
    The meta will be specified by kernel internally according to
    the `bucket->cur_meta` which always increment by 1 when insert happens,
-   we assume the cur_meta with `uint64_t` type will never overflow.
+   we assume the cur_meta with `size_t` type will never overflow.
 */
 template <class K, class V, class M, size_t DIM>
 __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
@@ -556,7 +567,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
     int key_idx = t;
     K hashed_key = Murmur3HashDevice(keys[t]);
     int bkt_idx = hashed_key % table->buckets_num;
-    const uint64_t buckets_size = table->buckets_size;
+    const size_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
     bool found = status[key_idx];
     bool empty = false;
@@ -569,6 +580,10 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
           key_pos = bucket_offset[key_idx];
         } else {
           insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty);
+          if (empty) {
+            atomicAdd(&(bucket->size), 1);
+            atomicMin(&(bucket->size), buckets_size);
+          }
         }
 
         key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
@@ -577,8 +592,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
         atomicExch(&(bucket->metas[key_pos].val), cur_meta);
 
         refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-        atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                  (uint64_t)((V *)(bucket->vectors) + key_pos));
+        atomicCAS((size_t *)&(vectors[t]), (size_t)(nullptr),
+                  (size_t)((V *)(bucket->vectors) + key_pos));
         atomicExch(&(src_offset[key_idx]), key_idx);
         release_lock = true;
         atomicExch(&(table->locks[bkt_idx]), 0u);
@@ -588,7 +603,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
 }
 
 template <class K, class V, class M, size_t DIM>
-__global__ void upsert_allow_duplicate_keys_kernel(
+__global__ void upsert_allow_duplicated_keys_kernel(
     const Table<K, V, M, DIM> *__restrict table, const K *__restrict keys,
     const M *__restrict metas, V **__restrict vectors,
     int *__restrict src_offset, size_t N) {
@@ -601,7 +616,7 @@ __global__ void upsert_allow_duplicate_keys_kernel(
     int key_idx = t;
     K hashed_key = Murmur3HashDevice(keys[t]);
     int bkt_idx = hashed_key % table->buckets_num;
-    const uint64_t buckets_size = table->buckets_size;
+    const size_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
 
     bool release_lock = false;
@@ -613,14 +628,16 @@ __global__ void upsert_allow_duplicate_keys_kernel(
         if (metas[key_idx] >= bucket->min_meta || found || empty) {
           if (!found) {
             key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
-            atomicAdd(&(bucket->size), 1);
-            atomicMin(&(bucket->size), buckets_size);
+            if (empty) {
+              atomicAdd(&(bucket->size), 1);
+              atomicMin(&(bucket->size), buckets_size);
+            }
           }
           atomicExch(&(bucket->keys[key_pos]), insert_key);
           atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
           refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
+          atomicCAS((size_t *)&(vectors[t]), (size_t)(nullptr),
+                    (size_t)((V *)(bucket->vectors) + key_pos));
         }
         atomicExch(&(src_offset[key_idx]), key_idx);
         release_lock = true;
@@ -633,10 +650,10 @@ __global__ void upsert_allow_duplicate_keys_kernel(
 /* Upsert with no user specified meta.
    The meta will be specified by kernel internally according to
    the `bucket->cur_meta` which always increment by 1 when insert happens,
-   we assume the cur_meta with `uint64_t` type will never overflow.
+   we assume the cur_meta with `size_t` type will never overflow.
 */
 template <class K, class V, class M, size_t DIM>
-__global__ void upsert_allow_duplicate_keys_kernel(
+__global__ void upsert_allow_duplicated_keys_kernel(
     const Table<K, V, M, DIM> *__restrict table, const K *__restrict keys,
     V **__restrict vectors, int *__restrict src_offset, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -648,7 +665,7 @@ __global__ void upsert_allow_duplicate_keys_kernel(
     int key_idx = t;
     K hashed_key = Murmur3HashDevice(keys[t]);
     int bkt_idx = hashed_key % table->buckets_num;
-    const uint64_t buckets_size = table->buckets_size;
+    const size_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
 
     bool release_lock = false;
@@ -667,8 +684,8 @@ __global__ void upsert_allow_duplicate_keys_kernel(
         atomicExch(&(bucket->metas[key_pos].val), cur_meta);
 
         refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-        atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                  (uint64_t)((V *)(bucket->vectors) + key_pos));
+        atomicCAS((size_t *)&(vectors[t]), (size_t)(nullptr),
+                  (size_t)((V *)(bucket->vectors) + key_pos));
         atomicExch(&(src_offset[key_idx]), key_idx);
         release_lock = true;
         atomicExch(&(table->locks[bkt_idx]), 0u);
@@ -680,7 +697,7 @@ __global__ void upsert_allow_duplicate_keys_kernel(
 /* Upsert with no user specified meta and return if the keys already exists.
    The meta will be specified by kernel internally according to
    the `bucket->cur_meta` which always increment by 1 when insert happens,
-   we assume the cur_meta with `uint64_t` type will never overflow.
+   we assume the cur_meta with `size_t` type will never overflow.
 */
 template <class K, class V, class M, size_t DIM>
 __global__ void accum_kernel(const Table<K, V, M, DIM> *__restrict table,
@@ -696,7 +713,7 @@ __global__ void accum_kernel(const Table<K, V, M, DIM> *__restrict table,
     int key_idx = t;
     K hashed_key = Murmur3HashDevice(keys[t]);
     int bkt_idx = hashed_key % table->buckets_num;
-    const uint64_t buckets_size = table->buckets_size;
+    const size_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
     bool found = status[key_idx];
     bool empty = false;
@@ -713,13 +730,16 @@ __global__ void accum_kernel(const Table<K, V, M, DIM> *__restrict table,
         }
         if (found == existed[key_idx]) {
           key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
+          if (!found) {
+            atomicAdd(&(bucket->size), 1);
+            atomicMin(&(bucket->size), buckets_size);
+          }
           atomicExch(&(bucket->keys[key_pos]), insert_key);
           M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
           atomicExch(&(bucket->metas[key_pos].val), cur_meta);
-
           refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
+          atomicCAS((size_t *)&(vectors[t]), (size_t)(nullptr),
+                    (size_t)((V *)(bucket->vectors) + key_pos));
           atomicExch(&(src_offset[key_idx]), key_idx);
         }
         release_lock = true;
@@ -730,7 +750,7 @@ __global__ void accum_kernel(const Table<K, V, M, DIM> *__restrict table,
 }
 
 template <class K, class V, class M, size_t DIM>
-__global__ void accum_allow_duplicate_keys_kernel(
+__global__ void accum_allow_duplicated_keys_kernel(
     const Table<K, V, M, DIM> *__restrict table, const K *__restrict keys,
     V **__restrict vectors, const bool *__restrict existed,
     bool *__restrict now_exists, int *__restrict src_offset, size_t N) {
@@ -743,7 +763,7 @@ __global__ void accum_allow_duplicate_keys_kernel(
     int key_idx = t;
     K hashed_key = Murmur3HashDevice(keys[t]);
     int bkt_idx = hashed_key % table->buckets_num;
-    const uint64_t buckets_size = table->buckets_size;
+    const size_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
 
     bool release_lock = false;
@@ -764,8 +784,8 @@ __global__ void accum_allow_duplicate_keys_kernel(
           atomicExch(&(bucket->metas[key_pos].val), cur_meta);
 
           refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
+          atomicCAS((size_t *)&(vectors[t]), (size_t)(nullptr),
+                    (size_t)((V *)(bucket->vectors) + key_pos));
           atomicExch(&(src_offset[key_idx]), key_idx);
         }
         release_lock = true;
@@ -797,8 +817,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               M *__restrict metas, bool *__restrict found,
                               int *__restrict dst_offset, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_num = table->buckets_num;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_num = table->buckets_num;
+  const size_t buckets_size = table->buckets_size;
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t / buckets_size;
     int key_pos = t % buckets_size;
@@ -826,8 +846,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               bool *__restrict found,
                               int *__restrict dst_offset, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_num = table->buckets_num;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_num = table->buckets_num;
+  const size_t buckets_size = table->buckets_size;
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t / buckets_size;
     int key_pos = t % buckets_size;
@@ -853,8 +873,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
                               const K *__restrict keys, V **__restrict vectors,
                               int *__restrict dst_offset, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_num = table->buckets_num;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_num = table->buckets_num;
+  const size_t buckets_size = table->buckets_size;
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t / buckets_size;
     int key_pos = t % buckets_size;
@@ -879,8 +899,8 @@ __global__ void lookup_for_upsert_kernel(
     const Table<K, V, M, DIM> *__restrict table, const K *__restrict keys,
     bool *__restrict found, int *__restrict offset, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_num = table->buckets_num;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_num = table->buckets_num;
+  const size_t buckets_size = table->buckets_size;
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t / buckets_size;
     int key_pos = t % buckets_size;
@@ -898,10 +918,10 @@ __global__ void lookup_for_upsert_kernel(
 
 /* Get the number of stored Key-value in the table. */
 template <class K, class V, class M, size_t DIM>
-__global__ void size_kernel(Table<K, V, M, DIM> *table, size_t *size,
-                            size_t N) {
+__global__ void size_kernel_old(Table<K, V, M, DIM> *table, size_t *size,
+                                size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_size = table->buckets_size;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t % buckets_size;
@@ -914,21 +934,34 @@ __global__ void size_kernel(Table<K, V, M, DIM> *table, size_t *size,
   }
 }
 
+/* Get the number of stored Key-value in the table. */
+template <class K, class V, class M, size_t DIM>
+__global__ void size_kernel(Table<K, V, M, DIM> *table, size_t *size,
+                            size_t N) {
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
+    int bkt_idx = t;
+    size_t bucket_size = table->buckets[bkt_idx].size;
+
+    /// Just count non empty bucket cells.
+    atomicAdd((unsigned long long int *)(size), bucket_size);
+  }
+}
+
 /* Clear all key-value in the table. */
 template <class K, class V, class M, size_t DIM>
 __global__ void clear_kernel(Table<K, V, M, DIM> *__restrict table, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_size = table->buckets_size;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t % buckets_size;
     int bkt_idx = t / buckets_size;
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
-    atomicExch((K *)&(bucket->keys[key_idx]), EMPTY_KEY);
-
     /// M_LANGER: Without lock, potential race condition here?
-    atomicExch((K *)&(bucket->metas[key_idx].val), EMPTY_META);
+    atomicExch((K *)&(bucket->keys[key_idx]), EMPTY_KEY);
     if (key_idx == 0) {
       atomicExch(&(bucket->size), 0);
     }
@@ -938,10 +971,11 @@ __global__ void clear_kernel(Table<K, V, M, DIM> *__restrict table, size_t N) {
 /* Remove specified keys. */
 template <class K, class V, class M, size_t DIM>
 __global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
-                              const K *__restrict keys, size_t N) {
+                              const K *__restrict keys,
+                              size_t *__restrict count, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const uint64_t buckets_num = table->buckets_num;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_num = table->buckets_num;
+  const size_t buckets_size = table->buckets_size;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t / buckets_size;
@@ -950,14 +984,55 @@ __global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    bool release_lock = false;
+    while (!release_lock) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        /// Prober the current key. Clear it if equal. Then clear metadata to
+        /// indicate the field is free.
+        K old_key =
+            atomicCAS((K *)&bucket->keys[key_pos], target_key, EMPTY_KEY);
+        if (old_key == target_key) {
+          atomicExch((K *)&(bucket->metas[key_pos].val), EMPTY_META);
+          atomicSub(&(bucket->size), 1);
+          atomicMax(&(bucket->size), 0);
+          atomicAdd(count, 1);
+        }
+        release_lock = true;
+        atomicExch(&(table->locks[bkt_idx]), 0u);
+      }
+    }
+  }
+}
 
-    /// Prober the current key. Clear it if equal. Then clear metadata to
-    /// indicate the field is free.
-    K old_key = atomicCAS((K *)&bucket->keys[key_pos], target_key, EMPTY_KEY);
-    if (old_key == target_key) {
-      /// M_LANGER: Without lock, potential race condition here?
-      atomicExch((K *)&(bucket->metas[key_pos].val), EMPTY_META);
-      atomicDec((unsigned int *)&(bucket->size), buckets_size);
+/* Remove specified keys which match the Predict. */
+template <class K, class V, class M, size_t DIM>
+__global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
+                              const Predict<K, M> pred,
+                              size_t *__restrict count, size_t N) {
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  const size_t buckets_size = table->buckets_size;
+  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
+    int key_idx = t % buckets_size;
+    int bkt_idx = t / buckets_size;
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    bool release_lock = false;
+    while (!release_lock) {
+      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
+        if (bucket->size > 0) {
+          K target_key = bucket->keys[key_idx];
+          if (target_key != EMPTY_KEY) {
+            if (pred(target_key, bucket->metas[key_idx].val)) {
+              atomicExch((K *)&(bucket->keys[key_idx]), EMPTY_KEY);
+              atomicExch((K *)&(bucket->metas[key_idx].val), EMPTY_META);
+              atomicSub(&(bucket->size), 1);
+              atomicMax(&(bucket->size), 0);
+              atomicAdd(count, 1);
+            }
+          }
+        }
+        release_lock = true;
+        atomicExch(&(table->locks[bkt_idx]), 0u);
+      }
     }
   }
 }
@@ -974,7 +1049,7 @@ __global__ void dump_kernel(const Table<K, V, M, DIM> *__restrict table,
   V *block_result_val = (V *)&(smem[blockDim.x]);
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_size = table->buckets_size;
 
   const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1026,7 +1101,7 @@ __global__ void dump_kernel(const Table<K, V, M, DIM> *__restrict table,
   M *block_result_meta = (M *)&(block_result_val[blockDim.x]);
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
-  const uint64_t buckets_size = table->buckets_size;
+  const size_t buckets_size = table->buckets_size;
 
   const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 

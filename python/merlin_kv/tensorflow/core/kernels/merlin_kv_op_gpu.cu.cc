@@ -118,7 +118,6 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
               const Tensor& default_value) override {
     size_t len = d_keys.flat<K>().size();
     bool* d_status;
-    gpu::ValueArrayBase<V>* d_default_value;
 
     auto value_flat = value->flat_inner_dims<V, 2>();
     const auto default_flat = default_value.flat<V>();
@@ -139,11 +138,10 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
                     (gpu::ValueArrayBase<V>*)value->tensor_data().data(),
                     d_status, len,
                     (gpu::ValueArrayBase<V>*)default_value.tensor_data().data(),
-                    _stream, is_full_default);
+                    is_full_default, _stream);
         CUDA_CHECK(cudaStreamSynchronize(_stream));
       }
       CUDA_CHECK(cudaFree(d_status));
-      CUDA_CHECK(cudaFree(d_default_value));
       CUDA_CHECK(cudaStreamDestroy(_stream));
     }
     return Status::OK();
@@ -176,7 +174,7 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
                     (gpu::ValueArrayBase<V>*)value->tensor_data().data(),
                     (M*)metas->tensor_data().data(), d_status, len,
                     (gpu::ValueArrayBase<V>*)default_value.tensor_data().data(),
-                    _stream, is_full_default);
+                    is_full_default, _stream);
         CUDA_CHECK(cudaStreamSynchronize(_stream));
       }
       CUDA_CHECK(cudaFree(d_status));
@@ -189,7 +187,6 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
                         Tensor* value, const Tensor& default_value,
                         Tensor* exists) {
     size_t len = d_keys.flat<K>().size();
-    gpu::ValueArrayBase<V>* d_default_value;
 
     auto value_flat = value->flat_inner_dims<V, 2>();
     const auto default_flat = default_value.flat<V>();
@@ -209,10 +206,9 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
                     (gpu::ValueArrayBase<V>*)value->tensor_data().data(),
                     (bool*)exists->tensor_data().data(), len,
                     (gpu::ValueArrayBase<V>*)default_value.tensor_data().data(),
-                    _stream, is_full_default);
+                    is_full_default, _stream);
         CUDA_CHECK(cudaStreamSynchronize(_stream));
       }
-      CUDA_CHECK(cudaFree(d_default_value));
       CUDA_CHECK(cudaStreamDestroy(_stream));
     }
     return Status::OK();
@@ -418,7 +414,6 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
     Tensor* keys;
     Tensor* values;
 
-    size_t* d_dump_counter;
     cudaStream_t _stream;
     CUDA_CHECK(cudaStreamCreate(&_stream));
 
@@ -428,8 +423,6 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
       size = (int64)table_->get_size(_stream);
       CUDA_CHECK(cudaStreamSynchronize(_stream));
     }
-
-    CUDA_CHECK(cudaMallocManaged((void**)&d_dump_counter, sizeof(size_t)));
 
     AllocatorAttributes attr;
     attr.set_gpu_compatible(true);
@@ -444,10 +437,9 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
       tf_shared_lock l(mu_);
       table_->dump((K*)keys->flat<K>().data(),
                    (gpu::ValueArrayBase<V>*)values->matrix<V>().data(), offset,
-                   len, d_dump_counter, _stream);
+                   len, _stream);
       CUDA_CHECK(cudaStreamSynchronize(_stream));
     }
-    CUDA_CHECK(cudaFree(d_dump_counter));
     CUDA_CHECK(cudaStreamDestroy(_stream));
     return Status::OK();
   }

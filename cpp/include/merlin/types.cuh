@@ -53,21 +53,24 @@ struct Bucket {
 template <class K, class V, class M, size_t DIM>
 struct Table {
   Bucket<K, V, M, DIM> *buckets;
-  unsigned int *locks;            // Write lock for each bucket.
-  V **slices;                     // Handles of the HBM/ HMEM slices.
-  uint64_t bytes_per_slice;       // Size by byte of one slice.
-  uint64_t num_of_memory_slices;  // Number of vectors memory slices.
-  uint64_t capacity = 134217728;  // Initial capacity.
-  uint64_t max_size =
+  unsigned int *locks;          // Write lock for each bucket.
+  V **slices;                   // Handles of the HBM/ HMEM slices.
+  size_t bytes_per_slice;       // Size by byte of one slice.
+  size_t num_of_memory_slices;  // Number of vectors memory slices.
+  size_t capacity = 134217728;  // Initial capacity.
+  size_t max_size =
       std::numeric_limits<uint64_t>::max();  // Up limit of the table capacity.
-  uint64_t buckets_num;                      // Number of the buckets.
-  uint64_t buckets_size = 128;               // Volume of each buckets.
-  uint64_t cache_size = 0;                   // unused
+  size_t buckets_num;                        // Number of the buckets.
+  size_t buckets_size = 128;                 // Volume of each buckets.
+  size_t cache_size = 0;                     // unused
   bool vector_on_gpu = false;                // If the Values are stored on HBM.
   bool primary_table = true;                 // unused
   int slots_number = 0;                      // unused
   int slots_offset = 0;                      // unused
 };
+
+template <class K, class M>
+using Predict = bool (*)(const K &, const M &);
 
 }  // namespace merlin
 }  // namespace nv

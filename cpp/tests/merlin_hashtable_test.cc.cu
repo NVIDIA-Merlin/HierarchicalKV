@@ -37,7 +37,6 @@ uint64_t getTimestamp() {
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
-
 template <class K, class M>
 void create_random_keys(K *h_keys, M *h_metas, int KEY_NUM) {
   std::unordered_set<K> numbers;
@@ -51,42 +50,45 @@ void create_random_keys(K *h_keys, M *h_metas, int KEY_NUM) {
   }
   for (const K num : numbers) {
     h_keys[i] = num;
-    h_metas[i] = getTimestamp() + i;
+    h_metas[i] = getTimestamp();
     i++;
   }
 }
 
-template <class K>
-void create_continuous_keys(K *h_keys, int KEY_NUM, K start = 0) {
+template <class K, class M>
+void create_continuous_keys(K *h_keys, M *h_metas, int KEY_NUM, K start = 0) {
   for (K i = 0; i < KEY_NUM; i++) {
     h_keys[i] = start + static_cast<K>(i);
-    i++;
+    h_metas[i] = getTimestamp();
   }
 }
 
-template <class V>
-struct ValueArrayBase {};
-
 template <class V, size_t DIM>
-struct ValueArray : public ValueArrayBase<V> {
+struct ValueArray {
   V value[DIM];
 };
 
-template <class T>
-using ValueType = ValueArrayBase<T>;
+constexpr uint64_t INIT_SIZE = 64 * 1024 * 1024UL;
+constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
+constexpr uint64_t TEST_TIMES = 1;
+constexpr uint64_t DIM = 64;
+constexpr float target_load_factor = 0.50;
+
+template <class K, class M>
+__forceinline__ __device__ bool erase_if_pred(const K &key, const M &meta) {
+  return ((key % 2) == 1);
+}
+
+using K = uint64_t;
+using M = uint64_t;
+using Vector = ValueArray<float, DIM>;
+using Table = nv::merlin::HashTable<K, float, M, DIM>;
+
+/* A demo of Pred for erase_if */
+template <class K, class M>
+__device__ Table::Pred pred = erase_if_pred<K, M>;
 
 int test_main() {
-  constexpr uint64_t INIT_SIZE = 64 * 1024 * 1024ul;
-  constexpr uint64_t KEY_NUM = 1 * 1024 * 1024ul;
-  constexpr uint64_t TEST_TIMES = 1;
-  constexpr uint64_t DIM = 64;
-  constexpr float target_load_factor = 0.5;
-
-  using K = uint64_t;
-  using M = uint64_t;
-  using Vector = ValueArray<float, DIM>;
-  using Table = nv::merlin::HashTable<K, float, M, DIM>;
-
   K *h_keys;
   M *h_metas;
   Vector *h_vectors;
@@ -109,8 +111,7 @@ int test_main() {
   Vector *d_def_val;
   Vector **d_vectors_ptr;
   bool *d_found;
-  size_t *d_dump_counter;
-  size_t h_dump_counter = 0;
+  size_t dump_counter = 0;
 
   cudaMalloc(&d_keys, KEY_NUM * sizeof(K));                // 8MB
   cudaMalloc(&d_metas, KEY_NUM * sizeof(M));               // 8MB
@@ -118,7 +119,6 @@ int test_main() {
   cudaMalloc(&d_def_val, KEY_NUM * sizeof(Vector));        // 256MB
   cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(Vector *));  // 8MB
   cudaMalloc(&d_found, KEY_NUM * sizeof(bool));            // 4MB
-  cudaMallocManaged((void **)&d_dump_counter, sizeof(size_t));
 
   cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice);
   cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M), cudaMemcpyHostToDevice);
@@ -135,113 +135,135 @@ int test_main() {
   float cur_load_factor = table_->load_factor();
 
   while (cur_load_factor < target_load_factor) {
-    create_continuous_keys<K>(h_keys, KEY_NUM, start);
+    create_continuous_keys<K, M>(h_keys, h_metas, KEY_NUM, start);
     cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M), cudaMemcpyHostToDevice);
 
-    auto start_upsert = std::chrono::steady_clock::now();
-    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
-                   KEY_NUM, stream, false);
-    auto end_upsert = std::chrono::steady_clock::now();
-    std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
+    auto start_insert_or_assign = std::chrono::steady_clock::now();
+    table_->insert_or_assign(d_keys, reinterpret_cast<float *>(d_vectors),
+                             d_metas, KEY_NUM, false, stream);
+    auto end_insert_or_assign = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff_insert_or_assign =
+        end_insert_or_assign - start_insert_or_assign;
 
-    auto start_lookup = std::chrono::steady_clock::now();
-    table_->get(d_keys, reinterpret_cast<float *>(d_vectors), d_found, KEY_NUM,
-                reinterpret_cast<float *>(d_def_val), stream, true);
-    auto end_lookup = std::chrono::steady_clock::now();
-    std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
+    auto start_find = std::chrono::steady_clock::now();
+    table_->find(d_keys, reinterpret_cast<float *>(d_vectors), d_found, KEY_NUM,
+                 reinterpret_cast<float *>(d_def_val), true, stream);
+    auto end_find = std::chrono::steady_clock::now();
+    std::chrono::duration<double> diff_find = end_find - start_find;
 
     cur_load_factor = table_->load_factor();
 
-    printf("[prepare] upsert=%.2fms, lookup=%.2fms, cur_load_factor=%f\n",
-           diff_upsert.count() * 1000, diff_lookup.count() * 1000,
-           cur_load_factor);
+    printf(
+        "[prepare] insert_or_assign=%.2fms, find=%.2fms, "
+        "cur_load_factor=%f\n",
+        diff_insert_or_assign.count() * 1000, diff_find.count() * 1000,
+        cur_load_factor);
     start += KEY_NUM;
   }
-
   uint64_t total_size = 0;
   for (int i = 0; i < TEST_TIMES; i++) {
-    total_size = table_->get_size(stream);
+    total_size = table_->size(stream);
 
-    std::cout << "before upsert: total_size = " << total_size << std::endl;
-    auto start_upsert = std::chrono::steady_clock::now();
-    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
-                   KEY_NUM, stream, false);
-    auto end_upsert = std::chrono::steady_clock::now();
-    std::chrono::duration<double> diff_upsert = end_upsert - start_upsert;
+    std::cout << "before insert_or_assign: total_size = " << total_size
+              << std::endl;
+    auto start_insert_or_assign = std::chrono::steady_clock::now();
+    table_->insert_or_assign(d_keys, reinterpret_cast<float *>(d_vectors),
+                             d_metas, KEY_NUM, false, stream);
+    auto end_insert_or_assign = std::chrono::steady_clock::now();
+
+    total_size = table_->size(stream);
+    std::cout << "after 1st insert_or_assign: total_size = " << total_size
+              << std::endl;
 
     auto start_reserve = std::chrono::steady_clock::now();
-    table_->reserve(table_->get_capacity() * 2, stream);
+    table_->reserve(table_->capacity() * 2, stream);
     auto end_reserve = std::chrono::steady_clock::now();
 
-    total_size = table_->get_size(stream);
+    total_size = table_->size(stream);
     std::cout << "after reserve: total_size = " << total_size << std::endl;
 
     cudaMemset(d_vectors, 2, KEY_NUM * sizeof(Vector));
-    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
-                   KEY_NUM, stream);
+    table_->insert_or_assign(d_keys, reinterpret_cast<float *>(d_vectors),
+                             d_metas, KEY_NUM, stream);
 
-    total_size = table_->get_size(stream);
-    std::cout << "after upsert: total_size = " << total_size << std::endl;
+    total_size = table_->size(stream);
+    std::cout << "after 2nd insert_or_assign: total_size = " << total_size
+              << std::endl;
 
-    auto start_lookup = std::chrono::steady_clock::now();
-    table_->get(d_keys, reinterpret_cast<float *>(d_vectors), d_found, KEY_NUM,
-                reinterpret_cast<float *>(d_def_val), stream, true);
-    auto end_lookup = std::chrono::steady_clock::now();
+    auto start_find = std::chrono::steady_clock::now();
+    table_->find(d_keys, reinterpret_cast<float *>(d_vectors), d_found, KEY_NUM,
+                 reinterpret_cast<float *>(d_def_val), true, stream);
+    auto end_find = std::chrono::steady_clock::now();
 
     auto start_accum = std::chrono::steady_clock::now();
     table_->accum(d_keys, reinterpret_cast<float *>(d_vectors), d_found,
-                  KEY_NUM, stream, false);
+                  KEY_NUM, false, stream);
     auto end_accum = std::chrono::steady_clock::now();
 
     auto start_size = std::chrono::steady_clock::now();
-    total_size = table_->get_size(stream);
+    total_size = table_->size(stream);
     auto end_size = std::chrono::steady_clock::now();
     std::cout << "after accum: total_size = " << total_size << std::endl;
 
+    auto start_erase_if = std::chrono::steady_clock::now();
+    size_t erase_num = table_->erase_if(pred<K, M>, stream);
+    auto end_erase_if = std::chrono::steady_clock::now();
+    total_size = table_->size(stream);
+    std::cout << "after erase_if: total_size = " << total_size
+              << ", erase_num = " << erase_num << std::endl;
+
+    auto start_clear = std::chrono::steady_clock::now();
     table_->clear(stream);
-    table_->upsert(d_keys, reinterpret_cast<float *>(d_vectors), d_metas,
-                   KEY_NUM, stream, false);
+    auto end_clear = std::chrono::steady_clock::now();
+    total_size = table_->size(stream);
+    std::cout << "after clear: total_size = " << total_size << std::endl;
 
-    table_->dump(d_keys, reinterpret_cast<float *>(d_vectors), 0,
-                 table_->get_capacity(), d_dump_counter, stream);
+    table_->clear(stream);
+    table_->insert_or_assign(d_keys, reinterpret_cast<float *>(d_vectors),
+                             d_metas, KEY_NUM, false, stream);
 
-    std::chrono::duration<double> diff_lookup = end_lookup - start_lookup;
+    dump_counter = table_->dump(d_keys, reinterpret_cast<float *>(d_vectors), 0,
+                                table_->capacity(), stream);
+
+    std::chrono::duration<double> diff_insert_or_assign =
+        end_insert_or_assign - start_insert_or_assign;
+    std::chrono::duration<double> diff_size = end_size - start_size;
+    std::chrono::duration<double> diff_find = end_find - start_find;
     std::chrono::duration<double> diff_accum = end_accum - start_accum;
     std::chrono::duration<double> diff_reserve = end_reserve - start_reserve;
-    printf("[timing] upsert=%.2fms\n", diff_upsert.count() * 1000);
+    std::chrono::duration<double> diff_erase_if = end_erase_if - start_erase_if;
+    std::chrono::duration<double> diff_clear = end_clear - start_clear;
+    printf("[timing] insert_or_assign=%.2fms\n",
+           diff_insert_or_assign.count() * 1000);
+    printf("[timing] size=%.2fms\n", diff_size.count() * 1000);
     printf("[timing] reserve=%.2fms\n", diff_reserve.count() * 1000);
-    printf("[timing] lookup=%.2fms\n", diff_lookup.count() * 1000);
+    printf("[timing] find=%.2fms\n", diff_find.count() * 1000);
     printf("[timing] accum=%.2fms\n", diff_accum.count() * 1000);
+    printf("[timing] erase_if=%.2fms\n", diff_erase_if.count() * 1000);
+    printf("[timing] clear=%.2fms\n", diff_clear.count() * 1000);
   }
   cudaStreamDestroy(stream);
 
   cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool), cudaMemcpyDeviceToHost);
-
-  cudaMemcpy(&h_dump_counter, d_dump_counter, sizeof(size_t),
-             cudaMemcpyDeviceToHost);
   cudaMemcpy(h_vectors, d_vectors, KEY_NUM * sizeof(Vector),
              cudaMemcpyDeviceToHost);
 
-  size_t max_bucket_len = 0;
-  size_t min_bucket_len = KEY_NUM;
   int found_num = 0;
 
   for (int i = 0; i < KEY_NUM; i++) {
     if (h_found[i]) found_num++;
   }
 
-  std::cout << "Capacity = " << table_->get_capacity()
+  std::cout << "Capacity = " << table_->capacity()
             << ", total_size = " << total_size
-            << ", h_dump_counter = " << h_dump_counter
-            << ", max_bucket_len = " << max_bucket_len
-            << ", min_bucket_len = " << min_bucket_len
+            << ", dump_counter = " << dump_counter
             << ", found_num = " << found_num << std::endl;
 
   cudaFreeHost(h_keys);
   cudaFreeHost(h_metas);
   cudaFreeHost(h_found);
 
-  cudaFree(d_dump_counter);
   cudaFree(d_keys);
   cudaFree(d_metas);
   cudaFree(d_vectors);
