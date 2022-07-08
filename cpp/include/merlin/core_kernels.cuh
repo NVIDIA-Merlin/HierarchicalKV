@@ -24,6 +24,22 @@
 namespace nv {
 namespace merlin {
 
+template <class M>
+__global__ void create_locks(M *__restrict mutex, size_t start, size_t end) {
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (start + tid < end) {
+    new (mutex + start + tid) M(1);
+  }
+}
+
+template <class M>
+__global__ void release_locks(M *__restrict mutex, size_t start, size_t end) {
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (start + tid < end) {
+    (mutex + start + tid)->~M();
+  }
+}
+
 /* 2GB per slice by default.*/
 constexpr size_t kDefaultBytesPerSlice = (2 * 1024 * 1024 * 1024ul);
 
@@ -86,6 +102,14 @@ void initialize_buckets(Table<K, V, M, DIM> **table, size_t start, size_t end) {
                             (*table)->cache_size * sizeof(V)));
     }
   }
+
+  {
+    const size_t block_size_ = 1024;
+    const size_t N = (*table)->buckets_num;
+    const int grid_size = GET_GRID_SIZE(N);
+    create_locks<Mutex>
+        <<<grid_size, block_size_>>>((*table)->locks, start, end);
+  }
 }
 
 /* Initialize a Table struct.
@@ -122,9 +146,9 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t init_size = 134217728,
   (*table)->primary_table = master;
 
   CUDA_CHECK(cudaMalloc((void **)&((*table)->locks),
-                        (*table)->buckets_num * sizeof(unsigned int)));
-  CUDA_CHECK(cudaMemset((*table)->locks, 0,
-                        (*table)->buckets_num * sizeof(unsigned int)));
+                        (*table)->buckets_num * sizeof(Mutex *)));
+  CUDA_CHECK(
+      cudaMemset((*table)->locks, 0, (*table)->buckets_num * sizeof(Mutex *)));
 
   CUDA_CHECK(
       cudaMallocManaged((void **)&((*table)->buckets),
@@ -139,9 +163,9 @@ void create_table(Table<K, V, M, DIM> **table, uint64_t init_size = 134217728,
  * rehash_kernel. */
 template <class K, class V, class M, size_t DIM>
 void double_capacity(Table<K, V, M, DIM> **table) {
-  realloc<unsigned int *>(&((*table)->locks),
-                          (*table)->buckets_num * sizeof(unsigned int),
-                          (*table)->buckets_num * sizeof(unsigned int) * 2);
+  realloc<Mutex *>(&((*table)->locks), (*table)->buckets_num * sizeof(Mutex *),
+                   (*table)->buckets_num * sizeof(Mutex *) * 2);
+
   realloc_managed<Bucket<K, V, M, DIM> *>(
       &((*table)->buckets),
       (*table)->buckets_num * sizeof(Bucket<K, V, M, DIM>),
@@ -172,10 +196,16 @@ void destroy_table(Table<K, V, M, DIM> **table) {
       CUDA_CHECK(cudaFreeHost((*table)->slices[i]));
     }
   }
-
+  {
+    const size_t block_size_ = 1024;
+    const size_t N = (*table)->buckets_num;
+    const int grid_size = GET_GRID_SIZE(N);
+    release_locks<Mutex>
+        <<<grid_size, block_size_>>>((*table)->locks, 0, (*table)->buckets_num);
+  }
   CUDA_CHECK(cudaFree((*table)->slices));
-  CUDA_CHECK(cudaFree((*table)->locks));
   CUDA_CHECK(cudaFree((*table)->buckets));
+  CUDA_CHECK(cudaFree((*table)->locks));
   CUDA_CHECK(cudaFree(*table));
 }
 
@@ -464,6 +494,16 @@ __inline__ __device__ void refresh_bucket_meta(Bucket<K, V, M, DIM> *bucket,
   atomicExch(&(bucket->min_meta), min_val);
 }
 
+template <typename mutex>
+__forceinline__ __device__ void lock(mutex &set_mutex) {
+  set_mutex.acquire();
+}
+
+template <typename mutex>
+__forceinline__ __device__ void unlock(mutex &set_mutex) {
+  set_mutex.release();
+}
+
 /* Insert or update a Key-Value in the table,
    this operation will not really write the vector data
    into the bucket. Instead, it will only return the address in bucket for each
@@ -498,43 +538,38 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
     bool found = status[key_idx];
     bool empty = false;
 
-    bool release_lock = false;
-    while (!release_lock) {
-      /// Spin-wait until we get access.
-      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
-        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        if (found) {
-          key_pos = bucket_offset[key_idx];
-        } else {
-          insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty);
-        }
+    lock<Mutex>(table->locks[bkt_idx]);
 
-        /// Insert if either of the following cases is fulfilled:
-        /// 1) We found the key: Then, we override the associated value and
-        ///    meta.
-        /// 2) The bucket is not yet full: Hence, we can append the key.
-        /// 3) Meta of key to be insered is larger than smallest meta in bucket:
-        ///    In this case we replace that key.
-        if (metas[key_idx] >= bucket->min_meta || found || empty) {
-          if (!found) {
-            key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
-          }
-          atomicExch(&(bucket->keys[key_pos]), insert_key);
-          atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
-
-          /// Re-locate the smallest meta.
-          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-
-          /// Record storage offset. This will be used by write_kernel to map
-          /// the input to the output data.
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
-          atomicExch(&(src_offset[key_idx]), key_idx);
-        }
-        release_lock = true;
-        atomicExch(&(table->locks[bkt_idx]), 0u);
-      }
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    if (found) {
+      key_pos = bucket_offset[key_idx];
+    } else {
+      insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty);
     }
+
+    /// Insert if either of the following cases is fulfilled:
+    /// 1) We found the key: Then, we override the associated value and
+    ///    meta.
+    /// 2) The bucket is not yet full: Hence, we can append the key.
+    /// 3) Meta of key to be insered is larger than smallest meta in bucket:
+    ///    In this case we replace that key.
+    if (metas[key_idx] >= bucket->min_meta || found || empty) {
+      if (!found) {
+        key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
+      }
+      atomicExch(&(bucket->keys[key_pos]), insert_key);
+      atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+
+      /// Re-locate the smallest meta.
+      refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+
+      /// Record storage offset. This will be used by write_kernel to map
+      /// the input to the output data.
+      atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
+                (uint64_t)((V *)(bucket->vectors) + key_pos));
+      atomicExch(&(src_offset[key_idx]), key_idx);
+    }
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -561,29 +596,24 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM> *__restrict table,
     bool found = status[key_idx];
     bool empty = false;
 
-    bool release_lock = false;
-    while (!release_lock) {
-      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
-        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        if (found) {
-          key_pos = bucket_offset[key_idx];
-        } else {
-          insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty);
-        }
-
-        key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
-        atomicExch(&(bucket->keys[key_pos]), insert_key);
-        M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
-        atomicExch(&(bucket->metas[key_pos].val), cur_meta);
-
-        refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-        atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                  (uint64_t)((V *)(bucket->vectors) + key_pos));
-        atomicExch(&(src_offset[key_idx]), key_idx);
-        release_lock = true;
-        atomicExch(&(table->locks[bkt_idx]), 0u);
-      }
+    lock<Mutex>(table->locks[bkt_idx]);
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    if (found) {
+      key_pos = bucket_offset[key_idx];
+    } else {
+      insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty);
     }
+
+    key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
+    atomicExch(&(bucket->keys[key_pos]), insert_key);
+    M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
+    atomicExch(&(bucket->metas[key_pos].val), cur_meta);
+
+    refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+    atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
+              (uint64_t)((V *)(bucket->vectors) + key_pos));
+    atomicExch(&(src_offset[key_idx]), key_idx);
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -604,29 +634,24 @@ __global__ void upsert_allow_duplicate_keys_kernel(
     const uint64_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
 
-    bool release_lock = false;
-    while (!release_lock) {
-      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
-        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
-                                     &found, &empty);
-        if (metas[key_idx] >= bucket->min_meta || found || empty) {
-          if (!found) {
-            key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
-            atomicAdd(&(bucket->size), 1);
-            atomicMin(&(bucket->size), buckets_size);
-          }
-          atomicExch(&(bucket->keys[key_pos]), insert_key);
-          atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
-          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
-        }
-        atomicExch(&(src_offset[key_idx]), key_idx);
-        release_lock = true;
-        atomicExch(&(table->locks[bkt_idx]), 0u);
+    lock<Mutex>(table->locks[bkt_idx]);
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
+                                 &found, &empty);
+    if (metas[key_idx] >= bucket->min_meta || found || empty) {
+      if (!found) {
+        key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
+        atomicAdd(&(bucket->size), 1);
+        atomicMin(&(bucket->size), buckets_size);
       }
+      atomicExch(&(bucket->keys[key_pos]), insert_key);
+      atomicExch(&(bucket->metas[key_pos].val), metas[key_idx]);
+      refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+      atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
+                (uint64_t)((V *)(bucket->vectors) + key_pos));
     }
+    atomicExch(&(src_offset[key_idx]), key_idx);
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -651,29 +676,25 @@ __global__ void upsert_allow_duplicate_keys_kernel(
     const uint64_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
 
-    bool release_lock = false;
-    while (!release_lock) {
-      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
-        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
-                                     &found, &empty);
-        if (!found) {
-          key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
-          atomicAdd(&(bucket->size), 1);
-          atomicMin(&(bucket->size), buckets_size);
-        }
-        atomicExch(&(bucket->keys[key_pos]), insert_key);
-        M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
-        atomicExch(&(bucket->metas[key_pos].val), cur_meta);
-
-        refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-        atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                  (uint64_t)((V *)(bucket->vectors) + key_pos));
-        atomicExch(&(src_offset[key_idx]), key_idx);
-        release_lock = true;
-        atomicExch(&(table->locks[bkt_idx]), 0u);
-      }
+    lock<Mutex>(table->locks[bkt_idx]);
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
+                                 &found, &empty);
+    if (!found) {
+      key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
+      atomicAdd(&(bucket->size), 1);
+      atomicMin(&(bucket->size), buckets_size);
     }
+    atomicExch(&(bucket->keys[key_pos]), insert_key);
+    M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
+    atomicExch(&(bucket->metas[key_pos].val), cur_meta);
+
+    refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+    atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
+              (uint64_t)((V *)(bucket->vectors) + key_pos));
+    atomicExch(&(src_offset[key_idx]), key_idx);
+
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -701,31 +722,26 @@ __global__ void accum_kernel(const Table<K, V, M, DIM> *__restrict table,
     bool found = status[key_idx];
     bool empty = false;
 
-    bool release_lock = false;
-    while (!release_lock) {
-      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
-        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        if (found) {
-          key_pos = bucket_offset[key_idx];
-        } else {
-          insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty,
-                          found, existed[key_idx]);
-        }
-        if (found == existed[key_idx]) {
-          key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
-          atomicExch(&(bucket->keys[key_pos]), insert_key);
-          M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
-          atomicExch(&(bucket->metas[key_pos].val), cur_meta);
-
-          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
-          atomicExch(&(src_offset[key_idx]), key_idx);
-        }
-        release_lock = true;
-        atomicExch(&(table->locks[bkt_idx]), 0u);
-      }
+    lock<Mutex>(table->locks[bkt_idx]);
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    if (found) {
+      key_pos = bucket_offset[key_idx];
+    } else {
+      insert_if_empty(bucket, buckets_size, insert_key, &key_pos, &empty, found,
+                      existed[key_idx]);
     }
+    if (found == existed[key_idx]) {
+      key_pos = (key_pos == -1) ? bucket->min_pos : key_pos;
+      atomicExch(&(bucket->keys[key_pos]), insert_key);
+      M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
+      atomicExch(&(bucket->metas[key_pos].val), cur_meta);
+
+      refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+      atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
+                (uint64_t)((V *)(bucket->vectors) + key_pos));
+      atomicExch(&(src_offset[key_idx]), key_idx);
+    }
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -746,32 +762,27 @@ __global__ void accum_allow_duplicate_keys_kernel(
     const uint64_t buckets_size = table->buckets_size;
     const K insert_key = keys[t];
 
-    bool release_lock = false;
-    while (!release_lock) {
-      if (atomicExch(&(table->locks[bkt_idx]), 1u) == 0u) {
-        Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
-        find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
-                                     &found, &empty, existed[key_idx]);
-        now_exists[key_idx] = found;
-        if (found == existed[key_idx]) {
-          if (!found) {
-            key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
-            atomicAdd(&(bucket->size), 1);
-            atomicMin(&(bucket->size), buckets_size);
-          }
-          atomicExch(&(bucket->keys[key_pos]), insert_key);
-          M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
-          atomicExch(&(bucket->metas[key_pos].val), cur_meta);
-
-          refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
-          atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
-                    (uint64_t)((V *)(bucket->vectors) + key_pos));
-          atomicExch(&(src_offset[key_idx]), key_idx);
-        }
-        release_lock = true;
-        atomicExch(&(table->locks[bkt_idx]), 0u);
+    lock<Mutex>(table->locks[bkt_idx]);
+    Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
+    find_in_bucket<K, V, M, DIM>(bucket, buckets_size, insert_key, &key_pos,
+                                 &found, &empty, existed[key_idx]);
+    now_exists[key_idx] = found;
+    if (found == existed[key_idx]) {
+      if (!found) {
+        key_pos = key_pos == -1 ? bucket->min_pos : key_pos;
+        atomicAdd(&(bucket->size), 1);
+        atomicMin(&(bucket->size), buckets_size);
       }
+      atomicExch(&(bucket->keys[key_pos]), insert_key);
+      M cur_meta = 1 + atomicAdd(&(bucket->cur_meta), 1);
+      atomicExch(&(bucket->metas[key_pos].val), cur_meta);
+
+      refresh_bucket_meta<K, V, M, DIM>(bucket, buckets_size);
+      atomicCAS((uint64_t *)&(vectors[t]), (uint64_t)(nullptr),
+                (uint64_t)((V *)(bucket->vectors) + key_pos));
+      atomicExch(&(src_offset[key_idx]), key_idx);
     }
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -805,6 +816,8 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
     K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
+
+    lock<Mutex>(table->locks[bkt_idx]);
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
     if (key_pos == 0) {
@@ -816,6 +829,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
       vectors[key_idx] = (V *)&(bucket->vectors[key_pos]);
       found[key_idx] = true;
     }
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -834,6 +848,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
     K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
+
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
     if (key_pos == 0) {
@@ -861,6 +876,7 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM> *__restrict table,
     K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
+
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
     if (key_pos == 0) {
@@ -887,6 +903,7 @@ __global__ void lookup_for_upsert_kernel(
     K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
+
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
     if (bucket->keys[key_pos] == target_key) {
@@ -923,6 +940,7 @@ __global__ void clear_kernel(Table<K, V, M, DIM> *__restrict table, size_t N) {
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t % buckets_size;
     int bkt_idx = t / buckets_size;
+    lock<Mutex>(table->locks[bkt_idx]);
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
     atomicExch((K *)&(bucket->keys[key_idx]), EMPTY_KEY);
@@ -932,6 +950,7 @@ __global__ void clear_kernel(Table<K, V, M, DIM> *__restrict table, size_t N) {
     if (key_idx == 0) {
       atomicExch(&(bucket->size), 0);
     }
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
@@ -949,6 +968,7 @@ __global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
     K hashed_key = Murmur3HashDevice(keys[key_idx]);
     int bkt_idx = hashed_key % buckets_num;
     K target_key = keys[key_idx];
+    lock<Mutex>(table->locks[bkt_idx]);
     Bucket<K, V, M, DIM> *bucket = &(table->buckets[bkt_idx]);
 
     /// Prober the current key. Clear it if equal. Then clear metadata to
@@ -959,6 +979,7 @@ __global__ void remove_kernel(const Table<K, V, M, DIM> *__restrict table,
       atomicExch((K *)&(bucket->metas[key_pos].val), EMPTY_META);
       atomicDec((unsigned int *)&(bucket->size), buckets_size);
     }
+    unlock<Mutex>(table->locks[bkt_idx]);
   }
 }
 
