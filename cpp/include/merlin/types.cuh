@@ -16,6 +16,8 @@
 
 #pragma once
 
+#include <cuda/std/semaphore>
+
 namespace nv {
 namespace merlin {
 
@@ -50,10 +52,12 @@ struct Bucket {
   int size;
 };
 
+using Mutex = cuda::binary_semaphore<cuda::thread_scope_device>;
+
 template <class K, class V, class M, size_t DIM>
 struct Table {
   Bucket<K, V, M, DIM> *buckets;
-  unsigned int *locks;          // Write lock for each bucket.
+  Mutex *locks;                 // mutex for write buckets
   V **slices;                   // Handles of the HBM/ HMEM slices.
   size_t bytes_per_slice;       // Size by byte of one slice.
   size_t num_of_memory_slices;  // Number of vectors memory slices.
