@@ -40,6 +40,16 @@ __global__ void release_locks(M *__restrict mutex, size_t start, size_t end) {
   }
 }
 
+template <typename mutex>
+__forceinline__ __device__ void lock(mutex &set_mutex) {
+  set_mutex.acquire();
+}
+
+template <typename mutex>
+__forceinline__ __device__ void unlock(mutex &set_mutex) {
+  set_mutex.release();
+}
+
 /* 2GB per slice by default.*/
 constexpr size_t kDefaultBytesPerSlice = (2 * 1024 * 1024 * 1024ul);
 
@@ -494,16 +504,6 @@ __forceinline__ __device__ void refresh_bucket_meta(
   }
   atomicExch(&(bucket->min_pos), min_pos);
   atomicExch(&(bucket->min_meta), min_val);
-}
-
-template <typename mutex>
-__forceinline__ __device__ void lock(mutex &set_mutex) {
-  set_mutex.acquire();
-}
-
-template <typename mutex>
-__forceinline__ __device__ void unlock(mutex &set_mutex) {
-  set_mutex.release();
 }
 
 /* Insert or update a Key-Value in the table,
