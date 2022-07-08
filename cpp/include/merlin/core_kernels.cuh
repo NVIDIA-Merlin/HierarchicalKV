@@ -104,9 +104,9 @@ void initialize_buckets(Table<K, V, M, DIM> **table, size_t start, size_t end) {
   }
 
   {
-    const size_t block_size_ = 1024;
+    const size_t block_size_ = 512;
     const size_t N = (*table)->buckets_num;
-    const int grid_size = GET_GRID_SIZE(N);
+    const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
     create_locks<Mutex>
         <<<grid_size, block_size_>>>((*table)->locks, start, end);
   }
