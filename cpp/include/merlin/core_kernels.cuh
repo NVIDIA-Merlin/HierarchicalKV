@@ -117,8 +117,7 @@ void initialize_buckets(Table<K, V, M, DIM> **table, size_t start, size_t end) {
     const size_t block_size = 512;
     const size_t N = (*table)->buckets_num;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-    create_locks<Mutex>
-        <<<grid_size, block_size_>>>((*table)->locks, start, end);
+    create_locks<Mutex><<<grid_size, block_size>>>((*table)->locks, start, end);
   }
 }
 
@@ -211,7 +210,7 @@ void destroy_table(Table<K, V, M, DIM> **table) {
     const size_t N = (*table)->buckets_num;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
     release_locks<Mutex>
-        <<<grid_size, block_size_>>>((*table)->locks, 0, (*table)->buckets_num);
+        <<<grid_size, block_size>>>((*table)->locks, 0, (*table)->buckets_num);
   }
   CUDA_CHECK(cudaFree((*table)->slices));
   CUDA_CHECK(cudaFree((*table)->buckets));
