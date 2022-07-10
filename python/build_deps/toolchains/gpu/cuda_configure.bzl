@@ -51,6 +51,10 @@ _TF_DOWNLOAD_CLANG = "TF_DOWNLOAD_CLANG"
 _PYTHON_BIN_PATH = "PYTHON_BIN_PATH"
 
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = {
+    "11.7": [
+        "8.0",
+        "8.6",
+    ],
     "11.6": [
         "8.0",
         "8.6",
