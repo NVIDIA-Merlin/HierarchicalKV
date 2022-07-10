@@ -209,7 +209,7 @@ class CudaDeviceRestorer {
   int dev_;
 };
 
-inline int get_dev(const void* ptr) {
+static inline int get_dev(const void* ptr) {
   cudaPointerAttributes attr;
   CUDA_CHECK(cudaPointerGetAttributes(&attr, ptr));
   int dev = -1;
@@ -225,11 +225,22 @@ inline int get_dev(const void* ptr) {
   return dev;
 }
 
-inline void switch_to_dev(const void* ptr) {
+static inline void switch_to_dev(const void* ptr) {
   int dev = get_dev(ptr);
   if (dev >= 0) {
     CUDA_CHECK(cudaSetDevice(dev));
   }
+}
+
+static inline bool is_on_device(const void* ptr) {
+  cudaPointerAttributes attr;
+  CUDA_CHECK(cudaPointerGetAttributes(&attr, ptr));
+
+#if CUDART_VERSION >= 10000
+  return (attr.type == cudaMemoryTypeDevice);
+#else
+  return (attr.memoryType == cudaMemoryTypeDevice);
+#endif
 }
 
 template <typename TOUT, typename TIN>
