@@ -85,33 +85,30 @@ class HashTable {
    *
    * @param init_size The initial capacity.
    * @param max_size The maximum capacity.
-   * @param cache_size No used.
+   * @param max_hbm_for_vectors Max HBM allocated for vectors, by bytes.
    * @param buckets_size The length of each buckets.
-   * @param vector_on_gpu If true, the Vectors will be placed in HBM, false by
-   * default.
    * @param initializer Initializer used when getting a key fail.
-   * @param master No used.
+   * @param primary No used.
    */
   explicit HashTable(size_type init_size,
                      size_type max_size = std::numeric_limits<uint64_t>::max(),
-                     size_type cache_size = 0, size_type buckets_size = 128,
-                     bool vector_on_gpu = false,
+                     size_type max_hbm_for_vectors = 0,
+                     size_type buckets_size = 128,
                      const Initializer *initializer = nullptr,
-                     bool master = true, int block_size = 1024)
+                     bool primary = true, int block_size = 1024)
       : init_size_(init_size),
         max_size_(max_size),
-        cache_size_(cache_size),
+        max_hbm_for_vectors_(max_hbm_for_vectors),
         buckets_size_(buckets_size),
-        vector_on_gpu_(vector_on_gpu),
-        master_(master) {
+        primary_(primary) {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
     initializer_ = std::make_shared<Initializer>(
         (initializer != nullptr) ? *initializer : Zeros());
     create_table<Key, Vector, M, DIM>(&table_, init_size_, max_size_,
-                                      cache_size_, buckets_size_,
-                                      vector_on_gpu_, master_);
+                                      max_hbm_for_vectors_, buckets_size_,
+                                      primary_);
     block_size_ = SAFE_GET_BLOCK_SIZE(block_size);
     CudaCheckError();
   }
@@ -895,7 +892,7 @@ class HashTable {
    */
   void reserve(size_type count, cudaStream_t stream = 0) {
     if (count > max_size_) {
-      std::cout << "merlin-kv: max_size_ has reached!, the request of "
+      std::cout << "[merlin-kv] max_size has been reached! The request of "
                    "increase_capacity will be ignored!"
                 << std::endl;
       return;
@@ -963,11 +960,10 @@ class HashTable {
   int block_size_;
   const size_type init_size_;
   const size_type max_size_;
-  const size_type cache_size_;
+  const size_type max_hbm_for_vectors_;
   const size_type buckets_size_;
-  const bool vector_on_gpu_;
   std::shared_ptr<Initializer> initializer_;
-  const bool master_;
+  const bool primary_;
   size_t shared_mem_size_;
   Table *table_;
   //   std::mutex mtx_;
