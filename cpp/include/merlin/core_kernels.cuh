@@ -51,7 +51,7 @@ __forceinline__ __device__ void unlock(mutex &set_mutex) {
 }
 
 /* 2GB per slice by default.*/
-constexpr size_t kDefaultBytesPerSlice = (2 * 1024 * 1024 * 1024ul);
+constexpr size_t kDefaultBytesPerSlice = (2ul << 30);
 
 /* Initialize the buckets with index from start to end. */
 template <class K, class V, class M, size_t DIM>
@@ -82,16 +82,15 @@ void initialize_buckets(Table<K, V, M, DIM> **table, size_t start, size_t end) {
     if (i == num_of_memory_slices - 1) {
       num_of_buckets_in_one_slice = buckets_num - num_of_allocated_buckets;
     }
-
-    if ((*table)->vector_on_gpu) {
-      CUDA_CHECK(cudaMalloc(
-          &((*table)->slices[i]),
-          num_of_buckets_in_one_slice * (*table)->buckets_size * sizeof(V)));
+    size_t slice_real_size =
+        num_of_buckets_in_one_slice * (*table)->buckets_size * sizeof(V);
+    if ((*table)->remaining_hbm_for_vectors >= slice_real_size) {
+      std::cout << "initialize_buckets," << (*table)->remaining_hbm_for_vectors << std::endl;
+      CUDA_CHECK(cudaMalloc(&((*table)->slices[i]), slice_real_size));
+      (*table)->remaining_hbm_for_vectors -= slice_real_size;
     } else {
-      CUDA_CHECK(cudaMallocHost(
-          &((*table)->slices[i]),
-          num_of_buckets_in_one_slice * (*table)->buckets_size * sizeof(V),
-          cudaHostRegisterMapped));
+      CUDA_CHECK(cudaMallocHost(&((*table)->slices[i]), slice_real_size,
+                                cudaHostRegisterMapped));
     }
     for (int j = 0; j < num_of_buckets_in_one_slice; j++) {
       (*table)->buckets[start + num_of_allocated_buckets + j].vectors =
@@ -107,10 +106,6 @@ void initialize_buckets(Table<K, V, M, DIM> **table, size_t start, size_t end) {
                           (*table)->buckets_size * sizeof(K)));
     CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].metas),
                           (*table)->buckets_size * sizeof(Meta<M>)));
-    if ((*table)->cache_size > 0) {
-      CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].cache),
-                            (*table)->cache_size * sizeof(V)));
-    }
   }
 
   {
@@ -133,9 +128,16 @@ void initialize_buckets(Table<K, V, M, DIM> **table, size_t start, size_t end) {
 template <class K, class V, class M, size_t DIM>
 void create_table(Table<K, V, M, DIM> **table, size_t init_size = 134217728,
                   size_t max_size = std::numeric_limits<size_t>::max(),
-                  size_t cache_size = 0, size_t buckets_size = 128,
-                  bool vector_on_gpu = false, bool master = true,
+                  size_t max_hbm_for_vectors = 0, size_t buckets_size = 128,
+                  bool primary = true,
                   size_t bytes_per_slice = kDefaultBytesPerSlice) {
+  std::cout << "[merlin-kv] requested configuration: \n"
+            << "\tinit_size = " << init_size << std::endl
+            << "\tmax_size = " << max_size << std::endl
+            << "\tmax_hbm_for_vectors = " << max_hbm_for_vectors << std::endl
+            << "\tbuckets_size = " << buckets_size << std::endl
+            << "\tprimary = " << primary << std::endl
+            << "\tbytes_per_slice = " << bytes_per_slice << std::endl;
   CUDA_CHECK(cudaMallocManaged((void **)table, sizeof(Table<K, V, M, DIM>)));
   CUDA_CHECK(cudaMemset(*table, 0, sizeof(Table<K, V, M, DIM>)));
   (*table)->buckets_size = buckets_size;
@@ -150,9 +152,9 @@ void create_table(Table<K, V, M, DIM> **table, size_t init_size = 134217728,
             << ", real capacity="
             << (*table)->buckets_num * (*table)->buckets_size << std::endl;
   (*table)->capacity = (*table)->buckets_num * (*table)->buckets_size;
-  (*table)->cache_size = 0;
-  (*table)->vector_on_gpu = vector_on_gpu;
-  (*table)->primary_table = master;
+  (*table)->max_hbm_for_vectors = max_hbm_for_vectors;
+  (*table)->remaining_hbm_for_vectors = max_hbm_for_vectors;
+  (*table)->primary = primary;
 
   CUDA_CHECK(cudaMalloc((void **)&((*table)->locks),
                         (*table)->buckets_num * sizeof(Mutex *)));
@@ -193,13 +195,10 @@ void destroy_table(Table<K, V, M, DIM> **table) {
   for (int i = 0; i < (*table)->buckets_num; i++) {
     CUDA_CHECK(cudaFree((*table)->buckets[i].keys));
     CUDA_CHECK(cudaFree((*table)->buckets[i].metas));
-    if ((*table)->cache_size > 0) {
-      CUDA_CHECK(cudaFree((*table)->buckets[i].cache));
-    }
   }
 
   for (int i = 0; i < (*table)->num_of_memory_slices; i++) {
-    if ((*table)->vector_on_gpu) {
+    if (is_on_device((*table)->slices[i])) {
       CUDA_CHECK(cudaFree((*table)->slices[i]));
     } else {
       CUDA_CHECK(cudaFreeHost((*table)->slices[i]));
@@ -1133,6 +1132,12 @@ __global__ void dump_kernel(const Table<K, V, M, DIM> *__restrict table,
     d_meta[global_acc + threadIdx.x] = block_result_meta[threadIdx.x];
   }
 }
+
+static inline size_t GB(size_t n) { return n << 30; }
+
+static inline size_t MB(size_t n) { return n << 20; }
+
+static inline size_t KB(size_t n) { return n << 10; }
 
 }  // namespace merlin
 }  // namespace nv
