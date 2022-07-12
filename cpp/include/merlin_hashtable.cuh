@@ -86,20 +86,24 @@ class HashTable {
    * @param init_size The initial capacity.
    * @param max_size The maximum capacity.
    * @param max_hbm_for_vectors Max HBM allocated for vectors, by bytes.
-   * @param buckets_size The length of each buckets.
+   * @param max_load_factor The table automatically increases the number of
+   * buckets if the load factor exceeds this threshold.
+   * @param bucket_max_size The length of each buckets.
    * @param initializer Initializer used when getting a key fail.
    * @param primary No used.
    */
   explicit HashTable(size_type init_size,
                      size_type max_size = std::numeric_limits<uint64_t>::max(),
                      size_type max_hbm_for_vectors = 0,
-                     size_type buckets_size = 128,
+                     float max_load_factor = 0.75,
+                     size_type bucket_max_size = 128,
                      const Initializer *initializer = nullptr,
                      bool primary = true, int block_size = 1024)
       : init_size_(init_size),
         max_size_(max_size),
         max_hbm_for_vectors_(max_hbm_for_vectors),
-        buckets_size_(buckets_size),
+        max_load_factor_(max_load_factor),
+        bucket_max_size_(bucket_max_size),
         primary_(primary) {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
@@ -107,9 +111,10 @@ class HashTable {
     initializer_ = std::make_shared<Initializer>(
         (initializer != nullptr) ? *initializer : Zeros());
     create_table<Key, Vector, M, DIM>(&table_, init_size_, max_size_,
-                                      max_hbm_for_vectors_, buckets_size_,
+                                      max_hbm_for_vectors_, bucket_max_size_,
                                       primary_);
     block_size_ = SAFE_GET_BLOCK_SIZE(block_size);
+    reach_max_size_ = false;
     CudaCheckError();
   }
 
@@ -143,6 +148,10 @@ class HashTable {
       return;
     }
 
+    if (!reach_max_size_ && load_factor() > max_load_factor_) {
+      reserve(capacity() * 2);
+    }
+
     Vector **dst;
     int *src_offset;
     CUDA_CHECK(cudaMallocAsync(&dst, len * sizeof(Vector *), stream));
@@ -166,7 +175,7 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
 
       {
-        const size_t N = len * table_->buckets_size;
+        const size_t N = len * table_->bucket_max_size;
         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
         lookup_for_upsert_kernel<Key, Vector, M, DIM>
             <<<grid_size, block_size_, 0, stream>>>(table_, keys, found,
@@ -186,8 +195,9 @@ class HashTable {
     }
 
     {
-      static_assert(sizeof(V *) == sizeof(uint64_t),
-                    "Illegal conversation. V pointer must be 64 bit!");
+      static_assert(
+          sizeof(V *) == sizeof(uint64_t),
+          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
       const size_t N = len;
       thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t *>(dst));
@@ -245,6 +255,10 @@ class HashTable {
       return;
     }
 
+    if (!reach_max_size_ && load_factor() > max_load_factor_) {
+      reserve(capacity() * 2);
+    }
+
     Vector **d_dst;
     int *d_src_offset;
     CUDA_CHECK(cudaMallocAsync(&d_dst, len * sizeof(Vector *), stream));
@@ -269,7 +283,7 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(d_status, 0, len * sizeof(bool), stream));
 
       {
-        const size_t N = len * table_->buckets_size;
+        const size_t N = len * table_->bucket_max_size;
         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
         lookup_for_upsert_kernel<Key, Vector, M, DIM>
             <<<grid_size, block_size_, 0, stream>>>(table_, keys, d_status,
@@ -290,8 +304,9 @@ class HashTable {
     }
 
     {
-      static_assert(sizeof(V *) == sizeof(uint64_t),
-                    "Illegal conversation. V pointer must be 64 bit!");
+      static_assert(
+          sizeof(V *) == sizeof(uint64_t),
+          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
       const size_t N = len;
       thrust::device_ptr<uint64_t> d_dst_ptr(
@@ -377,7 +392,7 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(bucket_offset, 0, len * sizeof(int), stream));
 
       {
-        const size_t N = len * table_->buckets_size;
+        const size_t N = len * table_->bucket_max_size;
         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
 
         lookup_for_upsert_kernel<Key, Vector, M, DIM>
@@ -398,8 +413,9 @@ class HashTable {
     }
 
     {
-      static_assert(sizeof(V *) == sizeof(uint64_t),
-                    "Illegal conversation. V pointer must be 64 bit!");
+      static_assert(
+          sizeof(V *) == sizeof(uint64_t),
+          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
       const size_t N = len;
       thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t *>(dst));
@@ -469,7 +485,7 @@ class HashTable {
 
     // Determine bucket locations for reading.
     {
-      const size_t N = len * table_->buckets_size;
+      const size_t N = len * table_->bucket_max_size;
       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
 
       lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
@@ -477,8 +493,9 @@ class HashTable {
     }
 
     {
-      static_assert(sizeof(V *) == sizeof(uint64_t),
-                    "Illegal conversation. V pointer must be 64 bit!");
+      static_assert(
+          sizeof(V *) == sizeof(uint64_t),
+          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
       const size_t N = len;
       thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
@@ -551,7 +568,7 @@ class HashTable {
 
     // Determine bucket locations for reading.
     {
-      const size_t N = len * table_->buckets_size;
+      const size_t N = len * table_->bucket_max_size;
       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
       lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
           table_, keys, src, metas, found, dst_offset, N);
@@ -559,8 +576,9 @@ class HashTable {
     }
 
     {
-      static_assert(sizeof(V *) == sizeof(uint64_t),
-                    "Illegal conversation. V pointer must be 64 bit!");
+      static_assert(
+          sizeof(V *) == sizeof(uint64_t),
+          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
       const size_t N = len;
       thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
@@ -620,15 +638,16 @@ class HashTable {
 
     // Determine bucket locations for reading.
     {
-      const size_t N = len * table_->buckets_size;
+      const size_t N = len * table_->bucket_max_size;
       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
       lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
           table_, keys, src, dst_offset, N);
     }
 
     {
-      static_assert(sizeof(V *) == sizeof(uint64_t),
-                    "Illegal conversation. V pointer must be 64 bit!");
+      static_assert(
+          sizeof(V *) == sizeof(uint64_t),
+          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
       const size_t N = len;
       thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
@@ -666,23 +685,16 @@ class HashTable {
    */
   size_type size(cudaStream_t stream = 0) const {
     size_t h_size = 0;
-    size_t *d_size;
+    size_type N = table_->buckets_num;
+    thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-    CUDA_CHECK(cudaMallocAsync(&d_size, sizeof(size_t), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_size, 0, sizeof(size_t), stream));
-
-    {
-      const size_t N = table_->buckets_num;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-      size_kernel<Key, Vector, M, DIM>
-          <<<grid_size, block_size_, 0, stream>>>(table_, d_size, N);
-    }
-
-    CUDA_CHECK(cudaMemcpyAsync(&h_size, d_size, sizeof(size_t),
-                               cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaFreeAsync(d_size, stream));
-
-    CUDA_CHECK(cudaStreamSynchronize(stream));
+#if THRUST_VERSION >= 101600
+    auto policy = thrust::cuda::par_nosync.on(stream);
+#else
+    auto policy = thrust::cuda::par.on(stream);
+#endif
+    h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+                            thrust::plus<int>());
     CudaCheckError();
     return h_size;
   }
@@ -693,7 +705,7 @@ class HashTable {
    * @return The table max size
    */
   size_type max_size() const noexcept {
-    return static_cast<size_t>(buckets_size_ * table_->buckets_num);
+    return static_cast<size_t>(bucket_max_size_ * table_->buckets_num);
   }
 
   /**
@@ -719,7 +731,7 @@ class HashTable {
    * @brief Remove all of the elements in the table with no release object.
    */
   void clear(cudaStream_t stream = 0) {
-    const size_t N = table_->buckets_num * table_->buckets_size;
+    const size_t N = table_->buckets_num * table_->bucket_max_size;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
     clear_kernel<Key, Vector, M, DIM>
         <<<grid_size, block_size_, 0, stream>>>(table_, N);
@@ -738,7 +750,7 @@ class HashTable {
    * @return Number of elements removed
    */
   size_t erase(const Key *keys, size_type len, cudaStream_t stream = 0) {
-    const size_t N = len * table_->buckets_size;
+    const size_t N = len * table_->bucket_max_size;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
     size_t count = 0;
     size_t *d_count;
@@ -766,7 +778,7 @@ class HashTable {
    * @return Number of elements removed
    */
   size_t erase_if(Pred &pred, cudaStream_t stream = 0) {
-    const size_t N = table_->buckets_num * table_->buckets_size;
+    const size_t N = table_->buckets_num * table_->bucket_max_size;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
     size_t count = 0;
     size_t *d_count;
@@ -814,7 +826,7 @@ class HashTable {
         std::min(shared_mem_size_ / 2 / (sizeof(Key) + sizeof(Vector)), 1024UL);
 
     MERLIN_CHECK(block_size > 0,
-                 "merlin-kv: block_size <= 0, the K-V size may be too large!");
+                 "[merlin-kv] block_size <= 0, the K-V size may be too large!");
     const size_t shared_size =
         sizeof(Key) * block_size + sizeof(Vector) * block_size;
     const int grid_size = (max_num - 1) / (block_size) + 1;
@@ -861,7 +873,7 @@ class HashTable {
         shared_mem_size_ / 2 / (sizeof(Key) + sizeof(Vector) + sizeof(M)),
         1024UL);
     MERLIN_CHECK(block_size > 0,
-                 "merlin-kv: block_size <= 0, the K-V size may be too large!");
+                 "[merlin-kv] block_size <= 0, the K-V size may be too large!");
     const size_t shared_size =
         ((sizeof(Key) + sizeof(Vector) + sizeof(M))) * block_size;
     const int grid_size = (max_num - 1) / (block_size) + 1;
@@ -891,14 +903,15 @@ class HashTable {
    * @param stream The CUDA stream used to execute the operation.
    */
   void reserve(size_type count, cudaStream_t stream = 0) {
-    if (count > max_size_) {
-      std::cout << "[merlin-kv] max_size has been reached! The request of "
-                   "increase_capacity will be ignored!"
-                << std::endl;
+    if (reach_max_size_ || count > max_size_) {
       return;
     }
 
-    while (capacity() < count && capacity() * 2 < max_size_) {
+    while (capacity() < count && capacity() * 2 <= max_size_) {
+      std::cout << "[merlin-kv] load_factor=" << load_factor()
+                << ", reserve is being executed, "
+                << "the capacity will increase from " << capacity() << " to "
+                << capacity() * 2 << "." << std::endl;
       double_capacity(&table_);
 
       const size_t N = capacity() / 2;
@@ -907,6 +920,7 @@ class HashTable {
           <<<grid_size, block_size_, 0, stream>>>(table_, N);
       CUDA_CHECK(cudaStreamSynchronize(stream));
     }
+    reach_max_size_ = (capacity() * 2 > max_size_);
     CudaCheckError();
   }
 
@@ -934,7 +948,7 @@ class HashTable {
    * @return Maximum number of buckets.
    */
   size_type max_bucket_count() const noexcept {
-    return static_cast<size_t>(max_size_ / buckets_size_);
+    return static_cast<size_t>(max_size_ / bucket_max_size_);
   }
 
   /**
@@ -961,7 +975,9 @@ class HashTable {
   const size_type init_size_;
   const size_type max_size_;
   const size_type max_hbm_for_vectors_;
-  const size_type buckets_size_;
+  bool reach_max_size_;
+  float max_load_factor_;
+  const size_type bucket_max_size_;
   std::shared_ptr<Initializer> initializer_;
   const bool primary_;
   size_t shared_mem_size_;
