@@ -68,11 +68,12 @@ struct ValueArray {
   V value[DIM];
 };
 
-constexpr uint64_t INIT_SIZE = 64 * 1024 * 1024UL;
+constexpr uint64_t INIT_SIZE = 32 * 1024 * 1024UL;
+constexpr uint64_t MAX_SIZE = 2 * INIT_SIZE;
 constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
 constexpr uint64_t TEST_TIMES = 1;
 constexpr uint64_t DIM = 64;
-constexpr float target_load_factor = 0.50;
+constexpr float target_load_factor = 0.99;
 
 template <class K, class M>
 __forceinline__ __device__ bool erase_if_pred(const K &key, const M &meta) {
@@ -96,9 +97,10 @@ int test_main() {
 
   std::unique_ptr<Table> table_ =
       std::make_unique<Table>(INIT_SIZE,          /* init_size */
-                              INIT_SIZE,          /* max_size */
+                              MAX_SIZE,           /* max_size */
                               nv::merlin::GB(16), /* max_hbm_for_vectors */
-                              128,                /* buckets_size */
+                              0.75,               /* max_load_factor */
+                              128,                /* buckets_max_size */
                               nullptr,            /* initializer */
                               true,               /* primary */
                               1024                /* block_size */
@@ -184,13 +186,6 @@ int test_main() {
     std::cout << "after 1st insert_or_assign: total_size = " << total_size
               << std::endl;
 
-    auto start_reserve = std::chrono::steady_clock::now();
-    table_->reserve(table_->capacity() * 2, stream);
-    auto end_reserve = std::chrono::steady_clock::now();
-
-    total_size = table_->size(stream);
-    std::cout << "after reserve: total_size = " << total_size << std::endl;
-
     cudaMemset(d_vectors, 2, KEY_NUM * sizeof(Vector));
     table_->insert_or_assign(d_keys, reinterpret_cast<float *>(d_vectors),
                              d_metas, KEY_NUM, stream);
@@ -239,13 +234,11 @@ int test_main() {
     std::chrono::duration<double> diff_size = end_size - start_size;
     std::chrono::duration<double> diff_find = end_find - start_find;
     std::chrono::duration<double> diff_accum = end_accum - start_accum;
-    std::chrono::duration<double> diff_reserve = end_reserve - start_reserve;
     std::chrono::duration<double> diff_erase_if = end_erase_if - start_erase_if;
     std::chrono::duration<double> diff_clear = end_clear - start_clear;
     printf("[timing] insert_or_assign=%.2fms\n",
            diff_insert_or_assign.count() * 1000);
     printf("[timing] size=%.2fms\n", diff_size.count() * 1000);
-    printf("[timing] reserve=%.2fms\n", diff_reserve.count() * 1000);
     printf("[timing] find=%.2fms\n", diff_find.count() * 1000);
     printf("[timing] accum=%.2fms\n", diff_accum.count() * 1000);
     printf("[timing] erase_if=%.2fms\n", diff_erase_if.count() * 1000);
