@@ -47,9 +47,6 @@ struct Bucket {
      meta and its pos in the bucket. */
   M min_meta;
   int min_pos;
-
-  /* The number of saved key-value in this buckets */
-  int size;
 };
 
 using Mutex = cuda::binary_semaphore<cuda::thread_scope_device>;
@@ -58,6 +55,7 @@ template <class K, class V, class M, size_t DIM>
 struct Table {
   Bucket<K, V, M, DIM> *buckets;
   Mutex *locks;                 // mutex for write buckets
+  int *buckets_size;            // size of each buckets.
   V **slices;                   // Handles of the HBM/ HMEM slices.
   size_t bytes_per_slice;       // Size by byte of one slice.
   size_t num_of_memory_slices;  // Number of vectors memory slices.
@@ -65,12 +63,12 @@ struct Table {
   size_t max_size =
       std::numeric_limits<uint64_t>::max();  // Up limit of the table capacity.
   size_t buckets_num;                        // Number of the buckets.
-  size_t buckets_size = 128;                 // Volume of each buckets.
+  size_t bucket_max_size = 128;              // Volume of each buckets.
   size_t max_hbm_for_vectors = 0;            // Max HBM allocated for vectors
   size_t remaining_hbm_for_vectors = 0;  // Remaining HBM allocated for vectors
   bool primary = true;                   // unused
-  int slots_number = 0;                  // unused
   int slots_offset = 0;                  // unused
+  int slots_number = 0;                  // unused
   int device_id = 0;                     // Device id
 };
 
