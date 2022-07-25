@@ -295,6 +295,14 @@ REGISTER_OP("MerlinKVExport")
       return Status::OK();
     });
 
+REGISTER_OP("MerlinKVExportToFile")
+    .Input("table_handle: resource")
+    .Input("filepath: string")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .Attr("buffer_size: int >= 1")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("MerlinKVImport")
     .Input("table_handle: resource")
     .Input("keys: Tin")
@@ -310,6 +318,14 @@ REGISTER_OP("MerlinKVImport")
       TF_RETURN_IF_ERROR(c->Merge(keys, c->input(2), &keys));
       return Status::OK();
     });
+
+REGISTER_OP("MerlinKVImportFromFile")
+    .Input("table_handle: resource")
+    .Input("filepath: string")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .Attr("buffer_size: int >= 1")
+    .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("MerlinKVOfTensors")
     .Output("table_handle: resource")

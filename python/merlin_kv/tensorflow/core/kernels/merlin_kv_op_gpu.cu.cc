@@ -444,6 +444,55 @@ class MerlinKVOfTensorsGpu final : public LookupInterface {
     return Status::OK();
   }
 
+  Status ExportValuesToFile(OpKernelContext* ctx, const string filepath,
+                            const size_t buffer_size) {
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreate(&stream));
+
+    {
+      tf_shared_lock l(mu_);
+      table_->dump_to_file(ctx, filepath, runtime_dim_, stream, buffer_size);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+    }
+    CUDA_CHECK(cudaStreamDestroy(stream));
+    return Status::OK();
+  }
+
+  Status ImportValuesFromFile(OpKernelContext* ctx, const string filepath,
+                              const size_t buffer_size) {
+    cudaStream_t _stream;
+    CUDA_CHECK(cudaStreamCreate(&_stream));
+
+    {
+      tf_shared_lock l(mu_);
+
+      string keyfile = filepath + ".keys";
+      FILE* tmpfd = fopen(keyfile.c_str(), "rb");
+      if (tmpfd == nullptr) {
+        return errors::NotFound("Failed to read key file", keyfile);
+      }
+      fseek(tmpfd, 0, SEEK_END);
+      long int filesize = ftell(tmpfd);
+      if (filesize <= 0) {
+        fclose(tmpfd);
+        return errors::NotFound("Empty key file.");
+      }
+      size_t size = static_cast<size_t>(filesize) / sizeof(K);
+      fseek(tmpfd, 0, SEEK_SET);
+      fclose(tmpfd);
+
+      table_->clear(_stream);
+      CUDA_CHECK(cudaStreamSynchronize(_stream));
+      // TODO: Expand the capacity when load_from_file.
+      // RehashIfNeeded(_stream, size);
+      table_->load_from_file(ctx, filepath, size, runtime_dim_, _stream,
+                             buffer_size);
+      CUDA_CHECK(cudaStreamSynchronize(_stream));
+    }
+    CUDA_CHECK(cudaStreamDestroy(_stream));
+    return Status::OK();
+  }
+
   DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
   DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
   TensorShape key_shape() const final { return TensorShape(); }
@@ -802,6 +851,65 @@ class HashTableImportGpuOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("MerlinKVImport").Device(DEVICE_GPU),
                         HashTableImportGpuOp);
 
+template <class K, class V, class M = uint64_t>
+class HashTableExportToFileGpuOp : public OpKernel {
+ public:
+  explicit HashTableExportToFileGpuOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    int64 signed_buffer_size = 0;
+    ctx->GetAttr("buffer_size", &signed_buffer_size);
+    buffer_size_ = static_cast<size_t>(signed_buffer_size);
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
+    core::ScopedUnref unref_me(table);
+
+    const Tensor& ftensor = ctx->input(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ftensor.shape()),
+                errors::InvalidArgument("filepath must be scalar."));
+    string filepath = string(ftensor.scalar<tstring>()().data());
+    lookup::MerlinKVOfTensorsGpu<K, V, M>* table_merlin =
+        (lookup::MerlinKVOfTensorsGpu<K, V, M>*)table;
+    OP_REQUIRES_OK(
+        ctx, table_merlin->ExportValuesToFile(ctx, filepath, buffer_size_));
+  }
+
+ private:
+  size_t buffer_size_;
+};
+
+// Op that import from file.
+template <class K, class V, class M = uint64_t>
+class HashTableImportFromFileGpuOp : public OpKernel {
+ public:
+  explicit HashTableImportFromFileGpuOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    int64 signed_buffer_size = 0;
+    ctx->GetAttr("buffer_size", &signed_buffer_size);
+    buffer_size_ = static_cast<size_t>(signed_buffer_size);
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    lookup::LookupInterface* table;
+    OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
+    core::ScopedUnref unref_me(table);
+
+    const Tensor& ftensor = ctx->input(1);
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(ftensor.shape()),
+                errors::InvalidArgument("filepath must be scalar."));
+    string filepath = string(ftensor.scalar<tstring>()().data());
+    lookup::MerlinKVOfTensorsGpu<K, V, M>* table_merlin =
+        (lookup::MerlinKVOfTensorsGpu<K, V, M>*)table;
+    OP_REQUIRES_OK(
+        ctx, table_merlin->ImportValuesFromFile(ctx, filepath, buffer_size_));
+  }
+
+ private:
+  size_t buffer_size_;
+};
+
 // Register the MerlinKVOfTensors op.
 
 #define REGISTER_KERNEL(key_dtype, value_dtype)                                \
@@ -811,7 +919,7 @@ REGISTER_KERNEL_BUILDER(Name("MerlinKVImport").Device(DEVICE_GPU),
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       HashTableGpuOp<lookup::MerlinKVOfTensorsGpu<key_dtype, value_dtype>,     \
-                     key_dtype, value_dtype>);                                 \
+                     key_dtype, value_dtype>)                                  \
   REGISTER_KERNEL_BUILDER(Name("MerlinKVClear")                                \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<key_dtype>("key_dtype")          \
@@ -843,7 +951,18 @@ REGISTER_KERNEL_BUILDER(Name("MerlinKVImport").Device(DEVICE_GPU),
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<key_dtype>("Tin")                \
                               .TypeConstraint<value_dtype>("Tout"),            \
-                          HashTableInsertGpuOp<key_dtype, value_dtype>)
+                          HashTableInsertGpuOp<key_dtype, value_dtype>)        \
+  REGISTER_KERNEL_BUILDER(Name("MerlinKVExportToFile")                         \
+                              .Device(DEVICE_GPU)                              \
+                              .TypeConstraint<key_dtype>("key_dtype")          \
+                              .TypeConstraint<value_dtype>("value_dtype"),     \
+                          HashTableExportToFileGpuOp<key_dtype, value_dtype>)  \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MerlinKVImportFromFile")                                           \
+          .Device(DEVICE_GPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      HashTableImportFromFileGpuOp<key_dtype, value_dtype>);
 
 REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(int64, Eigen::half);

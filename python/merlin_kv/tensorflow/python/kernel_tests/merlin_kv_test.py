@@ -1418,6 +1418,49 @@ class VariableTest(test.TestCase):
                 "[Round {}] correct_rate={:.4f}".format(r, correct_rate) +
                 '\033[0m')
 
+  def test_save_and_load(self):
+    initializer = tf.keras.initializers.RandomNormal()
+    dim = 8
+
+    test_devices = ['/GPU:0']
+    var1 = mkv.get_variable('vmas142',
+                            key_dtype=tf.int64,
+                            value_dtype=tf.float32,
+                            initializer=initializer,
+                            devices=test_devices,
+                            init_size=20000,
+                            dim=dim)
+    var2 = mkv.get_variable('lfwa031',
+                            key_dtype=tf.int64,
+                            value_dtype=tf.float32,
+                            initializer=initializer,
+                            devices=test_devices,
+                            init_size=20000,
+                            dim=dim)
+    init_keys = tf.range(0, 10000, dtype=tf.int64)
+    init_values = var1.lookup(init_keys)
+
+    sess_config = config_pb2.ConfigProto(
+        allow_soft_placement=True,
+        gpu_options=config_pb2.GPUOptions(allow_growth=True))
+    with self.session(use_gpu=True, config=default_config):
+      self.evaluate(var1.upsert(init_keys, init_values))
+
+      np_keys = self.evaluate(init_keys)
+      np_values = self.evaluate(init_values)
+
+      test_dir = self.get_temp_dir()
+      filepath = os.path.join(test_dir, 'table')
+      self.evaluate(var1.tables[0].save(filepath, buffer_size=4096))
+      self.evaluate(var2.tables[0].load(filepath, buffer_size=4096))
+      load_keys, load_values = self.evaluate(var2.export())
+      sort_idx = load_keys.argsort()
+      load_keys = load_keys[sort_idx[::1]]
+      load_values = load_values[sort_idx[::1]]
+
+      self.assertAllEqual(np_keys, load_keys)
+      self.assertAllEqual(np_values, load_values)
+
 
 if __name__ == "__main__":
   test.main()
