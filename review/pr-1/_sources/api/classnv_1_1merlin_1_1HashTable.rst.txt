@@ -1,0 +1,17 @@
+.. _exhale_class_classnv_1_1merlin_1_1HashTable:
+
+Template Class HashTable
+========================
+
+- Defined in :ref:`file_merlin_hashtable.cuh`
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nv::merlin::HashTable
+   :project: Merlin Key-Value
+   :members:
+   :protected-members:
+   :undoc-members:

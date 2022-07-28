@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contributing &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="_static/togglebutton.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="Template Class Optimizer" href="api/classnv_1_1merlin_1_1optimizers_1_1Optimizer.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html" class="icon icon-home"> Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="README.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Documentation</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Contributing to Merlin-KV</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#maintainership">Maintainership</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#id1">Contributing</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#community">Community</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#licence">Licence</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>Contributing</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="tex2jax_ignore mathjax_ignore section" id="contributing">
+<h1>Contributing<a class="headerlink" href="#contributing" title="Permalink to this headline"></a></h1>
+<p>What’s the Merlin-HKVS?</p>
+<ul class="simple">
+<li><p>A hierarchical key-value storage library designed for the large models in recommenders systems</p></li>
+<li><p>Storing the key-value (embedding) on the HBM and Host memory (support SSD/NVMe in the future)</p></li>
+<li><p>The performance is close to those implementations running on pure HBM thru innovative design</p></li>
+<li><p>Can also be used as a generic key-value storage</p></li>
+</ul>
+<div class="section" id="maintainership">
+<h2>Maintainership<a class="headerlink" href="#maintainership" title="Permalink to this headline"></a></h2>
+<p>We adopt proxy maintainership as in <a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv">Merlin KV</a>:</p>
+<p><em>Projects and subpackages are compartmentalized and each is maintained by those
+with expertise and vested interest in that component.</em></p>
+<p><em>Subpackage maintainership will only be granted after substantial contribution
+has been made in order to limit the number of users with write permission.
+Contributions can come in the form of issue closings, bug fixes, documentation,
+new code, or optimizing existing code. Submodule maintainership can be granted
+with a lower barrier for entry as this will not include write permissions to
+the repo.</em></p>
+</div>
+<div class="section" id="id1">
+<h2>Contributing<a class="headerlink" href="#id1" title="Permalink to this headline"></a></h2>
+<p>Merlin-KV is a community-led open source project. As such,
+the project depends on public contributions, bug fixes, and documentation. This
+project adheres to NVIDIA’s Code of Conduct.</p>
+<div class="section" id="pull-requests">
+<h3>Pull Requests<a class="headerlink" href="#pull-requests" title="Permalink to this headline"></a></h3>
+<p>We welcome contributions via pull requests.
+Before sending out a pull request, we recommend that you open an issue and
+discuss your proposed change. Some changes may require a design review.
+All submissions require review by project owners.</p>
+<p><strong>NOTE</strong>:
+If your PR cannot be mereged, and system indicate you like “Merging is blocked,
+The base branch requres all commits to be signed’
+You have to configure your git and GPG key to sign your commit. <a class="reference external" href="https://docs.github.com/en/github/authenticating-to-github/managing-commit-signature-verification/about-commit-signature-verification#gpg-commit-signature-verification">Sign your commit with GPG key</a> .</p>
+</div>
+<div class="section" id="design-review">
+<h3>Design Review<a class="headerlink" href="#design-review" title="Permalink to this headline"></a></h3>
+<p>A new project in this repository or a significant change to an existing project
+requires a design review. We recommend that you discuss your idea in the mailing
+list (<a class="reference external" href="mailto:merlinteam&#37;&#52;&#48;nvidia&#46;com">merlinteam<span>&#64;</span>nvidia<span>&#46;</span>com</a>) before moving forward.</p>
+<p>The centerpiece of a design review is a design doc which needs to include the following:</p>
+<ul class="simple">
+<li><p>Motivation of the change</p></li>
+<li><p>High-level design</p></li>
+<li><p>Detailed changes and related changes in TensorFlow</p></li>
+<li><p>[Optional] other alternatives that have been considered</p></li>
+<li><p>[Optional] testing plan</p></li>
+<li><p>[Optional] maintenance plan</p></li>
+</ul>
+<p>The author needs to send out the design doc via a pull request. Project owners or
+Merlin Team members will discuss proposals in a monthly meeting
+or an ad-hoc design review meeting. After a proposal is approved, the author
+could then start contributing the implementation.</p>
+</div>
+<div class="section" id="coding-style">
+<h3>Coding Style<a class="headerlink" href="#coding-style" title="Permalink to this headline"></a></h3>
+<p>See our <span class="xref myst">Style Guide</span> for more details.</p>
+</div>
+<div class="section" id="additional-requirements">
+<h3>Additional Requirements<a class="headerlink" href="#additional-requirements" title="Permalink to this headline"></a></h3>
+<p>In addition to the above requirements, contribution also needs to meet the following criteria:</p>
+<ul class="simple">
+<li><p>The change needs to include unit tests and integration tests if any.</p></li>
+<li><p>Each project needs to provide documentation for when and how to use it.</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="community">
+<h2>Community<a class="headerlink" href="#community" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p>Merlin-KV code (<a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv">https://github.com/NVIDIA-Merlin/merlin-kv</a>)</p></li>
+</ul>
+</div>
+<div class="section" id="licence">
+<h2>Licence<a class="headerlink" href="#licence" title="Permalink to this headline"></a></h2>
+<p>Apache License 2.0</p>
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="api/classnv_1_1merlin_1_1optimizers_1_1Optimizer.html" class="btn btn-neutral float-left" title="Template Class Optimizer" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

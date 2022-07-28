@@ -1,0 +1,722 @@
+
+.. _program_listing_file_merlin_hashtable.cuh:
+
+Program Listing for File merlin_hashtable.cuh
+=============================================
+
+|exhale_lsh| :ref:`Return to documentation for file <file_merlin_hashtable.cuh>` (``merlin_hashtable.cuh``)
+
+.. |exhale_lsh| unicode:: U+021B0 .. UPWARDS ARROW WITH TIP LEFTWARDS
+
+.. code-block:: cpp
+
+   /*
+    * Copyright (c) 2022, NVIDIA CORPORATION.
+    *
+    * Licensed under the Apache License, Version 2.0 (the "License");
+    * you may not use this file except in compliance with the License.
+    * You may obtain a copy of the License at
+    *
+    *     http://www.apache.org/licenses/LICENSE-2.0
+    *
+    * Unless required by applicable law or agreed to in writing, software
+    * distributed under the License is distributed on an "AS IS" BASIS,
+    * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    * See the License for the specific language governing permissions and
+    * limitations under the License.
+    */
+   
+   #pragma once
+   
+   #include <thrust/device_vector.h>
+   #include <thrust/execution_policy.h>
+   #include <thrust/sort.h>
+   
+   #include <mutex>
+   
+   #include "merlin/core_kernels.cuh"
+   #include "merlin/initializers.cuh"
+   #include "merlin/utils.cuh"
+   
+   namespace nv {
+   namespace merlin {
+   
+   template <class V, size_t DIM>
+   struct Vector {
+     V value[DIM];
+   };
+   
+   template <class Key, class V, class M, size_t DIM>
+   class HashTable {
+    public:
+     using key_type = Key;
+     using Vector = Vector<V, DIM>;
+     using value_type = Vector;
+     using size_type = size_t;
+     using Table = nv::merlin::Table<Key, Vector, M, DIM>;
+     using Initializer = nv::merlin::initializers::Initializer<V>;
+     using Zeros = nv::merlin::initializers::Zeros<V>;
+     using Pred = Predict<Key, M>;
+   
+    public:
+     explicit HashTable(size_type init_size,
+                        size_type max_size = std::numeric_limits<uint64_t>::max(),
+                        size_type max_hbm_for_vectors = 0,
+                        float max_load_factor = 0.75,
+                        size_type bucket_max_size = 128,
+                        const Initializer *initializer = nullptr,
+                        bool primary = true, int block_size = 1024)
+         : init_size_(init_size),
+           max_size_(max_size),
+           max_hbm_for_vectors_(max_hbm_for_vectors),
+           max_load_factor_(max_load_factor),
+           bucket_max_size_(bucket_max_size),
+           primary_(primary) {
+       cudaDeviceProp deviceProp;
+       CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
+       shared_mem_size_ = deviceProp.sharedMemPerBlock;
+       initializer_ = std::make_shared<Initializer>(
+           (initializer != nullptr) ? *initializer : Zeros());
+       create_table<Key, Vector, M, DIM>(&table_, init_size_, max_size_,
+                                         max_hbm_for_vectors_, bucket_max_size_,
+                                         primary_);
+       block_size_ = SAFE_GET_BLOCK_SIZE(block_size);
+       reach_max_size_ = false;
+       CudaCheckError();
+     }
+   
+     ~HashTable() { destroy_table<Key, Vector, M, DIM>(&table_); }
+     HashTable(const HashTable &) = delete;
+     HashTable &operator=(const HashTable &) = delete;
+   
+     void insert_or_assign(const Key *keys, const V *vectors, size_t len,
+                           bool allow_duplicated_keys = true,
+                           cudaStream_t stream = 0) {
+       // TODO(jamesrong): split when len is too huge.
+       if (len == 0) {
+         return;
+       }
+   
+       if (!reach_max_size_ && load_factor() > max_load_factor_) {
+         reserve(capacity() * 2);
+       }
+   
+       Vector **dst;
+       int *src_offset;
+       CUDA_CHECK(cudaMallocAsync(&dst, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(dst, 0, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMallocAsync(&src_offset, len * sizeof(int), stream));
+       CUDA_CHECK(cudaMemsetAsync(src_offset, 0, len * sizeof(int), stream));
+   
+       // Determine bucket insert locations.
+       if (allow_duplicated_keys) {
+         const size_t N = len;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         upsert_allow_duplicated_keys_kernel<Key, Vector, M, DIM>
+             <<<grid_size, block_size_, 0, stream>>>(table_, keys, dst, src_offset,
+                                                     len);
+       } else {
+         int *bucket_offset;
+         bool *found;
+         CUDA_CHECK(cudaMallocAsync(&bucket_offset, len * sizeof(int), stream));
+         CUDA_CHECK(cudaMemsetAsync(bucket_offset, 0, len * sizeof(int), stream));
+         CUDA_CHECK(cudaMallocAsync(&found, len * sizeof(bool), stream));
+         CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
+   
+         {
+           const size_t N = len * table_->bucket_max_size;
+           const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+           lookup_for_upsert_kernel<Key, Vector, M, DIM>
+               <<<grid_size, block_size_, 0, stream>>>(table_, keys, found,
+                                                       bucket_offset, N);
+         }
+   
+         {
+           const size_t N = len;
+           const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+           upsert_kernel<Key, Vector, M, DIM>
+               <<<grid_size, block_size_, 0, stream>>>(
+                   table_, keys, dst, src_offset, found, bucket_offset, len);
+         }
+   
+         CUDA_CHECK(cudaFreeAsync(bucket_offset, stream));
+         CUDA_CHECK(cudaFreeAsync(found, stream));
+       }
+   
+       {
+         static_assert(
+             sizeof(V *) == sizeof(uint64_t),
+             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+   
+         const size_t N = len;
+         thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t *>(dst));
+         thrust::device_ptr<int> src_offset_ptr(src_offset);
+   
+   #if THRUST_VERSION >= 101600
+         auto policy = thrust::cuda::par_nosync.on(stream);
+   #else
+         auto policy = thrust::cuda::par.on(stream);
+   #endif
+         thrust::sort_by_key(policy, dst_ptr, dst_ptr + N, src_offset_ptr,
+                             thrust::less<uint64_t>());
+       }
+   
+       // Copy provided data to the bucket.
+       {
+         const size_t N = len * DIM;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         write_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             reinterpret_cast<const Vector *>(vectors), dst, src_offset, N);
+       }
+   
+       CUDA_CHECK(cudaFreeAsync(dst, stream));
+       CUDA_CHECK(cudaFreeAsync(src_offset, stream));
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+     }
+   
+     void insert_or_assign(const Key *keys, const V *vectors, const M *metas,
+                           size_t len, bool allow_duplicated_keys = true,
+                           cudaStream_t stream = 0) {
+       if (len == 0) {
+         return;
+       }
+   
+       if (!reach_max_size_ && load_factor() > max_load_factor_) {
+         reserve(capacity() * 2);
+       }
+   
+       Vector **d_dst;
+       int *d_src_offset;
+       CUDA_CHECK(cudaMallocAsync(&d_dst, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMallocAsync(&d_src_offset, len * sizeof(int), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, len * sizeof(int), stream));
+   
+       // Determine bucket insert locations.
+       if (allow_duplicated_keys) {
+         const size_t N = len;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         upsert_allow_duplicated_keys_kernel<Key, Vector, M, DIM>
+             <<<grid_size, block_size_, 0, stream>>>(table_, keys, metas, d_dst,
+                                                     d_src_offset, len);
+       } else {
+         int *d_bucket_offset;
+         bool *d_status;
+         CUDA_CHECK(cudaMallocAsync(&d_bucket_offset, len * sizeof(int), stream));
+         CUDA_CHECK(
+             cudaMemsetAsync(d_bucket_offset, 0, len * sizeof(int), stream));
+         CUDA_CHECK(cudaMallocAsync(&d_status, len * sizeof(bool), stream));
+         CUDA_CHECK(cudaMemsetAsync(d_status, 0, len * sizeof(bool), stream));
+   
+         {
+           const size_t N = len * table_->bucket_max_size;
+           const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+           lookup_for_upsert_kernel<Key, Vector, M, DIM>
+               <<<grid_size, block_size_, 0, stream>>>(table_, keys, d_status,
+                                                       d_bucket_offset, N);
+         }
+   
+         {
+           const size_t N = len;
+           const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+           upsert_kernel<Key, Vector, M, DIM>
+               <<<grid_size, block_size_, 0, stream>>>(table_, keys, metas, d_dst,
+                                                       d_src_offset, d_status,
+                                                       d_bucket_offset, len);
+         }
+   
+         CUDA_CHECK(cudaFreeAsync(d_bucket_offset, stream));
+         CUDA_CHECK(cudaFreeAsync(d_status, stream));
+       }
+   
+       {
+         static_assert(
+             sizeof(V *) == sizeof(uint64_t),
+             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+   
+         const size_t N = len;
+         thrust::device_ptr<uint64_t> d_dst_ptr(
+             reinterpret_cast<uint64_t *>(d_dst));
+         thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
+   
+   #if THRUST_VERSION >= 101600
+         auto policy = thrust::cuda::par_nosync.on(stream);
+   #else
+         auto policy = thrust::cuda::par.on(stream);
+   #endif
+         thrust::sort_by_key(policy, d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
+                             thrust::less<uint64_t>());
+       }
+   
+       // Copy provided data to the bucket.
+       {
+         const size_t N = len * DIM;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         write_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             reinterpret_cast<const Vector *>(vectors), d_dst, d_src_offset, N);
+       }
+   
+       CUDA_CHECK(cudaFreeAsync(d_dst, stream));
+       CUDA_CHECK(cudaFreeAsync(d_src_offset, stream));
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+     }
+   
+     void accum(const Key *keys, const V *vals_or_deltas, const bool *exists,
+                size_t len, bool allow_duplicated_keys = true,
+                cudaStream_t stream = 0) {
+       if (len == 0) {
+         return;
+       }
+   
+       Vector **dst;
+       int *src_offset;
+       bool *found;
+       CUDA_CHECK(cudaMallocAsync(&dst, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(dst, 0, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMallocAsync(&src_offset, len * sizeof(int), stream));
+       CUDA_CHECK(cudaMemsetAsync(src_offset, 0, len * sizeof(int), stream));
+       CUDA_CHECK(cudaMallocAsync(&found, len * sizeof(bool), stream));
+       CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
+   
+       if (allow_duplicated_keys) {
+         const size_t N = len;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         accum_allow_duplicated_keys_kernel<Key, Vector, M, DIM>
+             <<<grid_size, block_size_, 0, stream>>>(table_, keys, dst, exists,
+                                                     found, src_offset, len);
+   
+       } else {
+         int *bucket_offset;
+         CUDA_CHECK(cudaMallocAsync(&bucket_offset, len * sizeof(int), stream));
+         CUDA_CHECK(cudaMemsetAsync(bucket_offset, 0, len * sizeof(int), stream));
+   
+         {
+           const size_t N = len * table_->bucket_max_size;
+           const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+   
+           lookup_for_upsert_kernel<Key, Vector, M, DIM>
+               <<<grid_size, block_size_, 0, stream>>>(table_, keys, found,
+                                                       bucket_offset, N);
+         }
+   
+         {
+           const size_t N = len;
+           const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+           accum_kernel<Key, Vector, M, DIM>
+               <<<grid_size, block_size_, 0, stream>>>(table_, keys, dst, exists,
+                                                       src_offset, found,
+                                                       bucket_offset, len);
+         }
+   
+         CUDA_CHECK(cudaFreeAsync(bucket_offset, stream));
+       }
+   
+       {
+         static_assert(
+             sizeof(V *) == sizeof(uint64_t),
+             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+   
+         const size_t N = len;
+         thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t *>(dst));
+         thrust::device_ptr<int> src_offset_ptr(src_offset);
+   
+   #if THRUST_VERSION >= 101600
+         auto policy = thrust::cuda::par_nosync.on(stream);
+   #else
+         auto policy = thrust::cuda::par.on(stream);
+   #endif
+         thrust::sort_by_key(policy, dst_ptr, dst_ptr + N, src_offset_ptr,
+                             thrust::less<uint64_t>());
+       }
+   
+       {
+         const size_t N = len * DIM;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         write_with_accum_kernel<Key, Vector, M, DIM>
+             <<<grid_size, block_size_, 0, stream>>>(
+                 reinterpret_cast<const Vector *>(vals_or_deltas), dst, exists,
+                 found, src_offset, N);
+       }
+   
+       CUDA_CHECK(cudaFreeAsync(dst, stream));
+       CUDA_CHECK(cudaFreeAsync(src_offset, stream));
+       CUDA_CHECK(cudaFreeAsync(found, stream));
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+     }
+   
+     void find(const Key *keys, V *vectors, bool *found, size_t len,
+               const V *default_vectors, bool full_size_default,
+               cudaStream_t stream = 0) const {
+       if (len == 0) {
+         return;
+       }
+   
+       Vector **src;
+       int *dst_offset;
+       CUDA_CHECK(cudaMallocAsync(&src, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(src, 0, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
+       CUDA_CHECK(cudaMallocAsync(&dst_offset, len * sizeof(int), stream));
+       CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, len * sizeof(int), stream));
+   
+       // Determine bucket locations for reading.
+       {
+         const size_t N = len * table_->bucket_max_size;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+   
+         lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             table_, keys, src, found, dst_offset, N);
+       }
+   
+       {
+         static_assert(
+             sizeof(V *) == sizeof(uint64_t),
+             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+   
+         const size_t N = len;
+         thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
+         thrust::device_ptr<int> dst_offset_ptr(dst_offset);
+   
+   #if THRUST_VERSION >= 101600
+         auto policy = thrust::cuda::par_nosync.on(stream);
+   #else
+         auto policy = thrust::cuda::par.on(stream);
+   #endif
+         thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
+                             thrust::less<uint64_t>());
+       }
+   
+       // Copy data from bucket to the pointer to vectors.
+       {
+         const size_t N = len * DIM;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         read_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             src, reinterpret_cast<Vector *>(vectors), found,
+             reinterpret_cast<const Vector *>(default_vectors), dst_offset, N,
+             full_size_default);
+       }
+   
+       CUDA_CHECK(cudaFreeAsync(src, stream));
+       CUDA_CHECK(cudaFreeAsync(dst_offset, stream));
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+     }
+   
+     void find(const Key *keys, V *vectors, M *metas, bool *found, size_type len,
+               const V *default_vectors, bool full_size_default,
+               cudaStream_t stream = 0) const {
+       if (len == 0) {
+         return;
+       }
+   
+       Vector **src;
+       int *dst_offset;
+       CUDA_CHECK(cudaMallocAsync(&src, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(src, 0, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
+       CUDA_CHECK(cudaMallocAsync(&dst_offset, len * sizeof(int), stream));
+       CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, len * sizeof(int), stream));
+   
+       // Determine bucket locations for reading.
+       {
+         const size_t N = len * table_->bucket_max_size;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             table_, keys, src, metas, found, dst_offset, N);
+         CudaCheckError();
+       }
+   
+       {
+         static_assert(
+             sizeof(V *) == sizeof(uint64_t),
+             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+   
+         const size_t N = len;
+         thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
+         thrust::device_ptr<int> dst_offset_ptr(dst_offset);
+   
+   #if THRUST_VERSION >= 101600
+         auto policy = thrust::cuda::par_nosync.on(stream);
+   #else
+         auto policy = thrust::cuda::par.on(stream);
+   #endif
+         thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
+                             thrust::less<uint64_t>());
+       }
+   
+       // Copy data from bucket to the pointer to vectors.
+       {
+         const size_t N = len * DIM;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         read_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             src, reinterpret_cast<Vector *>(vectors), found,
+             reinterpret_cast<const Vector *>(default_vectors), dst_offset, N,
+             full_size_default);
+       }
+   
+       CUDA_CHECK(cudaFreeAsync(src, stream));
+       CUDA_CHECK(cudaFreeAsync(dst_offset, stream));
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+     }
+   
+     void find(const Key *keys, V *vectors, size_type len,
+               cudaStream_t stream = 0) const {
+       if (len == 0) {
+         return;
+       }
+   
+       Vector **src;
+       int *dst_offset;
+       CUDA_CHECK(cudaMallocAsync(&src, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMemsetAsync(src, 0, len * sizeof(Vector *), stream));
+       CUDA_CHECK(cudaMallocAsync(&dst_offset, len * sizeof(int), stream));
+       CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, len * sizeof(int), stream));
+   
+       initializer_->initialize(vectors, len * sizeof(V), stream);
+   
+       // Determine bucket locations for reading.
+       {
+         const size_t N = len * table_->bucket_max_size;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             table_, keys, src, dst_offset, N);
+       }
+   
+       {
+         static_assert(
+             sizeof(V *) == sizeof(uint64_t),
+             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+   
+         const size_t N = len;
+         thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
+         thrust::device_ptr<int> dst_offset_ptr(dst_offset);
+   
+   #if THRUST_VERSION >= 101600
+         auto policy = thrust::cuda::par_nosync.on(stream);
+   #else
+         auto policy = thrust::cuda::par.on(stream);
+   #endif
+         thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
+                             thrust::less<uint64_t>());
+       }
+   
+       // Copy data from bucket to the pointer to vectors.
+       {
+         const size_t N = len * DIM;
+         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         read_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+             src, reinterpret_cast<Vector *>(vectors), dst_offset, N);
+       }
+   
+       CUDA_CHECK(cudaFreeAsync(src, stream));
+       CUDA_CHECK(cudaFreeAsync(dst_offset, stream));
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+     }
+   
+     size_type size(cudaStream_t stream = 0) const {
+       size_t h_size = 0;
+       size_type N = table_->buckets_num;
+       thrust::device_ptr<int> size_ptr(table_->buckets_size);
+   
+   #if THRUST_VERSION >= 101600
+       auto policy = thrust::cuda::par_nosync.on(stream);
+   #else
+       auto policy = thrust::cuda::par.on(stream);
+   #endif
+       h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+                               thrust::plus<int>());
+       CudaCheckError();
+       return h_size;
+     }
+   
+     size_type max_size() const noexcept {
+       return static_cast<size_t>(bucket_max_size_ * table_->buckets_num);
+     }
+   
+     bool empty(cudaStream_t stream = 0) const { return size(stream) == 0; }
+   
+     size_type capacity() const { return table_->capacity; }
+   
+     void clear(cudaStream_t stream = 0) {
+       const size_t N = table_->buckets_num * table_->bucket_max_size;
+       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+       clear_kernel<Key, Vector, M, DIM>
+           <<<grid_size, block_size_, 0, stream>>>(table_, N);
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+     }
+   
+     size_t erase(const Key *keys, size_type len, cudaStream_t stream = 0) {
+       const size_t N = len * table_->bucket_max_size;
+       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+       size_t count = 0;
+       size_t *d_count;
+       CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_t), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_t), stream));
+   
+       remove_kernel<Key, Vector, M, DIM>
+           <<<grid_size, block_size_, 0, stream>>>(table_, keys, d_count, N);
+   
+       CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_t),
+                                  cudaMemcpyDeviceToHost, stream));
+       CUDA_CHECK(cudaFreeAsync(d_count, stream));
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+       return count;
+     }
+   
+     size_t erase_if(Pred &pred, cudaStream_t stream = 0) {
+       const size_t N = table_->buckets_num * table_->bucket_max_size;
+       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+       size_t count = 0;
+       size_t *d_count;
+       Pred h_pred;
+   
+       CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_t), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_t), stream));
+       CUDA_CHECK(cudaMemcpyFromSymbolAsync(&h_pred, pred, sizeof(Pred), 0,
+                                            cudaMemcpyDeviceToHost, stream));
+   
+       remove_kernel<Key, Vector, M, DIM>
+           <<<grid_size, block_size_, 0, stream>>>(table_, h_pred, d_count, N);
+   
+       CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_t),
+                                  cudaMemcpyDeviceToHost, stream));
+       CUDA_CHECK(cudaFreeAsync(d_count, stream));
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+       return count;
+     }
+   
+     size_type dump(Key *keys, V *vectors, const size_type offset,
+                    const size_type max_num, cudaStream_t stream = 0) const {
+       size_type h_counter = 0;
+       size_type *d_counter;
+   
+       CUDA_CHECK(cudaMallocAsync(&d_counter, sizeof(size_type), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+   
+       const size_t block_size =
+           std::min(shared_mem_size_ / 2 / (sizeof(Key) + sizeof(Vector)), 1024UL);
+   
+       MERLIN_CHECK(block_size > 0,
+                    "[merlin-kv] block_size <= 0, the K-V size may be too large!");
+       const size_t shared_size =
+           sizeof(Key) * block_size + sizeof(Vector) * block_size;
+       const int grid_size = (max_num - 1) / (block_size) + 1;
+   
+       dump_kernel<Key, Vector, M, DIM>
+           <<<grid_size, block_size, shared_size, stream>>>(
+               table_, keys, reinterpret_cast<Vector *>(vectors), offset, max_num,
+               d_counter);
+   
+       CUDA_CHECK(cudaMemcpyAsync(&h_counter, d_counter, sizeof(size_t),
+                                  cudaMemcpyDeviceToHost, stream));
+       CUDA_CHECK(cudaFreeAsync(d_counter, stream));
+   
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+       return h_counter;
+     }
+   
+     size_type dump(Key *keys, V *vectors, M *metas, const size_type offset,
+                    const size_type max_num, cudaStream_t stream = 0) const {
+       size_type h_counter = 0;
+       size_type *d_counter;
+   
+       CUDA_CHECK(cudaMallocAsync(&d_counter, sizeof(size_type), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+   
+       const size_t block_size = std::min(
+           shared_mem_size_ / 2 / (sizeof(Key) + sizeof(Vector) + sizeof(M)),
+           1024UL);
+       MERLIN_CHECK(block_size > 0,
+                    "[merlin-kv] block_size <= 0, the K-V size may be too large!");
+       const size_t shared_size =
+           ((sizeof(Key) + sizeof(Vector) + sizeof(M))) * block_size;
+       const int grid_size = (max_num - 1) / (block_size) + 1;
+   
+       dump_kernel<Key, Vector, M, DIM>
+           <<<grid_size, block_size, shared_size, stream>>>(
+               table_, keys, reinterpret_cast<Vector *>(vectors), metas, offset,
+               max_num, d_counter);
+       CUDA_CHECK(cudaMemcpyAsync(&h_counter, d_counter, sizeof(size_t),
+                                  cudaMemcpyDeviceToHost, stream));
+       CUDA_CHECK(cudaFreeAsync(d_counter, stream));
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+       return h_counter;
+     }
+   
+     void reserve(size_type count, cudaStream_t stream = 0) {
+       if (reach_max_size_ || count > max_size_) {
+         return;
+       }
+   
+       while (capacity() < count && capacity() * 2 <= max_size_) {
+         std::cout << "[merlin-kv] load_factor=" << load_factor()
+                   << ", reserve is being executed, "
+                   << "the capacity will increase from " << capacity() << " to "
+                   << capacity() * 2 << "." << std::endl;
+         double_capacity(&table_);
+   
+         const size_t N = capacity() / 2;
+         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+         rehash_kernel<Key, Vector, M, DIM>
+             <<<grid_size, block_size_, 0, stream>>>(table_, N);
+         CUDA_CHECK(cudaStreamSynchronize(stream));
+       }
+       reach_max_size_ = (capacity() * 2 > max_size_);
+       CudaCheckError();
+     }
+   
+     float load_factor(cudaStream_t stream = 0) const {
+       return static_cast<float>((size(stream) * 1.0) / (capacity() * 1.0));
+     };
+   
+     size_type bucket_count() const noexcept { return table_->buckets_num; }
+   
+     size_type max_bucket_count() const noexcept {
+       return static_cast<size_t>(max_size_ / bucket_max_size_);
+     }
+   
+     size_type bucket_size(size_type n, cudaStream_t stream = 0) const noexcept {
+       size_type size = 0;
+       if (n < table_->buckets_num) {
+         CUDA_CHECK(cudaMemcpyAsync(&size, &(table_->buckets[n].size),
+                                    sizeof(size_t), cudaMemcpyDeviceToHost,
+                                    stream));
+         CudaCheckError();
+       }
+       return size;
+     }
+   
+    private:
+     int block_size_;
+     const size_type init_size_;
+     const size_type max_size_;
+     const size_type max_hbm_for_vectors_;
+     bool reach_max_size_;
+     float max_load_factor_;
+     const size_type bucket_max_size_;
+     std::shared_ptr<Initializer> initializer_;
+     const bool primary_;
+     size_t shared_mem_size_;
+     Table *table_;
+     //   std::mutex mtx_;
+   };
+   
+   }  // namespace merlin
+   }  // namespace nv

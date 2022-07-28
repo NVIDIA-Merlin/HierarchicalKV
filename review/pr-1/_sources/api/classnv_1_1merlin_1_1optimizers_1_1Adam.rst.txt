@@ -1,0 +1,26 @@
+.. _exhale_class_classnv_1_1merlin_1_1optimizers_1_1Adam:
+
+Template Class Adam
+===================
+
+- Defined in :ref:`file_merlin_optimizers.cuh`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public nv::merlin::optimizers::Optimizer< K, V, M, T, DIM >``
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nv::merlin::optimizers::Adam
+   :project: Merlin Key-Value
+   :members:
+   :protected-members:
+   :undoc-members:

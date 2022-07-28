@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NVIDIA Merlin-KV &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="_static/togglebutton.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Merlin-KV C++ API Documentation" href="api/index.html" />
+    <link rel="prev" title="Merlin Key-Value Storage" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="index.html" class="icon icon-home"> Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#about-merlin-kv">About Merlin-KV</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benefits-of-merlin-kv">Benefits of Merlin-KV</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#tutorials-and-demos">Tutorials and Demos</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api-documentation">API Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#requirements">Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benchmarks">Benchmarks</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#contributing-to-merlin-kv">Contributing to Merlin-KV</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to Merlin-KV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
+      <li>NVIDIA Merlin-KV</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="tex2jax_ignore mathjax_ignore section" id="nvidia-merlin-kv">
+<h1><a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv">NVIDIA Merlin-KV</a><a class="headerlink" href="#nvidia-merlin-kv" title="Permalink to this headline"></a></h1>
+<p><img alt="GitHub tag (latest SemVer)" src="https://img.shields.io/github/v/tag/NVIDIA-Merlin/merlin-kv?sort=semver" />
+<img alt="GitHub License" src="https://img.shields.io/github/license/NVIDIA-Merlin/merlin-kv" />
+<a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/README.html"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue.svg" /></a></p>
+<div class="section" id="about-merlin-kv">
+<h2>About Merlin-KV<a class="headerlink" href="#about-merlin-kv" title="Permalink to this headline"></a></h2>
+<p>Merlin Key-Value is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.</p>
+<p>The key capability of Merlin-KV is to store key-value feature-embeddings on high-bandwidth memory (HBM) of GPUs and in host memory.</p>
+<p>You can also use the library for generic key-value storage.</p>
+</div>
+<div class="section" id="benefits-of-merlin-kv">
+<h2>Benefits of Merlin-KV<a class="headerlink" href="#benefits-of-merlin-kv" title="Permalink to this headline"></a></h2>
+<p>When building large recommender systems, machine learning (ML) engineers face the following challenges:</p>
+<ul class="simple">
+<li><p>GPUs are needed, but HBM on a single GPU is too small for the large DLRMs that scale to several terabytes.</p></li>
+<li><p>Improving communication performance is getting more difficult in larger and larger CPU clusters.</p></li>
+<li><p>It is difficult to efficiently control consumption growth of limited HBM with customized strategies.</p></li>
+<li><p>Most generic key-value libraries provide low HBM and host memory utilization.</p></li>
+</ul>
+<p>Merlin-KV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:</p>
+<ul class="simple">
+<li><p>Supports training large RecSys models on HBM and host memory at the same time.</p></li>
+<li><p>Provides better performance by bypassing CPUs and reducing the communication workload.</p></li>
+<li><p>Implements model-size restraint strategies that are based on timestamp or occurrences.
+The strategies are implemented by CUDA kernels and are customizable.</p></li>
+<li><p>Operates at a high working-status load factor that is close to 1.0.</p></li>
+</ul>
+<p>Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of search, recommendations, and advertising.
+The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.</p>
+</div>
+<div class="section" id="tutorials-and-demos">
+<h2>Tutorials and Demos<a class="headerlink" href="#tutorials-and-demos" title="Permalink to this headline"></a></h2>
+<p>See the <span class="xref myst">tutorials</span> and <span class="xref myst">demo(TBD)</span> for end-to-end examples of each subpackage.</p>
+</div>
+<div class="section" id="api-documentation">
+<h2>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline"></a></h2>
+<p>Refer to <span class="xref myst">API Docs</span></p>
+</div>
+<div class="section" id="requirements">
+<h2>Requirements<a class="headerlink" href="#requirements" title="Permalink to this headline"></a></h2>
+<p>Merlin-KV is a header-only library. Your environment must meet the following requirements:</p>
+<ul class="simple">
+<li><p>CUDA version &gt;= 11.2</p></li>
+<li><p>NVIDIA GPU with compute capbility 8.0, 8.6, or 8.7</p></li>
+</ul>
+</div>
+<div class="section" id="benchmarks">
+<h2>Benchmarks<a class="headerlink" href="#benchmarks" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p>Update time: June 10, 2022</p></li>
+<li><p>version: tag <a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/tree/r0.3.0">r0.3.0</a></p></li>
+</ul>
+<p><em><strong>Througput Unit: Million-KV/second</strong></em></p>
+<ul class="simple">
+<li><p><strong>CPU</strong>: libcuckoo</p></li>
+<li><p><strong>cudf</strong>: <a class="reference external" href="https://github.com/rapidsai/cudf/blob/branch-22.08/cpp/src/hash/concurrent_unordered_map.cuh">cudf::concurrent_unordered_map</a> on pure HBM</p></li>
+<li><p><strong>Merlin-KV</strong>: Merlin-KV on hybrid of HBM &amp; HMEM</p></li>
+</ul>
+<div class="section" id="lookup">
+<h3><strong>lookup</strong><a class="headerlink" href="#lookup" title="Permalink to this headline"></a></h3>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>dim</p></th>
+<th class="text-right head"><p>keys num</p></th>
+<th class="text-right head"><p>CPU</p></th>
+<th class="text-right head"><p>cudf</p></th>
+<th class="text-right head"><p>MKVS</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>29.188</p></td>
+<td class="text-right"><p>4.923</p></td>
+<td class="text-right"><p>4.294</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>8192</p></td>
+<td class="text-right"><p>19.912</p></td>
+<td class="text-right"><p>9.708</p></td>
+<td class="text-right"><p>34.874</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>65536</p></td>
+<td class="text-right"><p>21.126</p></td>
+<td class="text-right"><p>417.335</p></td>
+<td class="text-right"><p>89.332</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>131072</p></td>
+<td class="text-right"><p>21.653</p></td>
+<td class="text-right"><p>204.309</p></td>
+<td class="text-right"><p>110.943</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>1048576</p></td>
+<td class="text-right"><p>18.142</p></td>
+<td class="text-right"><p>440.483</p></td>
+<td class="text-right"><p>136.452</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>2.291</p></td>
+<td class="text-right"><p>17.232</p></td>
+<td class="text-right"><p>1.568</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>8192</p></td>
+<td class="text-right"><p>1.803</p></td>
+<td class="text-right"><p>46.959</p></td>
+<td class="text-right"><p>14.01</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>65536</p></td>
+<td class="text-right"><p>3.074</p></td>
+<td class="text-right"><p>38.849</p></td>
+<td class="text-right"><p>37.85</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>131072</p></td>
+<td class="text-right"><p>3.143</p></td>
+<td class="text-right"><p>56.098</p></td>
+<td class="text-right"><p>42.124</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>1048576</p></td>
+<td class="text-right"><p>2.641</p></td>
+<td class="text-right"><p>75.714</p></td>
+<td class="text-right"><p>55.921</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>0.782</p></td>
+<td class="text-right"><p>1.065</p></td>
+<td class="text-right"><p>1.464</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>8192</p></td>
+<td class="text-right"><p>3.204</p></td>
+<td class="text-right"><p>24.895</p></td>
+<td class="text-right"><p>18.506</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>65536</p></td>
+<td class="text-right"><p>3.013</p></td>
+<td class="text-right"><p>26.216</p></td>
+<td class="text-right"><p>25.69</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>131072</p></td>
+<td class="text-right"><p>2.289</p></td>
+<td class="text-right"><p>27.607</p></td>
+<td class="text-right"><p>27.361</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>1048576</p></td>
+<td class="text-right"><p>2.695</p></td>
+<td class="text-right"><p>36.501</p></td>
+<td class="text-right"><p>35.449</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="upsert">
+<h3><strong>upsert</strong><a class="headerlink" href="#upsert" title="Permalink to this headline"></a></h3>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>dim</p></th>
+<th class="text-right head"><p>keys num</p></th>
+<th class="text-right head"><p>CPU</p></th>
+<th class="text-right head"><p>cudf</p></th>
+<th class="text-right head"><p>MKVS</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>32.661</p></td>
+<td class="text-right"><p>0.704</p></td>
+<td class="text-right"><p>6.437</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>8192</p></td>
+<td class="text-right"><p>31.775</p></td>
+<td class="text-right"><p>4.321</p></td>
+<td class="text-right"><p>11.792</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>65536</p></td>
+<td class="text-right"><p>38.731</p></td>
+<td class="text-right"><p>41.261</p></td>
+<td class="text-right"><p>43.005</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>131072</p></td>
+<td class="text-right"><p>40.009</p></td>
+<td class="text-right"><p>80.422</p></td>
+<td class="text-right"><p>60.495</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>8</p></td>
+<td class="text-right"><p>1048576</p></td>
+<td class="text-right"><p>31.708</p></td>
+<td class="text-right"><p>304.959</p></td>
+<td class="text-right"><p>43.513</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>7.865</p></td>
+<td class="text-right"><p>0.563</p></td>
+<td class="text-right"><p>1.985</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>8192</p></td>
+<td class="text-right"><p>9.300</p></td>
+<td class="text-right"><p>4.683</p></td>
+<td class="text-right"><p>8.435</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>65536</p></td>
+<td class="text-right"><p>12.796</p></td>
+<td class="text-right"><p>27.293</p></td>
+<td class="text-right"><p>27.508</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>131072</p></td>
+<td class="text-right"><p>13.302</p></td>
+<td class="text-right"><p>56.027</p></td>
+<td class="text-right"><p>34.556</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-right"><p>1048576</p></td>
+<td class="text-right"><p>10.858</p></td>
+<td class="text-right"><p>162.962</p></td>
+<td class="text-right"><p>32.050</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>1024</p></td>
+<td class="text-right"><p>0.784</p></td>
+<td class="text-right"><p>0.373</p></td>
+<td class="text-right"><p>1.354</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>8192</p></td>
+<td class="text-right"><p>5.001</p></td>
+<td class="text-right"><p>3.602</p></td>
+<td class="text-right"><p>8.692</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>65536</p></td>
+<td class="text-right"><p>5.057</p></td>
+<td class="text-right"><p>22.744</p></td>
+<td class="text-right"><p>26.745</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>131072</p></td>
+<td class="text-right"><p>4.909</p></td>
+<td class="text-right"><p>31.414</p></td>
+<td class="text-right"><p>26.063</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-right"><p>1048576</p></td>
+<td class="text-right"><p>4.686</p></td>
+<td class="text-right"><p>93.366</p></td>
+<td class="text-right"><p>24.197</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section" id="contributing-to-merlin-kv">
+<h2>Contributing to Merlin-KV<a class="headerlink" href="#contributing-to-merlin-kv" title="Permalink to this headline"></a></h2>
+<p>Merlin-KV is maintianed by <a class="reference external" href="https://github.com/NVIDIA-Merlin">NVIDIA Merlin Team</a>
+and also open for public contributions, bug fixes, and documentation. [<a class="reference internal" href="CONTRIBUTING.html"><span class="doc std std-doc">Contribute</span></a>]</p>
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Merlin Key-Value Storage" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api/index.html" class="btn btn-neutral float-right" title="Merlin-KV C++ API Documentation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
