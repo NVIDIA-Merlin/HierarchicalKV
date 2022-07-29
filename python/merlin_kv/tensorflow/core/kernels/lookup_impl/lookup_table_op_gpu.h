@@ -92,7 +92,7 @@ class TableWrapper final : public TableWrapperBase<K, V, M> {
 
   void upsert(const K* d_keys, const ValueType<V>* d_vals, size_t len,
               bool allow_duplicated_keys, cudaStream_t stream) override {
-    table_->insert_or_assign(d_keys, (const V*)d_vals, len,
+    table_->insert_or_assign(d_keys, (const V*)d_vals, nullptr, len,
                              allow_duplicated_keys, stream);
   }
 

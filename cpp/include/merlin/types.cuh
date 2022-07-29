@@ -66,10 +66,12 @@ struct Table {
   size_t bucket_max_size = 128;              // Volume of each buckets.
   size_t max_hbm_for_vectors = 0;            // Max HBM allocated for vectors
   size_t remaining_hbm_for_vectors = 0;  // Remaining HBM allocated for vectors
+  bool is_pure_hbm = true;               // unused
   bool primary = true;                   // unused
   int slots_offset = 0;                  // unused
   int slots_number = 0;                  // unused
   int device_id = 0;                     // Device id
+  int tile_size;
 };
 
 template <class K, class M>
