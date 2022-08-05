@@ -20,7 +20,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
 
-#include <forward_list>
+#include <list>
 #include <mutex>
 
 #include "merlin/core_kernels.cuh"
@@ -122,8 +122,8 @@ class HashTable {
 
     avail_ws_.reserve(num_ws_min_);
     while (avail_ws_.size() < num_ws_min_) {
-      ws_.emplace_front(max_batch_size_);
-      avail_ws_.emplace_back(&ws_.front());
+      ws_.emplace_back(max_batch_size_);
+      avail_ws_.emplace_back(&ws_.back());
     }
     CudaCheckError();
   }
@@ -330,64 +330,68 @@ class HashTable {
    * default vectors with @p keys.
    * @param stream The CUDA stream used to execute the operation.
    */
-  void find(const Key *keys, V *vectors, bool *found, size_t len,
+  void find(const Key *keys, V *vectors, bool *found, const size_t length,
             const V *default_vectors, bool full_size_default,
             cudaStream_t stream = 0) const {
-    if (len == 0) {
+    if (length == 0) {
       return;
     }
 
-    Vector **src;
-    int *dst_offset;
-    CUDA_CHECK(cudaMallocAsync(&src, len * sizeof(Vector *), stream));
-    CUDA_CHECK(cudaMemsetAsync(src, 0, len * sizeof(Vector *), stream));
-    CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
-    CUDA_CHECK(cudaMallocAsync(&dst_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, len * sizeof(int), stream));
+    // Clear found flags.
+    CUDA_CHECK(cudaMemsetAsync(found, 0, length * sizeof(bool), stream));
 
-    // Determine bucket locations for reading.
-    {
-      const size_t block_size = 128;
-      const size_t N = len * TILE_SIZE;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+    Workspace *ws = borrow_ws(stream);
+    for (size_t i = 0; i < length; i += max_batch_size_) {
+      const size_t len = std::min(length - i, max_batch_size_);
 
-      lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size, 0, stream>>>(
-          table_, keys, src, nullptr, found, dst_offset, N);
-    }
+      CUDA_CHECK(cudaMemsetAsync(ws->vec, 0, len * sizeof(Vector *), stream));
+      CUDA_CHECK(cudaMemsetAsync(ws->off, 0, len * sizeof(int), stream));
 
-    if (!is_pure_hbm_mode()) {
-      static_assert(
-          sizeof(V *) == sizeof(uint64_t),
-          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+      // Determine bucket locations for reading.
+      {
+        const size_t block_size = 128;
+        const size_t N = len * TILE_SIZE;
+        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      const size_t N = len;
-      thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
-      thrust::device_ptr<int> dst_offset_ptr(dst_offset);
+        lookup_kernel<Key, Vector, M, DIM>
+            <<<grid_size, block_size, 0, stream>>>(
+                table_, &keys[i], ws->vec, nullptr, &found[i], ws->off, N);
+      }
+
+      if (!is_pure_hbm_mode()) {
+        static_assert(
+            sizeof(V *) == sizeof(uint64_t),
+            "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
+
+        const size_t N = len;
+        thrust::device_ptr<uint64_t> src_ptr(
+            reinterpret_cast<uint64_t *>(ws->vec));
+        thrust::device_ptr<int> dst_offset_ptr(ws->off);
 
 #if THRUST_VERSION >= 101600
-      auto policy = thrust::cuda::par_nosync.on(stream);
+        auto policy = thrust::cuda::par_nosync.on(stream);
 #else
-      auto policy = thrust::cuda::par.on(stream);
+        auto policy = thrust::cuda::par.on(stream);
 #endif
-      thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
-                          thrust::less<uint64_t>());
-    }
+        thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
+                            thrust::less<uint64_t>());
+      }
 
-    // Copy data from bucket to the pointer to vectors.
-    {
-      const size_t N = len * DIM;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-      read_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
-          src, reinterpret_cast<Vector *>(vectors), found,
-          reinterpret_cast<const Vector *>(default_vectors), dst_offset, N,
-          full_size_default);
+      // Copy data from bucket to the pointer to vectors.
+      {
+        const size_t N = len * DIM;
+        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+        read_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+            ws->vec, reinterpret_cast<Vector *>(&vectors[i]), &found[i],
+            reinterpret_cast<const Vector *>(
+                full_size_default ? &default_vectors[i] : default_vectors),
+            ws->off, N, full_size_default);
+      }
     }
-
-    CUDA_CHECK(cudaFreeAsync(src, stream));
-    CUDA_CHECK(cudaFreeAsync(dst_offset, stream));
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CudaCheckError();
+    return_ws(ws);
   }
 
   /**
@@ -858,7 +862,11 @@ class HashTable {
   const size_t num_ws_max_ = 5;
 
   struct Workspace final {
-    Vector *vec;
+    static_assert(sizeof(Vector **) == sizeof(uint64_t));
+    union {
+      Vector **vec;
+      uint64_t cnt64;
+    };
     union {
       int *off;
       int *cnt;
@@ -881,12 +889,12 @@ class HashTable {
   };
   static_assert(sizeof(Workspace) == sizeof(void *) * 2);
 
-  std::mutex ws_mtx_;
-  std::forward_list<Workspace> ws_;
-  std::vector<Workspace *> avail_ws_;
-  std::condition_variable ws_returned_;
+  mutable std::mutex ws_mtx_;
+  mutable std::list<Workspace> ws_;
+  mutable std::vector<Workspace *> avail_ws_;
+  mutable std::condition_variable ws_returned_;
 
-  Workspace *borrow_ws(cudaStream_t const stream) {
+  Workspace *borrow_ws(cudaStream_t const stream) const {
     std::unique_lock<std::mutex> lock(ws_mtx_);
 
     // If have a prellocated workspace available.
@@ -909,7 +917,7 @@ class HashTable {
     return ws;
   }
 
-  void return_ws(Workspace *ws) {
+  void return_ws(Workspace *ws) const {
     std::lock_guard<std::mutex> lock(ws_mtx_);
 
     if (avail_ws_.size() < num_ws_min_) {
