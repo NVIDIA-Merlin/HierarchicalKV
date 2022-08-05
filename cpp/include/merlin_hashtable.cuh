@@ -20,6 +20,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
 
+#include <forward_list>
 #include <mutex>
 
 #include "merlin/core_kernels.cuh"
@@ -115,6 +116,15 @@ class HashTable {
                                       tile_size_, primary_);
     block_size_ = SAFE_GET_BLOCK_SIZE(block_size);
     reach_max_size_ = false;
+
+    // Preallocate workspaces.
+    assert(num_ws_min_ >= 1 && num_ws_min_ <= num_ws_max_);
+
+    avail_ws_.reserve(num_ws_min_);
+    while (avail_ws_.size() < num_ws_min_) {
+      ws_.emplace_front(max_batch_size_);
+      avail_ws_.emplace_back(&ws_.front());
+    }
     CudaCheckError();
   }
 
@@ -841,7 +851,78 @@ class HashTable {
   const bool primary_;
   size_t shared_mem_size_;
   Table *table_;
-  //   std::mutex mtx_;
+
+  // Workspaces.
+  const size_t max_batch_size_ = 16 * 1024 * 1024;
+  const size_t num_ws_min_ = 3;
+  const size_t num_ws_max_ = 5;
+
+  struct Workspace final {
+    Vector *vec;
+    union {
+      int *off;
+      int *cnt;
+    };
+
+    Workspace(const size_t size) {
+      CUDA_CHECK(cudaMalloc(&vec, size * sizeof(Vector *)));
+      CUDA_CHECK(cudaMalloc(&off, size * sizeof(int)));
+    }
+
+    Workspace(const size_t size, cudaStream_t const stream) {
+      CUDA_CHECK(cudaMallocAsync(&vec, size * sizeof(Vector *), stream));
+      CUDA_CHECK(cudaMallocAsync(&off, size * sizeof(int), stream));
+    }
+
+    ~Workspace() {
+      CUDA_CHECK(cudaFree(vec));
+      CUDA_CHECK(cudaFree(off));
+    }
+  };
+  static_assert(sizeof(Workspace) == sizeof(void *) * 2);
+
+  std::mutex ws_mtx_;
+  std::forward_list<Workspace> ws_;
+  std::vector<Workspace *> avail_ws_;
+  std::condition_variable ws_returned_;
+
+  Workspace *borrow_ws(cudaStream_t const stream) {
+    std::unique_lock<std::mutex> lock(ws_mtx_);
+
+    // If have a prellocated workspace available.
+    if (!avail_ws_.empty()) {
+      Workspace *ws = avail_ws_.back();
+      avail_ws_.pop_back();
+      return ws;
+    }
+
+    // If workspace creation quota not yet reached.
+    if (ws_.size() < num_ws_max_) {
+      ws_.emplace_back(max_batch_size_, stream);
+      return &ws_.back();
+    }
+
+    // Creation quota reached. Wait for another thread to return a workspace.
+    ws_returned_.wait(lock, [&] { return !avail_ws_.empty(); });
+    Workspace *ws = avail_ws_.back();
+    avail_ws_.pop_back();
+    return ws;
+  }
+
+  void return_ws(Workspace *ws) {
+    std::lock_guard<std::mutex> lock(ws_mtx_);
+
+    if (avail_ws_.size() < num_ws_min_) {
+      avail_ws_.emplace_back(ws);
+      ws_returned_.notify_one();
+    } else {
+      for (auto it = ws_.begin(); it != ws_.end(); it++) {
+        if (&(*it) == ws) {
+          ws_.erase(it);
+        }
+      }
+    }
+  }
 };
 
 }  // namespace merlin
