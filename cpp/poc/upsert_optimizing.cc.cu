@@ -1,4 +1,4 @@
-#include <cuda_runtime.h>
+#include <cooperative_groups.h>
 
 #include <algorithm>
 #include <chrono>
@@ -7,6 +7,9 @@
 #include <set>
 #include <thread>
 #include <unordered_set>
+
+using namespace cooperative_groups;
+namespace cg = cooperative_groups;
 
 typedef float V;
 
@@ -62,7 +65,7 @@ __global__ void d2h_const_data(const Vector *__restrict src,
   }
 }
 
-__global__ void d2h_hbm_data(
+__global__ void d2h_hbm_data_all(
     Vector *__restrict src, Vector **__restrict dst,
     int N) {  // dst is a set of Vector* in the pinned memory
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -75,6 +78,27 @@ __global__ void d2h_hbm_data(
 
     //     src[vec_index].values[dim_index] =
     //     (*(dst[vec_index])).values[dim_index];
+  }
+}
+
+#define TILE_SIZE 8
+
+__global__ void d2h_hbm_data(
+    Vector *__restrict src, Vector **__restrict dst,
+    int N) {  // dst is a set of Vector* in the pinned memory
+  int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  int rank = g.thread_rank();
+
+  if (tid < N) {
+    uint32_t vec_index = int(tid / TILE_SIZE);
+    uint32_t dim_index = 0;
+#pragma unroll
+    for (uint32_t tile_offset = 0; tile_offset < DIM;
+         tile_offset += TILE_SIZE) {
+      dim_index = tile_offset + rank;
+      (*(dst[vec_index])).values[dim_index] = src[vec_index].values[dim_index];
+    }
   }
 }
 
@@ -138,7 +162,8 @@ int main() {
   Vector **dst_ptr;
   cudaMalloc(&src, KEY_NUM * sizeof(Vector));
   cudaMalloc(&dst_ptr, KEY_NUM * sizeof(Vector *));
-  cudaMallocHost(&dst, vectors_size);
+  cudaMallocHost(&dst, vectors_size,
+                 cudaHostAllocMapped | cudaHostAllocWriteCombined);
 
   create_random_offset_ordered(h_offset, KEY_NUM, INIT_SIZE);
   cudaMemcpy(d_offset, h_offset, sizeof(int) * KEY_NUM, cudaMemcpyHostToDevice);
@@ -161,13 +186,36 @@ int main() {
   printf("[timing] Constant d2h=%.2fms\n",
          diff_test.count() * 1000 / TEST_TIMES);
 
-  start_test = std::chrono::steady_clock::now();
-  for (int i = 0; i < TEST_TIMES; i++) {
-    d2h_hbm_data<<<NUM_BLOCKS, NUM_THREADS>>>(src, dst_ptr, N);
+  {
+    constexpr int N = KEY_NUM * DIM;
+    int NUM_THREADS = 1024;
+    int NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
+    d2h_hbm_data_all<<<NUM_BLOCKS, NUM_THREADS>>>(src, dst_ptr, N);
+    cudaDeviceSynchronize();
+    start_test = std::chrono::steady_clock::now();
+    for (int i = 0; i < TEST_TIMES; i++) {
+      d2h_hbm_data_all<<<NUM_BLOCKS, NUM_THREADS>>>(src, dst_ptr, N);
+    }
+    cudaDeviceSynchronize();
+    diff_test = std::chrono::steady_clock::now() - start_test;
   }
-  cudaDeviceSynchronize();
-  diff_test = std::chrono::steady_clock::now() - start_test;
-  printf("[timing] HBM data d2h=%.2fms\n",
+  printf("[timing] HBM data d2d=%.2fms\n",
+         diff_test.count() * 1000 / TEST_TIMES);
+
+  {
+    constexpr int N = KEY_NUM * TILE_SIZE;
+    int NUM_THREADS = 1024;
+    int NUM_BLOCKS = (N + NUM_THREADS - 1) / NUM_THREADS;
+    d2h_hbm_data<<<NUM_BLOCKS, NUM_THREADS>>>(src, dst_ptr, N);
+    cudaDeviceSynchronize();
+    start_test = std::chrono::steady_clock::now();
+    for (int i = 0; i < TEST_TIMES; i++) {
+      d2h_hbm_data<<<NUM_BLOCKS, NUM_THREADS>>>(src, dst_ptr, N);
+    }
+    cudaDeviceSynchronize();
+    diff_test = std::chrono::steady_clock::now() - start_test;
+  }
+  printf("[timing] HBM data d2d=%.2fms\n",
          diff_test.count() * 1000 / TEST_TIMES);
 
   cudaFreeHost(dst);

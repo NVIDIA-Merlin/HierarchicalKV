@@ -4,6 +4,7 @@
 #include <chrono>
 #include <iostream>
 #include <random>
+#include <set>
 #include <thread>
 #include <unordered_set>
 
@@ -15,7 +16,7 @@ struct Vector {
 };
 
 void create_random_offset(int *offset, int num, int range) {
-  std::unordered_set<int> numbers;
+  std::set<int> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
   std::uniform_int_distribution<int> distr;
@@ -51,10 +52,10 @@ __global__ void d2h_hbm_data(
     int vec_index = int(tid / DIM);
     int dim_index = tid % DIM;
 
-    //     (*(dst[vec_index])).values[dim_index] =
-    //     src[vec_index].values[dim_index];
+    (*(dst[vec_index])).values[dim_index] = src[vec_index].values[dim_index];
 
-    src[vec_index].values[dim_index] = (*(dst[vec_index])).values[dim_index];
+    //    src[vec_index].values[dim_index] =
+    //    (*(dst[vec_index])).values[dim_index];
   }
 }
 
@@ -70,7 +71,7 @@ __global__ void create_fake_ptr(const Vector *__restrict dst,
 
 int main() {
   constexpr int KEY_NUM = 1024 * 1024;
-  constexpr int INIT_SIZE = KEY_NUM * 32;
+  constexpr int INIT_SIZE = KEY_NUM * 128;
   constexpr int N = KEY_NUM * DIM;
   constexpr int TEST_TIMES = 1;
   constexpr size_t vectors_size = INIT_SIZE * sizeof(Vector);
