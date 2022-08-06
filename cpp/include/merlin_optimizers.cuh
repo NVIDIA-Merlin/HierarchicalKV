@@ -72,9 +72,9 @@ class Adam : public Optimizer<K, V, M, T, DIM> {
     adam_update_kernel<T><<<grid_size, block_size_, 0, stream>>>(
         N, d_w, d_m, d_v, d_grad, alpha_, beta1_, beta2_, epsilon_, scaler_);
 
-    w_->upsert(d_keys, d_w, len, stream);
-    m_->upsert(d_keys, d_m, len, stream);
-    v_->upsert(d_keys, d_v, len, stream);
+    w_->insert_or_assign(d_keys, d_w, len, stream);
+    m_->insert_or_assign(d_keys, d_m, len, stream);
+    v_->insert_or_assign(d_keys, d_v, len, stream);
 
     CUDA_CHECK(cudaFree(d_w))
     CUDA_CHECK(cudaFree(d_m));
