@@ -67,7 +67,7 @@ struct Vector {
  *  - Support dynamic rehashing
  *  - Support SSD/NVMe device as part of storage
  */
-template <class Key, class V, class M, size_t DIM>
+template <class Key, class V, class M, size_t DIM, unsigned int TILE_SIZE = 8>
 class HashTable {
  public:
   using key_type = Key;
@@ -92,8 +92,7 @@ class HashTable {
    * @param initializer Initializer used when getting a key fail.
    * @param primary No used.
    */
-  explicit HashTable(size_type init_size,
-                     size_type max_size = std::numeric_limits<uint64_t>::max(),
+  explicit HashTable(size_type init_size, size_type max_size = 0,
                      size_type max_hbm_for_vectors = 0,
                      float max_load_factor = 0.75,
                      size_type bucket_max_size = 128,
@@ -103,6 +102,7 @@ class HashTable {
         max_size_(max_size),
         max_hbm_for_vectors_(max_hbm_for_vectors),
         max_load_factor_(max_load_factor),
+        tile_size_(TILE_SIZE),
         bucket_max_size_(bucket_max_size),
         primary_(primary) {
     cudaDeviceProp deviceProp;
@@ -112,7 +112,7 @@ class HashTable {
         (initializer != nullptr) ? *initializer : Zeros());
     create_table<Key, Vector, M, DIM>(&table_, init_size_, max_size_,
                                       max_hbm_for_vectors_, bucket_max_size_,
-                                      primary_);
+                                      tile_size_, primary_);
     block_size_ = SAFE_GET_BLOCK_SIZE(block_size);
     reach_max_size_ = false;
     CudaCheckError();
@@ -124,108 +124,6 @@ class HashTable {
   ~HashTable() { destroy_table<Key, Vector, M, DIM>(&table_); }
   HashTable(const HashTable &) = delete;
   HashTable &operator=(const HashTable &) = delete;
-
-  /**
-   * @brief Attempts to insert key-vectors pairs into the table.
-   * If one key already exists, the vector of the key will be updated.
-   *
-   * @note When the table is already full, the LRU policy will be applied: the
-   * key-vector pairs to be replaced is least recently inserted.
-   *
-   * @param keys The keys to be inserted on GPU accessible memory.
-   * @param vectors The vectors to be inserted on GPU accessible memory.
-   * @param len Number of Key-Value pairs to be upsert.
-   * @param allow_duplicated_keys Flag of if allow the @p keys contains
-   * duplicate keys. If false, the caller should guarantee the @p keys
-   * has no duplicated keys, and the performance will be better.
-   * @param stream The CUDA stream used to execute the operation.
-   */
-  void insert_or_assign(const Key *keys, const V *vectors, size_t len,
-                        bool allow_duplicated_keys = true,
-                        cudaStream_t stream = 0) {
-    // TODO(jamesrong): split when len is too huge.
-    if (len == 0) {
-      return;
-    }
-
-    if (!reach_max_size_ && load_factor() > max_load_factor_) {
-      reserve(capacity() * 2);
-    }
-
-    Vector **dst;
-    int *src_offset;
-    CUDA_CHECK(cudaMallocAsync(&dst, len * sizeof(Vector *), stream));
-    CUDA_CHECK(cudaMemsetAsync(dst, 0, len * sizeof(Vector *), stream));
-    CUDA_CHECK(cudaMallocAsync(&src_offset, len * sizeof(int), stream));
-    CUDA_CHECK(cudaMemsetAsync(src_offset, 0, len * sizeof(int), stream));
-
-    // Determine bucket insert locations.
-    if (allow_duplicated_keys) {
-      const size_t N = len;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-      upsert_allow_duplicated_keys_kernel<Key, Vector, M, DIM>
-          <<<grid_size, block_size_, 0, stream>>>(table_, keys, dst, src_offset,
-                                                  len);
-    } else {
-      int *bucket_offset;
-      bool *found;
-      CUDA_CHECK(cudaMallocAsync(&bucket_offset, len * sizeof(int), stream));
-      CUDA_CHECK(cudaMemsetAsync(bucket_offset, 0, len * sizeof(int), stream));
-      CUDA_CHECK(cudaMallocAsync(&found, len * sizeof(bool), stream));
-      CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
-
-      {
-        const size_t N = len * table_->bucket_max_size;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-        lookup_for_upsert_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size_, 0, stream>>>(table_, keys, found,
-                                                    bucket_offset, N);
-      }
-
-      {
-        const size_t N = len;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-        upsert_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size_, 0, stream>>>(
-                table_, keys, dst, src_offset, found, bucket_offset, len);
-      }
-
-      CUDA_CHECK(cudaFreeAsync(bucket_offset, stream));
-      CUDA_CHECK(cudaFreeAsync(found, stream));
-    }
-
-    {
-      static_assert(
-          sizeof(V *) == sizeof(uint64_t),
-          "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
-
-      const size_t N = len;
-      thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t *>(dst));
-      thrust::device_ptr<int> src_offset_ptr(src_offset);
-
-#if THRUST_VERSION >= 101600
-      auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-      auto policy = thrust::cuda::par.on(stream);
-#endif
-      thrust::sort_by_key(policy, dst_ptr, dst_ptr + N, src_offset_ptr,
-                          thrust::less<uint64_t>());
-    }
-
-    // Copy provided data to the bucket.
-    {
-      const size_t N = len * DIM;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-      write_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
-          reinterpret_cast<const Vector *>(vectors), dst, src_offset, N);
-    }
-
-    CUDA_CHECK(cudaFreeAsync(dst, stream));
-    CUDA_CHECK(cudaFreeAsync(src_offset, stream));
-
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    CudaCheckError();
-  }
 
   /**
    * @brief Attempts to insert key-value-meta tuples into the table.
@@ -267,43 +165,22 @@ class HashTable {
     CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, len * sizeof(int), stream));
 
     // Determine bucket insert locations.
-    if (allow_duplicated_keys) {
-      const size_t N = len;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-      upsert_allow_duplicated_keys_kernel<Key, Vector, M, DIM>
-          <<<grid_size, block_size_, 0, stream>>>(table_, keys, metas, d_dst,
-                                                  d_src_offset, len);
-    } else {
-      int *d_bucket_offset;
-      bool *d_status;
-      CUDA_CHECK(cudaMallocAsync(&d_bucket_offset, len * sizeof(int), stream));
-      CUDA_CHECK(
-          cudaMemsetAsync(d_bucket_offset, 0, len * sizeof(int), stream));
-      CUDA_CHECK(cudaMallocAsync(&d_status, len * sizeof(bool), stream));
-      CUDA_CHECK(cudaMemsetAsync(d_status, 0, len * sizeof(bool), stream));
-
-      {
-        const size_t N = len * table_->bucket_max_size;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-        lookup_for_upsert_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size_, 0, stream>>>(table_, keys, d_status,
-                                                    d_bucket_offset, N);
+    {
+      const size_t block_size = 128;
+      const size_t N = len * table_->tile_size;
+      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      if (metas == nullptr) {
+        upsert_kernel<Key, Vector, M, DIM, TILE_SIZE>
+            <<<grid_size, block_size, 0, stream>>>(table_, keys, d_dst,
+                                                   d_src_offset, N);
+      } else {
+        upsert_kernel<Key, Vector, M, DIM, TILE_SIZE>
+            <<<grid_size, block_size, 0, stream>>>(table_, keys, d_dst, metas,
+                                                   d_src_offset, N);
       }
-
-      {
-        const size_t N = len;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-        upsert_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size_, 0, stream>>>(table_, keys, metas, d_dst,
-                                                    d_src_offset, d_status,
-                                                    d_bucket_offset, len);
-      }
-
-      CUDA_CHECK(cudaFreeAsync(d_bucket_offset, stream));
-      CUDA_CHECK(cudaFreeAsync(d_status, stream));
     }
 
-    {
+    if (!is_pure_hbm_mode()) {
       static_assert(
           sizeof(V *) == sizeof(uint64_t),
           "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
@@ -379,40 +256,15 @@ class HashTable {
     CUDA_CHECK(cudaMallocAsync(&found, len * sizeof(bool), stream));
     CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
 
-    if (allow_duplicated_keys) {
-      const size_t N = len;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-      accum_allow_duplicated_keys_kernel<Key, Vector, M, DIM>
-          <<<grid_size, block_size_, 0, stream>>>(table_, keys, dst, exists,
-                                                  found, src_offset, len);
-
-    } else {
-      int *bucket_offset;
-      CUDA_CHECK(cudaMallocAsync(&bucket_offset, len * sizeof(int), stream));
-      CUDA_CHECK(cudaMemsetAsync(bucket_offset, 0, len * sizeof(int), stream));
-
-      {
-        const size_t N = len * table_->bucket_max_size;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-
-        lookup_for_upsert_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size_, 0, stream>>>(table_, keys, found,
-                                                    bucket_offset, N);
-      }
-
-      {
-        const size_t N = len;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-        accum_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size_, 0, stream>>>(table_, keys, dst, exists,
-                                                    src_offset, found,
-                                                    bucket_offset, len);
-      }
-
-      CUDA_CHECK(cudaFreeAsync(bucket_offset, stream));
+    {
+      const size_t block_size = 128;
+      const size_t N = len * table_->tile_size;
+      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      accum_kernel<Key, Vector, M, DIM><<<grid_size, block_size, 0, stream>>>(
+          table_, keys, dst, exists, src_offset, found, N);
     }
 
-    {
+    if (!is_pure_hbm_mode()) {
       static_assert(
           sizeof(V *) == sizeof(uint64_t),
           "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
@@ -485,14 +337,15 @@ class HashTable {
 
     // Determine bucket locations for reading.
     {
-      const size_t N = len * table_->bucket_max_size;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
+      const size_t block_size = 128;
+      const size_t N = len * TILE_SIZE;
+      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
-          table_, keys, src, found, dst_offset, N);
+      lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size, 0, stream>>>(
+          table_, keys, src, nullptr, found, dst_offset, N);
     }
 
-    {
+    if (!is_pure_hbm_mode()) {
       static_assert(
           sizeof(V *) == sizeof(uint64_t),
           "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
@@ -562,15 +415,17 @@ class HashTable {
     int *dst_offset;
     CUDA_CHECK(cudaMallocAsync(&src, len * sizeof(Vector *), stream));
     CUDA_CHECK(cudaMemsetAsync(src, 0, len * sizeof(Vector *), stream));
+    CUDA_CHECK(cudaMemsetAsync(metas, 0, len * sizeof(M), stream));
     CUDA_CHECK(cudaMemsetAsync(found, 0, len * sizeof(bool), stream));
     CUDA_CHECK(cudaMallocAsync(&dst_offset, len * sizeof(int), stream));
     CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, len * sizeof(int), stream));
 
     // Determine bucket locations for reading.
     {
-      const size_t N = len * table_->bucket_max_size;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
-      lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
+      const size_t block_size = 128;
+      const size_t N = len * TILE_SIZE;
+      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      lookup_kernel<Key, Vector, M, DIM><<<grid_size, block_size, 0, stream>>>(
           table_, keys, src, metas, found, dst_offset, N);
       CudaCheckError();
     }
@@ -952,7 +807,7 @@ class HashTable {
   }
 
   /**
-   * @brief Returns the maximum number of buckets the table.
+   * @brief Returns the number of elements in specific bucket.
    *
    * @param n the index of the bucket to examine.
    * @param stream The CUDA stream used to execute the operation.
@@ -971,6 +826,9 @@ class HashTable {
   }
 
  private:
+  bool is_pure_hbm_mode() const noexcept { return table_->is_pure_hbm; }
+
+ private:
   int block_size_;
   const size_type init_size_;
   const size_type max_size_;
@@ -978,6 +836,7 @@ class HashTable {
   bool reach_max_size_;
   float max_load_factor_;
   const size_type bucket_max_size_;
+  const size_type tile_size_;
   std::shared_ptr<Initializer> initializer_;
   const bool primary_;
   size_t shared_mem_size_;
