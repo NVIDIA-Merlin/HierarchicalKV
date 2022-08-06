@@ -43,7 +43,7 @@ __global__ void d2h_const_data(const Vector *__restrict src,
 }
 
 __global__ void d2h_hbm_data(
-    const Vector *__restrict src, Vector **__restrict dst,
+    Vector *__restrict src, Vector **__restrict dst,
     int N) {  // dst is a set of Vector* in the pinned memory
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
