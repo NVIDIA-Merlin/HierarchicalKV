@@ -1,4 +1,4 @@
-# Merlin-KV: A generic Key-Value library designed for RecSys
+# Merlin-KV: A generic Key-Value library for RecSys
 -----------------
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](docs/api_docs/)
 
@@ -46,7 +46,7 @@ cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
 ## Benchmark
 
 * Update time: Aug 4, 2022
-* version: tag [r0.1.0](https://github.com/NVIDIA-Merlin/merlin-kv/tree/r0.1.0)
+* version: tag [0.1.0-beta](https://github.com/NVIDIA-Merlin/merlin-kv/tree/0.1.0-beta)
 * Key Type = uint64_t
 * Value Type = float32 * dim
 * Key-Values per OP = 1,048,576
