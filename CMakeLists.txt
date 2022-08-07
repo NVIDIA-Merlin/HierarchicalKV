@@ -43,10 +43,13 @@ file(GLOB_RECURSE merlin_hkvs_src RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.c
 # target_compile_features(merlin_kv PUBLIC cxx_std_14)
 # target_link_libraries(merlin_kv PUBLIC ...)
 
-add_executable(merlin_hashtable_test tests/merlin_hashtable_test.cc.cu)
-target_compile_features(merlin_hashtable_test PUBLIC cxx_std_14)
-set_target_properties(merlin_hashtable_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 
 add_executable(merlin_hashtable_benchmark benchmark/merlin_hashtable_benchmark.cc.cu)
 target_compile_features(merlin_hashtable_benchmark PUBLIC cxx_std_14)
 set_target_properties(merlin_hashtable_benchmark PROPERTIES  CUDA_ARCHITECTURES OFF)
+
+# TODO(rhdong): remove this line after implementing all of the unit testing to gtest.
+set(CMAKE_BUILD_TYPE "Debug")
+add_executable(merlin_hashtable_test tests/merlin_hashtable_test.cc.cu)
+target_compile_features(merlin_hashtable_test PUBLIC cxx_std_14)
+set_target_properties(merlin_hashtable_test PROPERTIES  CUDA_ARCHITECTURES OFF)
