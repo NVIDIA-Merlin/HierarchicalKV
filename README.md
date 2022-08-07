@@ -37,7 +37,7 @@ and also open for public contributions, bug fixes, and documentation. [[Contribu
 
 Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 ```bash
-git clone -b 0.1.0-beta https://github.com/NVIDIA-Merlin/merlin-kv.git
+git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
 cd merlin-kv && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
 

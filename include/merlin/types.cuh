@@ -75,7 +75,12 @@ struct Table {
 };
 
 template <class K, class M>
-using Predict = bool (*)(const K&, const M&);
+using EraseIfPredictInternal =
+    bool (*)(const K& key,       ///< iterated key in table
+             const M& meta,      ///< iterated meta in table
+             const K& pattern,   ///< input key from caller
+             const M& threshold  ///< input meta from caller
+    );
 
 }  // namespace merlin
 }  // namespace nv

@@ -440,21 +440,6 @@ __forceinline__ __device__ void copy_vector(cg::thread_block_tile<TILE_SIZE> g,
   }
 }
 
-/* Insert or update a Key-Value in the table,
-   this operation will not really write the vector data
-   into the bucket. Instead, it will only return the address in bucket for each
-   key through `vectors`. To actually write the data the addresses in `vectors`
-   the caller must call the `write_kernel`.
-
-   `table`: The table to be operated.
-   `keys`: Keys for upsert, if the key exists, will return
-           the current address, if not found, a new location
-           in bucket will return for the key through `vectors`.
-   `metas`: The corresponding meta value for each keys.
-   `vectors`: The addresses in buckets for each keys where the
-              corresponding vector values should be really saved into.
-   `N`: Number of vectors needed to be read.
-*/
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void upsert_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
@@ -1168,30 +1153,97 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
 }
 
 /* Remove specified keys which match the Predict. */
-template <class K, class V, class M, size_t DIM>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 1>
 __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
-                              const Predict<K, M> pred,
-                              size_t* __restrict count, size_t N) {
-  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const size_t bucket_max_size = table->bucket_max_size;
-  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int key_idx = t % bucket_max_size;
-    int bkt_idx = t / bucket_max_size;
-    Bucket<K, V, M, DIM>* bucket = &(table->buckets[bkt_idx]);
-    if (table->buckets_size[bkt_idx] > 0) {
-      K target_key = bucket->keys[key_idx];
-      if (target_key != EMPTY_KEY) {
-        if (pred(target_key, bucket->metas[key_idx].val)) {
-          atomicExch((K*)&(bucket->keys[key_idx]), EMPTY_KEY);
-          atomicExch((K*)&(bucket->metas[key_idx].val), EMPTY_META);
-          atomicSub(&(table->buckets_size[bkt_idx]), 1);
-          atomicMax(&(table->buckets_size[bkt_idx]), 0);
+                              const EraseIfPredictInternal<K, M> pred,
+                              const K pattern, const M threshold,
+                              size_t* __restrict count,
+                              Bucket<K, V, M, DIM>* __restrict buckets,
+                              int* __restrict buckets_size,
+                              const size_t bucket_max_size,
+                              const size_t buckets_num, size_t N) {
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+
+  for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
+       t += blockDim.x * gridDim.x) {
+    uint32_t bkt_idx = t;
+    uint32_t key_idx = 0;
+    uint32_t key_pos = 0;
+    uint32_t empty_pos = 0;
+    size_t global_idx = 0;
+    size_t start_idx = 0;
+    K find_key;
+    K hashed_key;
+
+    Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
+    lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
+
+    K current_key;
+    uint32_t key_offset = 0;
+    while (key_offset < bucket_max_size) {
+      current_key = *(bucket->keys + key_offset);
+      if (current_key != EMPTY_KEY) {
+        if (pred(current_key, bucket->metas[key_offset].val, pattern,
+                 threshold)) {
           atomicAdd(count, 1);
+          key_pos = key_offset;
+          *(bucket->keys + key_pos) = EMPTY_KEY;
+          buckets_size[bkt_idx]--;
+          empty_pos = key_pos;
+          for (uint32_t i = 1; i < bucket_max_size; i++) {
+            key_idx = (key_pos + i) & (bucket_max_size - 1);
+            find_key = *(bucket->keys + key_idx);
+            if (find_key == EMPTY_KEY) {
+              break;
+            }
+            hashed_key = Murmur3HashDevice(find_key);
+            global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+            start_idx = global_idx % bucket_max_size;
+
+            if ((start_idx <= empty_pos && empty_pos < key_idx) ||
+                (key_idx < start_idx && start_idx <= empty_pos) ||
+                (empty_pos <= key_idx && key_idx < start_idx)) {
+              *(bucket->keys + empty_pos) = *(bucket->keys + key_idx);
+              bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
+              for (uint32_t j = 0; j < DIM; j++) {
+                bucket->vectors[empty_pos].value[j] =
+                    bucket->vectors[key_idx].value[j];
+              }
+              *(bucket->keys + key_idx) = EMPTY_KEY;
+              empty_pos = key_idx;
+            }
+          }
+        } else {
+          key_offset++;
         }
+      } else {
+        key_offset++;
       }
     }
+    unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
   }
 }
+//{
+//  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+//  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
+//    int key_idx = t % bucket_max_size;
+//    int bkt_idx = t / bucket_max_size;
+//    Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
+//    if (*(buckets_size + bkt_idx) > 0) {
+//      K target_key = bucket->keys[key_idx];
+//      if (target_key != EMPTY_KEY) {
+//        if (pred(target_key, bucket->metas[key_idx].val, pattern, threshold))
+//        {
+//          atomicExch((K*)&(bucket->keys[key_idx]), EMPTY_KEY);
+//          atomicExch((K*)&(bucket->metas[key_idx].val), EMPTY_META);
+//          atomicSub(&(table->buckets_size[bkt_idx]), 1);
+//          atomicMax(&(table->buckets_size[bkt_idx]), 0);
+//          atomicAdd(count, 1);
+//        }
+//      }
+//    }
+//  }
+//}
 
 /* Dump with meta. */
 template <class K, class V, class M, size_t DIM>

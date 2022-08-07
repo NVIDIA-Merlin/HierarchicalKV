@@ -14,7 +14,7 @@ int formatted_code;
 void formatted_code_again;
 ```
 
-Install Clang-format 9 (9.0.1-12) for Ubuntu:
+Install Clang-format 9 (the version 9.0.1-12 is required) for Ubuntu:
 
 ```bash
 wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add - 

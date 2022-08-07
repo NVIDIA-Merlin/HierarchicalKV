@@ -30,11 +30,12 @@ namespace merlin {
 /**
  * The basic value type in Merlin-KV.
  * Any user data should be represented as a specific type of Vector in order to
- * be processed by Merlin_KV.
+ * be processed by Merlin-KV.
  *
  * @tparam value_type type of the Vector's elements type, which should be basic
  * types of C++/CUDA.
- * @tparam DIM dimension of the vector.
+ * @tparam D dimension of the vector.
+ *
  */
 template <class value_type, size_t D>
 struct Vector {
@@ -43,7 +44,7 @@ struct Vector {
 };
 
 /**
- * @brief HashTable Options.
+ * @brief The options struct of Merlin-KV.
  */
 struct HashTableOptions {
   size_t init_capacity = 0;        ///< The initial capacity.
@@ -57,27 +58,54 @@ struct HashTableOptions {
 };
 
 /**
+ * @brief A function template is used as `erase_if` first input, which help
+ * end-users implements customized and flexible erase(or evict) strategies.
+ *
+ * The erase_if will traverse all of the items by this function, the items which
+ * return `true` will be removed.
+ *
+ *  Example:
+ *
+ *    ```
+ *    template <class K, class M>
+ *    __forceinline__ __device__ bool erase_if_pred(const K& key,
+ *                                                  const M& meta,
+ *                                                  const K& pattern,
+ *                                                  const M& threshold) {
+ *      return ((key & 0xFFFF000000000000 == pattern) &&
+ *              (meta < threshold));
+ *    }
+ *    ```
+ */
+template <class K, class M>
+using EraseIfPredict = bool (*)(const K& key,       ///< traversed key in table
+                                const M& meta,      ///< traversed meta in table
+                                const K& pattern,   ///< input key from caller
+                                const M& threshold  ///< input meta from caller
+);
+
+/**
  * Merlin HashTable is a concurrent and hierarchical HashTable powered by GPUs
- * which can use both HBM, HMEM and SSD(WIP) as storage for Key-Values.
+ * which can use both HBM, Host MEM and SSD(WIP) as storage for Key-Values.
  *
- * @note Supports concurrent upsert, but not concurrent upsert and find now.
- * The upsert means insert or update if already exists.
+ * @note Supports concurrent insert_or_assign, but not concurrent
+ * insert_or_assign and find now. The insert_or_assign means insert or update if
+ * already exists.
  *
- * @note There is no API eviction and the eviction will happen automatically
- * when table is almost full. We introduce a `meta` concept to help implement
- * it. The keys with minimum meta will be evicted with priority. So the meta
- * usually is the timestamp or times of the key occurrence. The user can also
- * customize the meaning of the value that is equivalent to customizing the
- * eviction policy.
+ *
+ * @note The eviction will happen automatically when table is almost full. We
+ * introduce the `meta` concept to help implement it. The keys with minimum meta
+ * will be evicted first. We recommend using the timestamp or times
+ * of the key occurrence as the meta value for each keys. The user can also
+ * customize the meaning of the meta value that is equivalent to customize an
+ * eviction strategy.
  *
  * @tparam K type of the key
- * @tparam V type of the Value's item type, which should be basic types of
+ * @tparam V type of the Vector's item type, which should be basic types of
  * C++/CUDA.
  * @tparam M type of the meta and must be uint64_t in this release.
- * @tparam DIM dimension of the vector
+ * @tparam D dimension of the vectors
  *
- * @todo:
- *  - Support dynamic rehashing
  *
  */
 template <class K, class V, class M, size_t D>
@@ -89,14 +117,14 @@ class HashTable {
   using value_type = V;
   using vector_type = Vector<value_type, DIM>;
   using meta_type = M;
-  using Pred = Predict<key_type, meta_type>;
+  using Pred = EraseIfPredict<key_type, meta_type>;
 
  private:
   using TableCore = nv::merlin::Table<key_type, vector_type, meta_type, DIM>;
   static constexpr unsigned int TILE_SIZE = 8;
 
   /**
-   * @brief Enumeration of the eviction mode.
+   * @brief Enumeration of the eviction strategies.
    */
   enum class EvictStrategy {
     kUndefined = 0,  ///< undefined.
@@ -106,7 +134,7 @@ class HashTable {
 
  public:
   /**
-   * @brief Construct a table object.
+   * @brief Default Construct a table object.
    */
   HashTable(){};
 
@@ -166,14 +194,15 @@ class HashTable {
    *
    * @notice: The metas must be uint64_t value which could stand for the
    * timestamp of the key inserted or the number of the key occurrences. if
-   * @p metas is nullptr, the kLru policy will be applied.
+   * @p metas is nullptr, the LRU strategy will be applied.
    *
    * @param stream The CUDA stream used to execute the operation.
    *
    */
-  void insert_or_assign(size_type n, const key_type* keys,
-                        const value_type* values,
-                        const meta_type* metas = nullptr,
+  void insert_or_assign(size_type n,
+                        const key_type* keys,              // (n)
+                        const value_type* values,          // (n, DIM)
+                        const meta_type* metas = nullptr,  // (n)
                         cudaStream_t stream = 0) {
     if (n == 0) {
       return;
@@ -490,25 +519,31 @@ class HashTable {
    * table.
    *
    * @param pred predicate that returns true if the element should be erased.
+   * @param pattern the 3rd user-defined argument to @p pred with key_type type.
+   * @param threshold the 4th user-defined argument to @p pred with meta_type
+   * type.
    * @param stream The CUDA stream used to execute the operation.
    *
    * @notice: pred should be a function defined like the Example:
    *
    *    ```
-   *    __forceinline__ __device__ bool erase_if_pred(const key_type &key,
-   *                                                  const meta_type &meta,
-   *                                                  const key_type mask,
-   *                                                  const meta_type thrd) {
-   *       return (key % 2) == 1;
+   *    template <class K, class M>
+   *    __forceinline__ __device__ bool erase_if_pred(const K& key,
+   *                                                  const M& meta,
+   *                                                  const K& pattern,
+   *                                                  const M& threshold) {
+   *      return ((key & 0x1 == pattern) && (meta < threshold));
    *    }
    *    ```
    *
    * @return Number of elements removed
    *
    */
-  size_t erase_if(Pred& pred, cudaStream_t stream = 0) {
-    const size_t N = table_->buckets_num * table_->bucket_max_size;
-    const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
+  size_t erase_if(Pred& pred, const key_type& pattern,
+                  const meta_type& threshold, cudaStream_t stream = 0) {
+    const size_t block_size = 256;
+    const size_t N = table_->buckets_num;
+    const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
     size_t count = 0;
     size_t* d_count;
     Pred h_pred;
@@ -519,8 +554,10 @@ class HashTable {
                                          cudaMemcpyDeviceToHost, stream));
 
     remove_kernel<key_type, vector_type, meta_type, DIM>
-        <<<grid_size, options_.block_size, 0, stream>>>(table_, h_pred, d_count,
-                                                        N);
+        <<<grid_size, block_size, 0, stream>>>(
+            table_, h_pred, pattern, threshold, d_count, table_->buckets,
+            table_->buckets_size, table_->bucket_max_size, table_->buckets_num,
+            N);
 
     CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_t),
                                cudaMemcpyDeviceToHost, stream));
@@ -545,7 +582,7 @@ class HashTable {
   /**
    * @brief Export a certain number of the key-value-meta tuples from the table.
    *
-   * @param n Maximum number of dumped pairs.
+   * @param n Maximum number of exported pairs.
    * @param offset Number of Key to be removed.
    * @param keys The keys to be dumped on GPU accessible memory with shape (n).
    * @param values The values to be dumped on GPU accessible memory with shape
@@ -559,8 +596,10 @@ class HashTable {
    * @throw CudaException If the K-V size is too large for GPU shared memory.
    * Reducing the @ p max_num is needed at this time.
    */
-  size_type export_batch(size_type n, size_type offset, key_type* keys,
-                         value_type* values, meta_type* metas = nullptr,
+  size_type export_batch(size_type n, size_type offset,
+                         key_type* keys,              // (n)
+                         value_type* values,          // (n, DIM)
+                         meta_type* metas = nullptr,  // (n)
                          cudaStream_t stream = 0) const {
     size_type h_counter = 0;
     size_type* d_counter;
@@ -630,7 +669,8 @@ class HashTable {
    *
    * @note The capacity is requested by the caller and the value may be
    * less than the actual capacity of the table because the table keeps
-   * the capacity to be the power of 2 for performance consideration.
+   * the capacity to be the power of 2 for performance consideration in this
+   * release.
    *
    * @return The table capacity
    */
@@ -691,15 +731,15 @@ class HashTable {
     }
 
     if (evict_strategy_ == EvictStrategy::kLru) {
-      MERLIN_CHECK(
-          (metas == nullptr),
-          "the metas should not be specified when running on kLru mode.");
+      MERLIN_CHECK((metas == nullptr),
+                   "the metas should not be specified when already running on "
+                   "LRU mode.");
     }
 
     if (evict_strategy_ == EvictStrategy::kCustomized) {
-      MERLIN_CHECK(
-          (metas != nullptr),
-          "the metas should be specified when running on customized mode.")
+      MERLIN_CHECK((metas != nullptr),
+                   "the metas should be specified when already running on "
+                   "customized mode.")
     }
   }
 
