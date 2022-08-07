@@ -39,7 +39,7 @@ link_directories(
 file(GLOB_RECURSE merlin_hkvs_src RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.cu)
 
 # TODO:
-# add_library(merlin_kv STATIC ${merlin_hkvs_src})
+# add_library(merlin_kv STATIC ${merlin_kv_src})
 # target_compile_features(merlin_kv PUBLIC cxx_std_14)
 # target_link_libraries(merlin_kv PUBLIC ...)
 

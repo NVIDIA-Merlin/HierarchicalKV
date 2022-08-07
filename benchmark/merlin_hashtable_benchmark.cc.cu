@@ -187,12 +187,11 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
 
   cout << "|" << rep(1) << setw(3) << setfill(' ') << DIM << " "
        << "|" << rep(1) << setw(11) << setfill(' ') << init_capacity << " "
-       << "|" << rep(9) << key_num_per_op << " "
        << "|" << rep(8) << fixed << setprecision(2) << load_factor << " "
        << "|" << rep(5) << setw(3) << setfill(' ') << hbm4values << " "
        << "|" << rep(6) << setw(3) << setfill(' ') << hmem4values << " "
-       << "|" << rep(20) << fixed << setprecision(3) << insert_tput << " "
-       << "|" << rep(8) << fixed << setprecision(3) << find_tput << " |"
+       << "|" << rep(2) << fixed << setprecision(3) << insert_tput << " "
+       << "|" << rep(2) << fixed << setprecision(3) << find_tput << " |"
        << endl;
 
   CUDA_CHECK(cudaStreamDestroy(stream));
@@ -217,31 +216,40 @@ void print_title() {
   cout << endl
        << "| dim "
        << "|    capacity "
-       << "| keys_num_per_op "
        << "| load_factor "
        << "| HBM(GB) "
        << "| HMEM(GB) "
-       << "| insert_or_assign(G-KV/s) "
-       << "| find(G-KV/s) |" << endl;
+       << "| insert "
+       << "|   find |" << endl;
   cout << "|----:"
        //<< "| capacity "
        << "|------------:"
-       //<< "| keys_num_per_op "
-       << "|----------------:"
        //<< "| load_factor "
        << "|------------:"
        //<< "| HBM(GB) "
        << "|--------:"
        //<< "| HMEM(GB) "
        << "|---------:"
-       //<< "| insert_or_assign(G-KV/s) "
-       << "|-------------------------:"
-       //<< "| find(G-KV/s) "
-       << "|-------------:|" << endl;
+       //<< "| insert "
+       << "|-------:"
+       //<< "|  find "
+       << "|-------:|" << endl;
 }
 
 int main() {
-  cout << "On pure HBM mode: " << endl;
+  cudaDeviceProp props;
+  CUDA_CHECK(cudaGetDeviceProperties(&props, 0));
+  cout << endl
+       << "## Benchmark" << endl
+       << endl
+       << "* GPU: 1 x " << props.name << ": " << props.major << "."
+       << props.minor << endl
+       << "* Key Type = uint64_t" << endl
+       << "* Value Type = float32 * dim" << endl
+       << "* Key-Values per OP = 1,048,576" << endl
+       << "* ***Throughput Unit: Billion-KV/second***" << endl
+       << endl
+       << "### On pure HBM mode: " << endl;
   print_title();
   test_main<4>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.50);
   test_main<4>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.75);
@@ -259,7 +267,7 @@ int main() {
   test_main<128>(128 * 1024 * 1024UL, 1024 * 1024UL, 64, 1.00);
   cout << endl;
 
-  cout << "On HBM+HMEM hybrid mode: " << endl;
+  cout << "### On HBM+HMEM hybrid mode: " << endl;
   print_title();
   test_main<64>(128 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.50);
   test_main<64>(128 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.75);

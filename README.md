@@ -35,22 +35,26 @@ and also open for public contributions, bug fixes, and documentation. [[Contribu
 
 ## How to build
 
-Basically, Merlin-KV is a headers only library, the commands below only create binary for unit testing and benchmark.
+Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 ```bash
 git clone -b 0.1.0-beta https://github.com/NVIDIA-Merlin/merlin-kv.git
 cd merlin-kv && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
+
+// for Benchmark
+./merlin_hashtable_benchmark
+
+// for Unit Test
+./merlin_hashtable_test
 ```
 
 
 ## Benchmark
 
-* Update time: Aug 4, 2022
-* version: tag [0.1.0-beta](https://github.com/NVIDIA-Merlin/merlin-kv/tree/0.1.0-beta)
 * Key Type = uint64_t
 * Value Type = float32 * dim
 * Key-Values per OP = 1,048,576
-* ***Througput Unit: Billion-KV/second***
+* ***Throughput Unit: Billion-KV/second***
 
 
 ### On pure HBM mode:
