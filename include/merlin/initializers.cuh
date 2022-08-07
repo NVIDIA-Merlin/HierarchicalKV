@@ -19,7 +19,6 @@
 #include <cuda_runtime.h>
 #include <curand.h>
 #include <curand_kernel.h>
-
 #include "curand_philox4x32_x.h"
 #include "types.cuh"
 #include "utils.cuh"
@@ -28,7 +27,7 @@ namespace nv {
 namespace merlin {
 namespace initializers {
 
-inline void cuda_rand_check_(curandStatus_t val, const char *file, int line) {
+inline void cuda_rand_check_(curandStatus_t val, const char* file, int line) {
   if (val != CURAND_STATUS_SUCCESS) {
     throw CudaException(std::string(file) + ":" + std::to_string(line) +
                         ": CURAND error " + std::to_string(val));
@@ -39,12 +38,12 @@ inline void cuda_rand_check_(curandStatus_t val, const char *file, int line) {
   { nv::merlin::initializers::cuda_rand_check_((val), __FILE__, __LINE__); }
 
 template <class T>
-void zeros(T *d_data, size_t len, cudaStream_t stream) {
-  cudaMemsetAsync(d_data, 0, len, stream);
+void zeros(T* d_data, size_t len, cudaStream_t stream) {
+  CUDA_CHECK(cudaMemsetAsync(d_data, 0, len, stream));
 }
 
 template <class T>
-void random_normal(T *d_data, size_t len, cudaStream_t stream, T mean = 0.0,
+void random_normal(T* d_data, size_t len, cudaStream_t stream, T mean = 0.0,
                    T stddev = 0.05, unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
   CURAND_CHECK(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
@@ -53,7 +52,7 @@ void random_normal(T *d_data, size_t len, cudaStream_t stream, T mean = 0.0,
 }
 
 template <class T>
-__global__ void adjust_max_min(T *d_data, T minval, T maxval, size_t N) {
+__global__ void adjust_max_min(T* d_data, T minval, T maxval, size_t N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (tid < N) {
     d_data[tid] =
@@ -62,7 +61,7 @@ __global__ void adjust_max_min(T *d_data, T minval, T maxval, size_t N) {
 }
 
 template <class T>
-void random_uniform(T *d_data, size_t len, cudaStream_t stream, T minval = 0.0,
+void random_uniform(T* d_data, size_t len, cudaStream_t stream, T minval = 0.0,
                     T maxval = 1.0, unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
 
@@ -75,12 +74,10 @@ void random_uniform(T *d_data, size_t len, cudaStream_t stream, T minval = 0.0,
   CURAND_CHECK(curandGenerateUniform(generator, d_data, N));
   adjust_max_min<T>
       <<<grid_size, block_size, 0, stream>>>(d_data, minval, maxval, N);
-
-  CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
 template <class T>
-__global__ void init_states(curandStatePhilox4_32_10_t *states,
+__global__ void init_states(curandStatePhilox4_32_10_t* states,
                             unsigned long long seed, size_t N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (tid < N) {
@@ -89,8 +86,8 @@ __global__ void init_states(curandStatePhilox4_32_10_t *states,
 }
 
 template <class T>
-__global__ void make_truncated_normal(T *d_data,
-                                      curandStatePhilox4_32_10_t *states,
+__global__ void make_truncated_normal(T* d_data,
+                                      curandStatePhilox4_32_10_t* states,
                                       size_t N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (tid < N) {
@@ -102,7 +99,7 @@ __global__ void make_truncated_normal(T *d_data,
 }
 
 template <class T>
-void truncated_normal(T *d_data, size_t len, cudaStream_t stream,
+void truncated_normal(T* d_data, size_t len, cudaStream_t stream,
                       T minval = 0.0, T maxval = 1.0,
                       unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
@@ -113,8 +110,8 @@ void truncated_normal(T *d_data, size_t len, cudaStream_t stream,
   int N = len;
   int block_size = 256;
   int grid_size = (N + block_size - 1) / block_size;
-  curandStatePhilox4_32_10_t *d_states;
-  cudaMalloc(&d_states, N);
+  curandStatePhilox4_32_10_t* d_states;
+  CUDA_CHECK(cudaMallocAsync(&d_states, N, stream));
 
   init_states<T><<<grid_size, block_size, 0, stream>>>(d_states, seed, N);
 
@@ -124,22 +121,20 @@ void truncated_normal(T *d_data, size_t len, cudaStream_t stream,
   adjust_max_min<T>
       <<<grid_size, block_size, 0, stream>>>(d_data, minval, maxval, N);
 
-  cudaFree(d_states);
-
-  CUDA_CHECK(cudaStreamSynchronize(stream));
+  CUDA_CHECK(cudaFreeAsync(d_states, stream));
 }
 
 template <class T>
 class Initializer {
  public:
   virtual ~Initializer() {}
-  virtual void initialize(T *data, size_t len, cudaStream_t stream) {}
+  virtual void initialize(T* data, size_t len, cudaStream_t stream) {}
 };
 
 template <class T>
 class Zeros final : public Initializer<T> {
  public:
-  void initialize(T *data, size_t len, cudaStream_t stream) override {
+  void initialize(T* data, size_t len, cudaStream_t stream) override {
     zeros<T>(data, len, stream);
   }
 };

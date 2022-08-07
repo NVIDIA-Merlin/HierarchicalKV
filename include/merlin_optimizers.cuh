@@ -59,9 +59,9 @@ class Adam : public Optimizer<K, V, M, T, DIM> {
     V* d_v;
 
     // TODO(jamesrong): change to flexible buffer.
-    CUDA_CHECK(cudaMalloc((void**)&d_w, len * sizeof(V)));
-    CUDA_CHECK(cudaMalloc((void**)&d_m, len * sizeof(V)));
-    CUDA_CHECK(cudaMalloc((void**)&d_v, len * sizeof(V)));
+    CUDA_CHECK(cudaMallocAsync((void**)&d_w, len * sizeof(V), stream));
+    CUDA_CHECK(cudaMallocAsync((void**)&d_m, len * sizeof(V), stream));
+    CUDA_CHECK(cudaMallocAsync((void**)&d_v, len * sizeof(V), stream));
 
     w_->get(d_keys, d_w, len, stream);
     m_->get(d_keys, d_m, len, stream);
@@ -76,9 +76,10 @@ class Adam : public Optimizer<K, V, M, T, DIM> {
     m_->insert_or_assign(d_keys, d_m, len, stream);
     v_->insert_or_assign(d_keys, d_v, len, stream);
 
-    CUDA_CHECK(cudaFree(d_w))
-    CUDA_CHECK(cudaFree(d_m));
-    CUDA_CHECK(cudaFree(d_v));
+    CUDA_CHECK(cudaFreeAsync(d_w, stream))
+    CUDA_CHECK(cudaFreeAsync(d_m, stream));
+    CUDA_CHECK(cudaFreeAsync(d_v, stream));
+    CudaCheckError();
   }
 
  private:

@@ -9,7 +9,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 option(CLANGFORMAT "Clangformat source code before compiling" ON)
 if(CLANGFORMAT)
   include(ClangFormat)
-  file(GLOB_RECURSE clangformat_srcs ${PROJECT_SOURCE_DIR}/cpp *.cpp *.hpp *.cu *.cuh)
+  file(GLOB_RECURSE clangformat_srcs ${PROJECT_SOURCE_DIR}/ *.cpp *.hpp *.cu *.cuh)
   clangformat_setup("${clangformat_srcs}")
 endif()
 
@@ -37,7 +37,7 @@ foreach(cuda_arch ${cuda_arch_list})
 endforeach()
 
 include_directories(
-  ${PROJECT_SOURCE_DIR}/cpp/include
+  ${PROJECT_SOURCE_DIR}/include
 )
 
 link_directories(
@@ -46,10 +46,14 @@ link_directories(
 file(GLOB_RECURSE merlin_hkvs_src RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.cu)
 
 # TODO:
-# add_library(merlin_hkvs STATIC ${merlin_hkvs_src})
-# target_compile_features(merlin_hkvs PUBLIC cxx_std_17)
-# target_link_libraries(merlin_hkvs PUBLIC ...)
+# add_library(merlin_kv STATIC ${merlin_hkvs_src})
+# target_compile_features(merlin_kv PUBLIC cxx_std_17)
+# target_link_libraries(merlin_kv PUBLIC ...)
 
-add_executable(merlin_hashtable_test cpp/tests/merlin_hashtable_test.cc.cu)
+add_executable(merlin_hashtable_test tests/merlin_hashtable_test.cc.cu)
 target_compile_features(merlin_hashtable_test PUBLIC cxx_std_17)
 set_target_properties(merlin_hashtable_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+
+add_executable(merlin_hashtable_benchmark benchmark/merlin_hashtable_benchmark.cc.cu)
+target_compile_features(merlin_hashtable_benchmark PUBLIC cxx_std_17)
+set_target_properties(merlin_hashtable_benchmark PROPERTIES  CUDA_ARCHITECTURES OFF)

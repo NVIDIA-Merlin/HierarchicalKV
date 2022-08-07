@@ -33,7 +33,7 @@ class FlexMemory {
     if (!ptr_) cudaFree(ptr_);
   }
 
-  __inline__ T *alloc_or_reuse(size_t size = 0) {
+  __inline__ T* alloc_or_reuse(size_t size = 0) {
     if (size > size_) {
       cudaFree(ptr_);
       size_ = size;
@@ -44,7 +44,7 @@ class FlexMemory {
   }
 
  private:
-  T *ptr_;
+  T* ptr_;
   size_t size_;
 };
 

@@ -22,14 +22,14 @@ namespace nv {
 namespace merlin {
 
 struct managed {
-  static void *operator new(size_t n) {
-    void *ptr = 0;
+  static void* operator new(size_t n) {
+    void* ptr = 0;
     cudaError_t result = cudaMallocManaged(&ptr, n);
     if (cudaSuccess != result || 0 == ptr) throw std::bad_alloc();
     return ptr;
   }
 
-  static void operator delete(void *ptr) noexcept { cudaFree(ptr); }
+  static void operator delete(void* ptr) noexcept { cudaFree(ptr); }
 };
 
 }  // namespace merlin

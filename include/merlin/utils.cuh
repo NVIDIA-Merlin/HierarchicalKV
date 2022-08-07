@@ -17,10 +17,8 @@
 #pragma once
 
 #include <cooperative_groups.h>
-
 #include <exception>
 #include <string>
-
 #include "cuda_fp16.h"
 #include "cuda_runtime_api.h"
 

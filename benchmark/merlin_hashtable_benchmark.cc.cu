@@ -18,7 +18,6 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
@@ -27,7 +26,6 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
-
 #include "merlin/initializers.cuh"
 #include "merlin/optimizers.cuh"
 #include "merlin_hashtable.cuh"
@@ -45,7 +43,7 @@ uint64_t getTimestamp() {
       .count();
 }
 template <class K, class M>
-void create_random_keys(K *h_keys, M *h_metas, int key_num_per_op) {
+void create_random_keys(K* h_keys, M* h_metas, int key_num_per_op) {
   std::unordered_set<K> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
@@ -65,7 +63,7 @@ void create_random_keys(K *h_keys, M *h_metas, int key_num_per_op) {
 std::string rep(int n) { return std::string(n, ' '); }
 
 template <class K, class M>
-void create_continuous_keys(K *h_keys, M *h_metas, int key_num_per_op,
+void create_continuous_keys(K* h_keys, M* h_metas, int key_num_per_op,
                             K start = 0) {
   for (K i = 0; i < key_num_per_op; i++) {
     h_keys[i] = start + static_cast<K>(i);
@@ -86,67 +84,66 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
   using M = uint64_t;
   using Vector = ValueArray<float, DIM>;
   using Table = nv::merlin::HashTable<K, float, M, DIM>;
+  using TableOptions = nv::merlin::HashTableOptions;
 
   size_t free, total;
-  cudaSetDevice(0);
-  cudaMemGetInfo(&free, &total);
+  CUDA_CHECK(cudaSetDevice(0));
+  CUDA_CHECK(cudaMemGetInfo(&free, &total));
 
   if (free / (1 << 30) < hbm4values) {
     return;
   }
 
-  K *h_keys;
-  M *h_metas;
-  Vector *h_vectors;
-  bool *h_found;
+  K* h_keys;
+  M* h_metas;
+  Vector* h_vectors;
+  bool* h_found;
 
-  std::unique_ptr<Table> table_ =
-      std::make_unique<Table>(init_capacity,              /* init_capacity */
-                              init_capacity,              /* max_size */
-                              nv::merlin::GB(hbm4values), /* hbm4values */
-                              0.75,                       /* max_load_factor */
-                              128,                        /* buckets_max_size */
-                              nullptr,                    /* initializer */
-                              true,                       /* primary */
-                              1024                        /* block_size */
-      );
+  TableOptions options;
 
-  cudaMallocHost(&h_keys, key_num_per_op * sizeof(K));          // 8MB
-  cudaMallocHost(&h_metas, key_num_per_op * sizeof(M));         // 8MB
-  cudaMallocHost(&h_vectors, key_num_per_op * sizeof(Vector));  // 256MB
-  cudaMallocHost(&h_found, key_num_per_op * sizeof(bool));      // 4MB
+  options.init_capacity = init_capacity;
+  options.max_capacity = init_capacity;
+  options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
 
-  cudaMemset(h_vectors, 0, key_num_per_op * sizeof(Vector));
+  std::unique_ptr<Table> table = std::make_unique<Table>();
+  table->init(options);
 
-  K *d_keys;
-  M *d_metas = nullptr;
-  Vector *d_vectors;
-  Vector *d_def_val;
-  Vector **d_vectors_ptr;
-  bool *d_found;
+  CUDA_CHECK(cudaMallocHost(&h_keys, key_num_per_op * sizeof(K)));
+  CUDA_CHECK(cudaMallocHost(&h_metas, key_num_per_op * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_vectors, key_num_per_op * sizeof(Vector)));
+  CUDA_CHECK(cudaMallocHost(&h_found, key_num_per_op * sizeof(bool)));
 
-  cudaMalloc(&d_keys, key_num_per_op * sizeof(K));                // 8MB
-  cudaMalloc(&d_metas, key_num_per_op * sizeof(M));               // 8MB
-  cudaMalloc(&d_vectors, key_num_per_op * sizeof(Vector));        // 256MB
-  cudaMalloc(&d_def_val, key_num_per_op * sizeof(Vector));        // 256MB
-  cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(Vector *));  // 8MB
-  cudaMalloc(&d_found, key_num_per_op * sizeof(bool));            // 4MB
+  CUDA_CHECK(cudaMemset(h_vectors, 0, key_num_per_op * sizeof(Vector)));
 
-  cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
-             cudaMemcpyHostToDevice);
-  cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
-             cudaMemcpyHostToDevice);
+  K* d_keys;
+  M* d_metas = nullptr;
+  Vector* d_vectors;
+  Vector* d_def_val;
+  Vector** d_vectors_ptr;
+  bool* d_found;
 
-  cudaMemset(d_vectors, 1, key_num_per_op * sizeof(Vector));
-  cudaMemset(d_def_val, 2, key_num_per_op * sizeof(Vector));
-  cudaMemset(d_vectors_ptr, 0, key_num_per_op * sizeof(Vector *));
-  cudaMemset(d_found, 0, key_num_per_op * sizeof(bool));
+  CUDA_CHECK(cudaMalloc(&d_keys, key_num_per_op * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_metas, key_num_per_op * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_vectors, key_num_per_op * sizeof(Vector)));
+  CUDA_CHECK(cudaMalloc(&d_def_val, key_num_per_op * sizeof(Vector)));
+  CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(Vector*)));
+  CUDA_CHECK(cudaMalloc(&d_found, key_num_per_op * sizeof(bool)));
+
+  CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
+                        cudaMemcpyHostToDevice));
+
+  CUDA_CHECK(cudaMemset(d_vectors, 1, key_num_per_op * sizeof(Vector)));
+  CUDA_CHECK(cudaMemset(d_def_val, 2, key_num_per_op * sizeof(Vector)));
+  CUDA_CHECK(cudaMemset(d_vectors_ptr, 0, key_num_per_op * sizeof(Vector*)));
+  CUDA_CHECK(cudaMemset(d_found, 0, key_num_per_op * sizeof(bool)));
 
   cudaStream_t stream;
-  cudaStreamCreate(&stream);
+  CUDA_CHECK(cudaStreamCreate(&stream));
 
   K start = 0UL;
-  float cur_load_factor = table_->load_factor();
+  float cur_load_factor = table->load_factor();
   auto start_insert_or_assign = std::chrono::steady_clock::now();
   auto end_insert_or_assign = std::chrono::steady_clock::now();
   auto start_find = std::chrono::steady_clock::now();
@@ -156,25 +153,28 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
 
   while (cur_load_factor < load_factor) {
     create_continuous_keys<K, M>(h_keys, h_metas, key_num_per_op, start);
-    cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
-               cudaMemcpyHostToDevice);
-    cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
-               cudaMemcpyHostToDevice);
+    CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
+                          cudaMemcpyHostToDevice));
 
     start_insert_or_assign = std::chrono::steady_clock::now();
-    table_->insert_or_assign(d_keys, reinterpret_cast<float *>(d_vectors),
-                             d_metas, key_num_per_op, false, stream);
+    table->insert_or_assign(key_num_per_op, d_keys,
+                            reinterpret_cast<float*>(d_vectors), d_metas,
+                            stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     end_insert_or_assign = std::chrono::steady_clock::now();
     diff_insert_or_assign = end_insert_or_assign - start_insert_or_assign;
 
     start_find = std::chrono::steady_clock::now();
-    table_->find(d_keys, reinterpret_cast<float *>(d_vectors), d_found,
-                 key_num_per_op, nullptr, stream);
+    table->find(key_num_per_op, d_keys, reinterpret_cast<float*>(d_vectors),
+                d_found, nullptr, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     end_find = std::chrono::steady_clock::now();
     diff_find = end_find - start_find;
 
-    cur_load_factor = table_->load_factor();
-
+    cur_load_factor = table->load_factor(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     start += key_num_per_op;
   }
 
@@ -195,18 +195,20 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
        << "|" << rep(8) << fixed << setprecision(3) << find_tput << " |"
        << endl;
 
-  cudaStreamDestroy(stream);
+  CUDA_CHECK(cudaStreamDestroy(stream));
 
-  cudaFreeHost(h_keys);
-  cudaFreeHost(h_metas);
-  cudaFreeHost(h_found);
+  CUDA_CHECK(cudaFreeHost(h_keys));
+  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_found));
 
-  cudaFree(d_keys);
-  cudaFree(d_metas);
-  cudaFree(d_vectors);
-  cudaFree(d_def_val);
-  cudaFree(d_vectors_ptr);
-  cudaFree(d_found);
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_vectors));
+  CUDA_CHECK(cudaFree(d_def_val));
+  CUDA_CHECK(cudaFree(d_vectors_ptr));
+  CUDA_CHECK(cudaFree(d_found));
+
+  CudaCheckError();
 
   return;
 }

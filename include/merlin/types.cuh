@@ -32,10 +32,10 @@ constexpr uint64_t EMPTY_META = std::numeric_limits<uint64_t>::min();
 
 template <class K, class V, class M, size_t DIM>
 struct Bucket {
-  K *keys;         // HBM
-  Meta<M> *metas;  // HBM
-  V *cache;        // HBM(optional)
-  V *vectors;      // Pinned memory or HBM
+  K* keys;         // HBM
+  Meta<M>* metas;  // HBM
+  V* cache;        // HBM(optional)
+  V* vectors;      // Pinned memory or HBM
 
   /* For upsert_kernel without user specified metas
      recording the current meta, the cur_meta will
@@ -53,10 +53,10 @@ using Mutex = cuda::binary_semaphore<cuda::thread_scope_device>;
 
 template <class K, class V, class M, size_t DIM>
 struct Table {
-  Bucket<K, V, M, DIM> *buckets;
-  Mutex *locks;                 // mutex for write buckets
-  int *buckets_size;            // size of each buckets.
-  V **slices;                   // Handles of the HBM/ HMEM slices.
+  Bucket<K, V, M, DIM>* buckets;
+  Mutex* locks;                 // mutex for write buckets
+  int* buckets_size;            // size of each buckets.
+  V** slices;                   // Handles of the HBM/ HMEM slices.
   size_t bytes_per_slice;       // Size by byte of one slice.
   size_t num_of_memory_slices;  // Number of vectors memory slices.
   size_t capacity = 134217728;  // Initial capacity.
@@ -75,7 +75,7 @@ struct Table {
 };
 
 template <class K, class M>
-using Predict = bool (*)(const K &, const M &);
+using Predict = bool (*)(const K&, const M&);
 
 }  // namespace merlin
 }  // namespace nv

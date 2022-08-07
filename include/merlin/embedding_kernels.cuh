@@ -24,9 +24,9 @@ namespace merlin {
 namespace embedding {
 
 template <class K, class V, class M, size_t DIM>
-void create_slot(Table<K, V, M, DIM> *primary_table,
-                 Table<K, V, M, DIM> **slot_table, int vector_offset = 0) {
-  cudaMallocManaged((void **)slot_table, sizeof(Table<K, V, M, DIM>));
+void create_slot(Table<K, V, M, DIM>* primary_table,
+                 Table<K, V, M, DIM>** slot_table, int vector_offset = 0) {
+  cudaMallocManaged((void**)slot_table, sizeof(Table<K, V, M, DIM>));
   cudaMemcpy(slot_table, primary_table, sizeof(Table<K, V, M, DIM>),
              cudaMemcpyDeviceToDevice);
   (*slot_table)->primary_table = false;

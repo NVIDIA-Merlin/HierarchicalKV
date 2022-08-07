@@ -16,11 +16,31 @@
 
 #pragma once
 
-#include <cuda_runtime.h>
-
-#include "types.cuh"
-#include "utils.cuh"
+#include "merlin/initializers.cuh"
+#include "merlin_hashtable.cuh"
 
 namespace nv {
-namespace merlin {}  // namespace merlin
+namespace merlin {
+namespace initializers {
+
+template <class T>
+class RandomNormal final : public Initializer<T> {
+ public:
+  RandomNormal(T mean = 0.0, T stddev = 0.5, unsigned long long seed = 2022ULL)
+      : mean_(mean), stddev_(stddev), seed_(seed) {}
+  ~RandomNormal() {}
+
+  void initialize(T* data, size_t len, cudaStream_t stream) override {
+    random_normal<T>(data, len, stream, mean_, stddev_, seed_);
+    CudaCheckError();
+  }
+
+ private:
+  T mean_;
+  T stddev_;
+  unsigned long long seed_;
+};
+
+}  // namespace initializers
+}  // namespace merlin
 }  // namespace nv
