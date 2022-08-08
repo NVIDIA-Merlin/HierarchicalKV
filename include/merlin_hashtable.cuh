@@ -19,7 +19,11 @@
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
+
+#include <condition_variable>
+#include <list>
 #include <mutex>
+
 #include "merlin/core_kernels.cuh"
 #include "merlin/initializers.cuh"
 #include "merlin/utils.cuh"
@@ -111,6 +115,7 @@ using EraseIfPredict = bool (*)(const K& key,       ///< traversed key in table
 template <class K, class V, class M, size_t D>
 class HashTable {
  public:
+  using this_type = HashTable<K, V, M, D>;
   using size_type = size_t;
   static constexpr size_type DIM = D;
   using key_type = K;
@@ -750,6 +755,125 @@ class HashTable {
   bool reach_max_capacity_ = false;
   bool initialized_ = false;
   EvictStrategy evict_strategy_ = EvictStrategy::kUndefined;
+
+  // Workspaces.
+  const size_t max_batch_size_ = 16 * 1024 * 1024;
+  const size_t num_ws_min_ = 3;
+  const size_t num_ws_max_ = 5;
+
+  struct WorkspaceBuffer final {
+    union {
+      void* ptr;
+      vector_type** vec;
+      int* i32;
+      uint64_t u64;
+    };
+
+    WorkspaceBuffer(const size_t size) {
+      const size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
+      CUDA_CHECK(cudaMalloc(&ptr, item_size * size));
+    }
+
+    WorkspaceBuffer(const size_t size, cudaStream_t const stream) {
+      const size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
+      CUDA_CHECK(cudaMallocAsync(&vec, item_size * size, stream));
+    }
+
+    ~WorkspaceBuffer() { CUDA_CHECK(cudaFree(ptr)); }
+  };
+  static_assert(sizeof(WorkspaceBuffer) == sizeof(void*));
+
+  template <size_t SIZE>
+  class Workspace final {
+   public:
+    Workspace(const this_type* const parent, cudaStream_t const stream)
+        : parent_{parent} {
+      parent_->claim_ws_(*this, stream);
+    }
+
+    ~Workspace() { parent_->release_ws_(*this); }
+
+    constexpr WorkspaceBuffer*& operator[](const size_t i) {
+      assert(i < SIZE);
+      return buffers_[i];
+    }
+    constexpr const WorkspaceBuffer*& operator[](const size_t i) const {
+      assert(i < SIZE);
+      return buffers_[i];
+    }
+
+   private:
+    const this_type* const parent_;
+    WorkspaceBuffer* buffers_[SIZE];
+  };
+
+  mutable std::mutex ws_mtx_;
+  mutable std::list<WorkspaceBuffer> ws_;
+  mutable std::vector<WorkspaceBuffer*> avail_ws_;
+  mutable std::condition_variable ws_returned_;
+
+  template <size_t SIZE>
+  void claim_ws_(Workspace<SIZE>& ws, cudaStream_t const stream) const {
+    std::unique_lock<std::mutex> lock(ws_mtx_);
+
+    // If have a prellocated workspace available.
+    if (avail_ws_.size() >= SIZE) {
+      for (size_t i = 0; i < SIZE; i++) {
+        ws[i] = avail_ws_.back();
+        avail_ws_.pop_back();
+      }
+    }
+    // If workspace creation quota not yet reached.
+    else if (ws_.size() + SIZE <= num_ws_max_) {
+      for (size_t i = 0; i < SIZE; i++) {
+        ws_.emplace_back(max_batch_size_, stream);
+        ws[i] = &ws_.back();
+      }
+    }
+    // Creation quota reached. Wait for another thread to return a
+    else {
+      while (true) {
+        ws_returned_.wait(lock, [&] { return avail_ws_.size() >= SIZE; });
+        if (avail_ws_.size() < SIZE) {
+          ws_returned_.notify_one();
+          continue;
+        }
+
+        for (size_t i = 0; i < SIZE; i++) {
+          ws[i] = avail_ws_.back();
+          avail_ws_.pop_back();
+        }
+        break;
+      }
+    }
+  }
+
+  template <size_t SIZE>
+  void release_ws_(Workspace<SIZE>& ws) const {
+    std::lock_guard<std::mutex> lock(ws_mtx_);
+    size_t i = 0;
+
+    // Fill up available buffers until reach reserve capacity.
+    bool has_returned_ws = false;
+    for (; i < SIZE && avail_ws_.size() < num_ws_min_; i++) {
+      avail_ws_.emplace_back(ws[i]);
+      has_returned_ws = true;
+    }
+
+    // Discard remaining buffers.
+    for (; i < SIZE; i++) {
+      for (auto it = ws_.begin(); it != ws_.end(); it++) {
+        if (&(*it) == ws[i]) {
+          ws_.erase(it);
+        }
+      }
+    }
+
+    // Give a waiting thread a chance to start.
+    if (has_returned_ws) {
+      ws_returned_.notify_one();
+    }
+  }
 };
 
 }  // namespace merlin
