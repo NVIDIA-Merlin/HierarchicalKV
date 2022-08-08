@@ -18,6 +18,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 #include <algorithm>
 #include <chrono>
 #include <iomanip>
@@ -26,6 +27,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "merlin/initializers.cuh"
 #include "merlin/optimizers.cuh"
 #include "merlin_hashtable.cuh"
