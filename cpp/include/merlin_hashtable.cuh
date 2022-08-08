@@ -342,14 +342,14 @@ class HashTable {
     CUDA_CHECK(cudaMemsetAsync(found, 0, length * sizeof(bool), stream));
 
     Workspace<2> ws(this, stream);
-    Vector **vec = ws[0]->vec;
-    int *off = ws[1]->i32;
+    Vector **src = ws[0]->vec;
+    int *dst_off = ws[1]->i32;
 
     for (size_t i = 0; i < length; i += max_batch_size_) {
       const size_t len = std::min(length - i, max_batch_size_);
 
-      CUDA_CHECK(cudaMemsetAsync(vec, 0, len * sizeof(Vector *), stream));
-      CUDA_CHECK(cudaMemsetAsync(off, 0, len * sizeof(int), stream));
+      CUDA_CHECK(cudaMemsetAsync(src, 0, len * sizeof(Vector *), stream));
+      CUDA_CHECK(cudaMemsetAsync(dst_off, 0, len * sizeof(int), stream));
 
       // Determine bucket locations for reading.
       {
@@ -358,8 +358,8 @@ class HashTable {
         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         lookup_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size, 0, stream>>>(table_, &keys[i], vec,
-                                                   nullptr, &found[i], off, N);
+            <<<grid_size, block_size, 0, stream>>>(
+                table_, &keys[i], src, nullptr, &found[i], dst_off, N);
       }
 
       if (!is_pure_hbm_mode()) {
@@ -368,8 +368,8 @@ class HashTable {
             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
         const size_t N = len;
-        thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(vec));
-        thrust::device_ptr<int> dst_offset_ptr(off);
+        thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(src));
+        thrust::device_ptr<int> dst_offset_ptr(dst_off);
 
 #if THRUST_VERSION >= 101600
         auto policy = thrust::cuda::par_nosync.on(stream);
@@ -385,10 +385,10 @@ class HashTable {
         const size_t N = len * DIM;
         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
         read_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
-            vec, reinterpret_cast<Vector *>(&vectors[i]), &found[i],
+            src, reinterpret_cast<Vector *>(&vectors[i]), &found[i],
             reinterpret_cast<const Vector *>(
                 full_size_default ? &default_vectors[i] : default_vectors),
-            off, N, full_size_default);
+            dst_off, N, full_size_default);
       }
     }
 
