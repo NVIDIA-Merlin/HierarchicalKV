@@ -71,6 +71,7 @@ struct Vector {
 template <class Key, class V, class M, size_t DIM, unsigned int TILE_SIZE = 8>
 class HashTable {
  public:
+  using this_type = HashTable<Key, V, M, DIM, TILE_SIZE>;
   using key_type = Key;
   using Vector = Vector<V, DIM>;
   using value_type = Vector;
@@ -340,12 +341,15 @@ class HashTable {
     // Clear found flags.
     CUDA_CHECK(cudaMemsetAsync(found, 0, length * sizeof(bool), stream));
 
-    Workspace *ws = borrow_ws(stream);
+    Workspace<2> ws(this, stream);
+    Vector **vec = ws[0]->vec;
+    int *off = ws[1]->i32;
+
     for (size_t i = 0; i < length; i += max_batch_size_) {
       const size_t len = std::min(length - i, max_batch_size_);
 
-      CUDA_CHECK(cudaMemsetAsync(ws->vec, 0, len * sizeof(Vector *), stream));
-      CUDA_CHECK(cudaMemsetAsync(ws->off, 0, len * sizeof(int), stream));
+      CUDA_CHECK(cudaMemsetAsync(vec, 0, len * sizeof(Vector *), stream));
+      CUDA_CHECK(cudaMemsetAsync(off, 0, len * sizeof(int), stream));
 
       // Determine bucket locations for reading.
       {
@@ -354,8 +358,8 @@ class HashTable {
         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         lookup_kernel<Key, Vector, M, DIM>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, &keys[i], ws->vec, nullptr, &found[i], ws->off, N);
+            <<<grid_size, block_size, 0, stream>>>(table_, &keys[i], vec,
+                                                   nullptr, &found[i], off, N);
       }
 
       if (!is_pure_hbm_mode()) {
@@ -364,9 +368,8 @@ class HashTable {
             "[merlin-kv] illegal conversation. V pointer must be 64 bit!");
 
         const size_t N = len;
-        thrust::device_ptr<uint64_t> src_ptr(
-            reinterpret_cast<uint64_t *>(ws->vec));
-        thrust::device_ptr<int> dst_offset_ptr(ws->off);
+        thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t *>(vec));
+        thrust::device_ptr<int> dst_offset_ptr(off);
 
 #if THRUST_VERSION >= 101600
         auto policy = thrust::cuda::par_nosync.on(stream);
@@ -382,16 +385,15 @@ class HashTable {
         const size_t N = len * DIM;
         const int grid_size = SAFE_GET_GRID_SIZE(N, block_size_);
         read_kernel<Key, Vector, M, DIM><<<grid_size, block_size_, 0, stream>>>(
-            ws->vec, reinterpret_cast<Vector *>(&vectors[i]), &found[i],
+            vec, reinterpret_cast<Vector *>(&vectors[i]), &found[i],
             reinterpret_cast<const Vector *>(
                 full_size_default ? &default_vectors[i] : default_vectors),
-            ws->off, N, full_size_default);
+            off, N, full_size_default);
       }
     }
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CudaCheckError();
-    return_ws(ws);
   }
 
   /**
@@ -861,74 +863,117 @@ class HashTable {
   const size_t num_ws_min_ = 3;
   const size_t num_ws_max_ = 5;
 
-  struct Workspace final {
-    static_assert(sizeof(Vector **) == sizeof(uint64_t));
+  struct WorkspaceBuffer final {
     union {
+      void *ptr;
       Vector **vec;
-      uint64_t cnt64;
-    };
-    union {
-      int *off;
-      int *cnt;
+      int *i32;
+      uint64_t u64;
     };
 
-    Workspace(const size_t size) {
-      CUDA_CHECK(cudaMalloc(&vec, size * sizeof(Vector *)));
-      CUDA_CHECK(cudaMalloc(&off, size * sizeof(int)));
+    WorkspaceBuffer(const size_t size) {
+      const size_t item_size = std::max(sizeof(Vector **), sizeof(uint64_t));
+      CUDA_CHECK(cudaMalloc(&ptr, item_size * size));
     }
 
-    Workspace(const size_t size, cudaStream_t const stream) {
-      CUDA_CHECK(cudaMallocAsync(&vec, size * sizeof(Vector *), stream));
-      CUDA_CHECK(cudaMallocAsync(&off, size * sizeof(int), stream));
+    WorkspaceBuffer(const size_t size, cudaStream_t const stream) {
+      const size_t item_size = std::max(sizeof(Vector **), sizeof(uint64_t));
+      CUDA_CHECK(cudaMallocAsync(&vec, item_size * size, stream));
     }
 
-    ~Workspace() {
-      CUDA_CHECK(cudaFree(vec));
-      CUDA_CHECK(cudaFree(off));
-    }
+    ~WorkspaceBuffer() { CUDA_CHECK(cudaFree(ptr)); }
   };
-  static_assert(sizeof(Workspace) == sizeof(void *) * 2);
+  static_assert(sizeof(WorkspaceBuffer) == sizeof(void *));
+
+  template <size_t SIZE>
+  class Workspace final {
+   public:
+    Workspace(const this_type *const parent, cudaStream_t const stream)
+        : parent_{parent} {
+      parent_->claim_ws_(*this, stream);
+    }
+
+    ~Workspace() { parent_->release_ws_(*this); }
+
+    constexpr WorkspaceBuffer *&operator[](const size_t i) {
+      assert(i < SIZE);
+      return buffers_[i];
+    }
+    constexpr const WorkspaceBuffer *&operator[](const size_t i) const {
+      assert(i < SIZE);
+      return buffers_[i];
+    }
+
+   private:
+    const this_type *const parent_;
+    WorkspaceBuffer *buffers_[SIZE];
+  };
 
   mutable std::mutex ws_mtx_;
-  mutable std::list<Workspace> ws_;
-  mutable std::vector<Workspace *> avail_ws_;
+  mutable std::list<WorkspaceBuffer> ws_;
+  mutable std::vector<WorkspaceBuffer *> avail_ws_;
   mutable std::condition_variable ws_returned_;
 
-  Workspace *borrow_ws(cudaStream_t const stream) const {
+  template <size_t SIZE>
+  void claim_ws_(Workspace<SIZE> &ws, cudaStream_t const stream) const {
     std::unique_lock<std::mutex> lock(ws_mtx_);
 
     // If have a prellocated workspace available.
-    if (!avail_ws_.empty()) {
-      Workspace *ws = avail_ws_.back();
-      avail_ws_.pop_back();
-      return ws;
+    if (avail_ws_.size() >= SIZE) {
+      for (size_t i = 0; i < SIZE; i++) {
+        ws[i] = avail_ws_.back();
+        avail_ws_.pop_back();
+      }
     }
-
     // If workspace creation quota not yet reached.
-    if (ws_.size() < num_ws_max_) {
-      ws_.emplace_back(max_batch_size_, stream);
-      return &ws_.back();
+    else if (ws_.size() + SIZE <= num_ws_max_) {
+      for (size_t i = 0; i < SIZE; i++) {
+        ws_.emplace_back(max_batch_size_, stream);
+        ws[i] = &ws_.back();
+      }
     }
+    // Creation quota reached. Wait for another thread to return a
+    else {
+      while (true) {
+        ws_returned_.wait(lock, [&] { return avail_ws_.size() >= SIZE; });
+        if (avail_ws_.size() < SIZE) {
+          ws_returned_.notify_one();
+          continue;
+        }
 
-    // Creation quota reached. Wait for another thread to return a workspace.
-    ws_returned_.wait(lock, [&] { return !avail_ws_.empty(); });
-    Workspace *ws = avail_ws_.back();
-    avail_ws_.pop_back();
-    return ws;
+        for (size_t i = 0; i < SIZE; i++) {
+          ws[i] = avail_ws_.back();
+          avail_ws_.pop_back();
+        }
+        break;
+      }
+    }
   }
 
-  void return_ws(Workspace *ws) const {
+  template <size_t SIZE>
+  void release_ws_(Workspace<SIZE> &ws) const {
     std::lock_guard<std::mutex> lock(ws_mtx_);
+    size_t i = 0;
 
-    if (avail_ws_.size() < num_ws_min_) {
-      avail_ws_.emplace_back(ws);
-      ws_returned_.notify_one();
-    } else {
+    // Fill up available buffers until reach reserve capacity.
+    bool has_returned_ws = false;
+    for (; i < SIZE && avail_ws_.size() < num_ws_min_; i++) {
+      avail_ws_.emplace_back(ws[i]);
+      has_returned_ws = true;
+    }
+
+    // Discard remaining buffers.
+    for (; i < SIZE; i++) {
       for (auto it = ws_.begin(); it != ws_.end(); it++) {
-        if (&(*it) == ws) {
+        if (&(*it) == ws[i]) {
           ws_.erase(it);
         }
       }
+    }
+
+    // Give a waiting thread a chance to start.
+    if (has_returned_ws) {
+      ws_returned_.notify_one();
     }
   }
 };
