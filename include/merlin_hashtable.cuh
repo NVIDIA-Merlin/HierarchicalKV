@@ -416,7 +416,7 @@ class HashTable {
    *
    * @note When a key is missing, the value in @p values will not changed.
    *
-   * @param n Number of Key-Value-Meta tuples to be searched.
+   * @param num_keys Number of Key-Value-Meta tuples to be searched.
    * @param keys The keys to be searched on GPU accessible memory with shape
    * (n).
    * @param values The values to be searched on GPU accessible memory with
@@ -428,16 +428,19 @@ class HashTable {
    * @param stream The CUDA stream used to execute the operation.
    *
    */
-  void find(size_type n, const key_type* keys, value_type* values, bool* founds,
-            meta_type* metas = nullptr, cudaStream_t stream = 0) const {
-    if (n == 0) {
+  void find(const size_type num_keys, const key_type* keys, value_type* values,
+            bool* founds, meta_type* metas = nullptr,
+            cudaStream_t stream = 0) const {
+    if (num_keys == 0) {
       return;
     }
 
-    CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
+    // Clear found flags.
+    CUDA_CHECK(cudaMemsetAsync(founds, 0, num_keys * sizeof(bool), stream));
+
     if (is_fast_mode()) {
       const size_t block_size = 128;
-      const size_t N = n * TILE_SIZE;
+      const size_t N = num_keys * TILE_SIZE;
       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
       lookup_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
@@ -446,54 +449,56 @@ class HashTable {
               founds, table_->buckets, table_->buckets_size,
               table_->bucket_max_size, table_->buckets_num, N);
     } else {
-      vector_type** src;
-      int* dst_offset = nullptr;
-      CUDA_CHECK(cudaMallocAsync(&src, n * sizeof(vector_type*), stream));
-      CUDA_CHECK(cudaMemsetAsync(src, 0, n * sizeof(vector_type*), stream));
-      CUDA_CHECK(cudaMallocAsync(&dst_offset, n * sizeof(int), stream));
-      CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, n * sizeof(int), stream));
+      Workspace<2> ws(this, stream);
+      vector_type** src = ws[0]->vec;
+      int* dst_offset = ws[1]->i32;
 
-      {
-        const size_t block_size = 128;
-        const size_t N = n * TILE_SIZE;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      for (size_t i = 0; i < num_keys; i += max_batch_size_) {
+        const size_t n = std::min(num_keys - i, max_batch_size_);
 
-        lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<vector_type**>(src), metas,
-                founds, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, dst_offset, N);
-      }
+        CUDA_CHECK(cudaMemsetAsync(src, 0, n * sizeof(vector_type*), stream));
+        CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, n * sizeof(int), stream));
 
-      {
-        static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[merlin-kv] illegal conversation. value_type pointer "
-                      "must be 64 bit!");
+        {
+          const size_t block_size = 128;
+          const size_t N = n * TILE_SIZE;
+          const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        const size_t N = n;
-        thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t*>(src));
-        thrust::device_ptr<int> dst_offset_ptr(dst_offset);
+          lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+              <<<grid_size, block_size, 0, stream>>>(
+                  table_, keys, reinterpret_cast<vector_type**>(src), metas,
+                  founds, table_->buckets, table_->buckets_size,
+                  table_->bucket_max_size, table_->buckets_num, dst_offset, N);
+        }
+
+        {
+          static_assert(sizeof(value_type*) == sizeof(uint64_t),
+                        "[merlin-kv] illegal conversation. value_type pointer "
+                        "must be 64 bit!");
+
+          const size_t N = n;
+          thrust::device_ptr<uint64_t> src_ptr(
+              reinterpret_cast<uint64_t*>(src));
+          thrust::device_ptr<int> dst_offset_ptr(dst_offset);
 
 #if THRUST_VERSION >= 101600
-        auto policy = thrust::cuda::par_nosync.on(stream);
+          auto policy = thrust::cuda::par_nosync.on(stream);
 #else
-        auto policy = thrust::cuda::par.on(stream);
+          auto policy = thrust::cuda::par.on(stream);
 #endif
-        thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
-                            thrust::less<uint64_t>());
-      }
+          thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
+                              thrust::less<uint64_t>());
+        }
 
-      {
-        const size_t N = n * DIM;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
-        read_kernel<key_type, vector_type, meta_type, DIM>
-            <<<grid_size, options_.block_size, 0, stream>>>(
-                src, reinterpret_cast<vector_type*>(values), founds, dst_offset,
-                N);
+        {
+          const size_t N = n * DIM;
+          const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
+          read_kernel<key_type, vector_type, meta_type, DIM>
+              <<<grid_size, options_.block_size, 0, stream>>>(
+                  src, reinterpret_cast<vector_type*>(values), founds,
+                  dst_offset, N);
+        }
       }
-
-      CUDA_CHECK(cudaFreeAsync(src, stream));
-      CUDA_CHECK(cudaFreeAsync(dst_offset, stream));
     }
 
     CudaCheckError();
