@@ -276,6 +276,7 @@ int test_basic() {
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
   CUDA_CHECK(cudaFree(d_found));
+  CUDA_CHECK(cudaDeviceSynchronize());
 
   CudaCheckError();
 
@@ -397,6 +398,7 @@ int test_erase_if_pred() {
   CUDA_CHECK(cudaFree(d_metas))
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
+  CUDA_CHECK(cudaDeviceSynchronize());
 
   CudaCheckError();
 
@@ -404,8 +406,14 @@ int test_erase_if_pred() {
 }
 
 int main() {
-  test_basic();
-  test_erase_if_pred();
-  std::cout << "All test cases passed!" << std::endl;
+  try {
+    test_basic();
+    test_erase_if_pred();
+    CUDA_CHECK(cudaDeviceSynchronize());
+    std::cout << "All test cases passed!" << std::endl;
+  } catch (const nv::merlin::CudaException& e) {
+    std::cerr << e.what() << std::endl;
+  }
+  CUDA_CHECK(cudaDeviceSynchronize());
   return 0;
 }
