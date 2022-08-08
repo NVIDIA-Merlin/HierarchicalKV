@@ -178,6 +178,16 @@ class HashTable {
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = false;
     initialized_ = true;
+
+    // Preallocate workspaces.
+    assert(num_ws_min_ >= 1 && num_ws_min_ <= num_ws_max_);
+
+    avail_ws_.reserve(num_ws_min_);
+    while (avail_ws_.size() < num_ws_min_) {
+      ws_.emplace_back(max_batch_size_);
+      avail_ws_.emplace_back(&ws_.back());
+    }
+
     CudaCheckError();
   }
 
