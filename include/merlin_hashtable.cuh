@@ -745,9 +745,9 @@ class HashTable {
 
  private:
   HashTableOptions options_;
-  TableCore* table_;
-  size_t shared_mem_size_;
-  bool reach_max_capacity_;
+  TableCore* table_ = nullptr;
+  size_t shared_mem_size_ = 0;
+  bool reach_max_capacity_ = false;
   bool initialized_ = false;
   EvictStrategy evict_strategy_ = EvictStrategy::kUndefined;
 };
