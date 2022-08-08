@@ -6,6 +6,13 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CUDA_STANDARD 14)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
+option(CLANGFORMAT "Clangformat source code before compiling" ON)
+if(CLANGFORMAT)
+  include(ClangFormat)
+  file(GLOB_RECURSE clangformat_srcs ${PROJECT_SOURCE_DIR}/cpp *.cpp *.hpp *.cu *.cuh)
+  clangformat_setup("${clangformat_srcs}")
+endif()
+
 # Default to release build.
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
