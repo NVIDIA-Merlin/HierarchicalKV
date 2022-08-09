@@ -59,6 +59,11 @@ struct HashTableOptions {
   int block_size = 1024;           ///< default block size for CUDA kernels.
   int device_id = 0;               ///< the id of device.
   bool primary = true;             ///< no used, reserved for future.
+  size_t max_batch_size =
+      64 * 1024 * 1024;   ///< Maximum batch size, for batched operations (also
+                          ///< the size of a workspace).
+  size_t min_num_ws = 3;  ///< Number of workspaces to keep in reserve.
+  size_t max_num_ws = 5;  ///< Maximum number of workspaces.
 };
 
 /**
@@ -181,11 +186,12 @@ class HashTable {
     initialized_ = true;
 
     // Preallocate workspaces.
-    assert(num_ws_min_ >= 1 && num_ws_min_ <= num_ws_max_);
+    assert(options_.min_num_ws >= 1 &&
+           options_.min_num_ws <= options_.max_num_ws);
 
-    avail_ws_.reserve(num_ws_min_);
-    while (avail_ws_.size() < num_ws_min_) {
-      ws_.emplace_back(max_batch_size_);
+    avail_ws_.reserve(options_.min_num_ws);
+    while (avail_ws_.size() < options_.min_num_ws) {
+      ws_.emplace_back(options_.max_batch_size);
       avail_ws_.emplace_back(&ws_.back());
     }
 
@@ -253,8 +259,8 @@ class HashTable {
       vector_type** d_dst = ws[0]->vec;
       int* d_src_offset = ws[1]->i32;
 
-      for (size_t i = 0; i < num_items; i += max_batch_size_) {
-        const size_t n = std::min(num_items - i, max_batch_size_);
+      for (size_t i = 0; i < num_items; i += options_.max_batch_size) {
+        const size_t n = std::min(num_items - i, options_.max_batch_size);
 
         CUDA_CHECK(cudaMemsetAsync(d_dst, 0, n * sizeof(vector_type*), stream));
         CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, n * sizeof(int), stream));
@@ -358,8 +364,8 @@ class HashTable {
     int* src_offset = ws[0]->i32;
     bool* founds = ws[0]->b8;
 
-    for (size_t i = 0; i < num_items; i += max_batch_size_) {
-      const size_t n = std::min(num_items - i, max_batch_size_);
+    for (size_t i = 0; i < num_items; i += options_.max_batch_size) {
+      const size_t n = std::min(num_items - i, options_.max_batch_size);
 
       CUDA_CHECK(cudaMemsetAsync(dst, 0, n * sizeof(vector_type*), stream));
       CUDA_CHECK(cudaMemsetAsync(src_offset, 0, n * sizeof(int), stream));
@@ -462,8 +468,8 @@ class HashTable {
       vector_type** src = ws[0]->vec;
       int* dst_offset = ws[1]->i32;
 
-      for (size_t i = 0; i < num_keys; i += max_batch_size_) {
-        const size_t n = std::min(num_keys - i, max_batch_size_);
+      for (size_t i = 0; i < num_keys; i += options_.max_batch_size) {
+        const size_t n = std::min(num_keys - i, options_.max_batch_size);
 
         CUDA_CHECK(cudaMemsetAsync(src, 0, n * sizeof(vector_type*), stream));
         CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, n * sizeof(int), stream));
@@ -528,8 +534,8 @@ class HashTable {
     Workspace<1> ws(this, stream);
     size_t* d_count = ws[0]->size;
 
-    for (size_t i = 0; i < num_keys; i += max_batch_size_) {
-      const size_t n = std::min(num_keys - i, max_batch_size_);
+    for (size_t i = 0; i < num_keys; i += options_.max_batch_size) {
+      const size_t n = std::min(num_keys - i, options_.max_batch_size);
 
       CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_t), stream));
 
@@ -649,8 +655,8 @@ class HashTable {
     Workspace<2> ws(this, stream);
     size_type* d_counter = ws[0]->size;
 
-    for (size_t i = 0; i < num_items; i += max_batch_size_) {
-      const size_t n = std::min(num_items - i, max_batch_size_);
+    for (size_t i = 0; i < num_items; i += options_.max_batch_size) {
+      const size_t n = std::min(num_items - i, options_.max_batch_size);
 
       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
 
@@ -794,11 +800,7 @@ class HashTable {
   bool initialized_ = false;
   EvictStrategy evict_strategy_ = EvictStrategy::kUndefined;
 
-  // Workspaces.
-  const size_t max_batch_size_ = 16 * 1024 * 1024;
-  const size_t num_ws_min_ = 3;
-  const size_t num_ws_max_ = 5;
-
+  // Workspace management.
   struct WorkspaceBuffer final {
     union {
       void* ptr;
@@ -833,7 +835,7 @@ class HashTable {
 
     ~Workspace() {
       CUDA_CHECK(cudaStreamSynchronize(stream_));
-      parent_->release_ws_(*this, stream);
+      parent_->release_ws_(*this, stream_);
     }
 
     constexpr WorkspaceBuffer*& operator[](const size_t i) {
@@ -868,9 +870,9 @@ class HashTable {
       }
     }
     // If workspace creation quota not yet reached.
-    else if (ws_.size() + SIZE <= num_ws_max_) {
+    else if (ws_.size() + SIZE <= options_.max_num_ws) {
       for (size_t i = 0; i < SIZE; i++) {
-        ws_.emplace_back(max_batch_size_, stream);
+        ws_.emplace_back(options_.max_batch_size, stream);
         ws[i] = &ws_.back();
       }
     }
@@ -899,7 +901,7 @@ class HashTable {
 
     // Fill up available buffers until reach reserve capacity.
     bool has_returned_ws = false;
-    for (; i < SIZE && avail_ws_.size() < num_ws_min_; i++) {
+    for (; i < SIZE && avail_ws_.size() < options_.min_num_ws; i++) {
       avail_ws_.emplace_back(ws[i]);
       has_returned_ws = true;
     }
