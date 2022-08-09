@@ -23,6 +23,7 @@
 #include <condition_variable>
 #include <list>
 #include <mutex>
+#include <type_traits>
 
 #include "merlin/core_kernels.cuh"
 #include "merlin/initializers.cuh"
@@ -31,20 +32,20 @@
 namespace nv {
 namespace merlin {
 
+// TODO(kimi): why not use std::array<T, D>?
 /**
- * The basic value type in Merlin-KV.
- * Any user data should be represented as a specific type of Vector in order to
- * be processed by Merlin-KV.
+ * @brief value type of Merlin-KV.
  *
- * @tparam value_type type of the Vector's elements type, which should be basic
- * types of C++/CUDA.
+ * @tparam T type of elements of the vector. It must be POD.
  * @tparam D dimension of the vector.
- *
  */
-template <class value_type, size_t D>
+template <typename T, size_t D>
 struct Vector {
+  static_assert(std::is_pod<T>::value, "T must be POD.");
+  using value_type = T;
   static constexpr size_t DIM = D;
-  value_type value[D];
+  // TODO(kimi): rename value to values?
+  value_type value[DIM];
 };
 
 /**
