@@ -8,6 +8,7 @@ list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
 option(CLANGFORMAT "Clangformat source code before compiling" ON)
 if(CLANGFORMAT)
+  configure_file(.clang-format .clang-format COPYONLY)
   include(ClangFormat)
   file(GLOB_RECURSE clangformat_srcs ${PROJECT_SOURCE_DIR}/cpp *.cpp *.hpp *.cu *.cuh)
   clangformat_setup("${clangformat_srcs}")
