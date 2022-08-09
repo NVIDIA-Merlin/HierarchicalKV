@@ -360,8 +360,8 @@ class HashTable {
 
     Workspace<3> ws(this, stream);
     vector_type** dst = ws[0]->vec;
-    int* src_offset = ws[0]->i32;
-    bool* founds = ws[0]->b8;
+    int* src_offset = ws[1]->i32;
+    bool* founds = ws[2]->b8;
 
     for (size_t i = 0; i < num_items; i += options_.max_batch_size) {
       const size_t n = std::min(num_items - i, options_.max_batch_size);
