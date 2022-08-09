@@ -148,8 +148,7 @@ class HashTable {
   HashTable(){};
 
   /**
-   * @brief
-   *
+   * @brief Frees the resources of the table and destroys the table object.
    */
   ~HashTable() {
     if (initialized_) {
