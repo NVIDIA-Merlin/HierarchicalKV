@@ -14,61 +14,10 @@
  * limitations under the License.
  */
 
-#include <assert.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <algorithm>
-#include <iostream>
-#include <random>
-#include <thread>
-#include <unordered_map>
-#include <unordered_set>
+#include "common.cuh"
 #include "merlin/initializers.cuh"
 #include "merlin/optimizers.cuh"
 #include "merlin_hashtable.cuh"
-
-uint64_t getTimestamp() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
-
-template <class K, class M>
-void create_random_keys(K* h_keys, M* h_metas, int KEY_NUM) {
-  std::unordered_set<K> numbers;
-  std::random_device rd;
-  std::mt19937_64 eng(rd());
-  std::uniform_int_distribution<K> distr;
-  int i = 0;
-
-  while (numbers.size() < KEY_NUM) {
-    numbers.insert(distr(eng));
-  }
-  for (const K num : numbers) {
-    h_keys[i] = num;
-    h_metas[i] = getTimestamp();
-    i++;
-  }
-}
-
-template <class K, class M>
-void create_continuous_keys(K* h_keys, M* h_metas, int KEY_NUM, K start = 0) {
-  for (K i = 0; i < KEY_NUM; i++) {
-    h_keys[i] = start + static_cast<K>(i);
-    h_metas[i] = getTimestamp();
-  }
-}
-
-inline uint64_t Murmur3HashHost(const uint64_t& key) {
-  uint64_t k = key;
-  k ^= k >> 33;
-  k *= UINT64_C(0xff51afd7ed558ccd);
-  k ^= k >> 33;
-  k *= UINT64_C(0xc4ceb9fe1a85ec53);
-  k ^= k >> 33;
-  return k;
-}
 
 template <class K, class M, class V, size_t DIM>
 void create_keys_in_one_buckets(K* h_keys, M* h_metas, V* h_vectors,
@@ -86,7 +35,7 @@ void create_keys_in_one_buckets(K* h_keys, M* h_metas, V* h_vectors,
 
   while (numbers.size() < KEY_NUM) {
     candidate = distr(eng);
-    hashed_key = Murmur3HashHost(candidate);
+    hashed_key = common::Murmur3HashHost(candidate);
     global_idx = hashed_key & (capacity - 1);
     bkt_idx = global_idx / bucket_max_size;
     if (bkt_idx == bucket_idx) {
@@ -154,7 +103,7 @@ int test_basic() {
 
   CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(Vector)));
 
-  create_random_keys<K, M>(h_keys, h_metas, KEY_NUM);
+  common::create_random_keys<K, M>(h_keys, h_metas, KEY_NUM);
 
   K* d_keys;
   M* d_metas = nullptr;
@@ -253,9 +202,13 @@ int test_basic() {
     table->insert_or_assign(
         KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_metas, stream);
 
-    dump_counter = table->export_batch(table->capacity(), 0, d_keys,
-                                       reinterpret_cast<float*>(d_vectors),
-                                       d_metas, stream);
+    // dump_counter = table->export_batch(table->capacity(), 0, d_keys,
+    size_t* d_dump_counter = nullptr;
+    common::getBufferOnDevice(&d_dump_counter, sizeof(size_t), stream);
+    table->export_batch(table->capacity(), 0, d_dump_counter, d_keys,
+                        reinterpret_cast<float*>(d_vectors), d_metas, stream);
+    CUDA_CHECK(cudaMemcpyAsync(&dump_counter, d_dump_counter, sizeof(size_t),
+                               cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
     std::cout << "after export_batch: dump_counter = " << dump_counter
               << std::endl;

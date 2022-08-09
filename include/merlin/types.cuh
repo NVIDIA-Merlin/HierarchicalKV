@@ -16,7 +16,9 @@
 
 #pragma once
 
+#include <stdio.h>
 #include <cuda/std/semaphore>
+#include <string>
 
 namespace nv {
 namespace merlin {
@@ -81,6 +83,70 @@ using EraseIfPredictInternal =
              const K& pattern,   ///< input key from caller
              const M& threshold  ///< input meta from caller
     );
+
+template <typename Key, typename V, typename M, size_t DIM>
+class KVFile {
+ public:
+  virtual size_t Read(Key* keys, V* vectors, M* metas, size_t nkeys) = 0;
+  virtual size_t Write(const Key* keys, const V* vectors, const M* metas,
+                       size_t nkeys) = 0;
+};
+
+template <typename Key, typename V, typename M, size_t DIM>
+class PosixKVFile : public KVFile<Key, V, M, DIM> {
+ public:
+  PosixKVFile(std::string prefix, const char* mode) {
+    keyfile_ = prefix + ".keys";
+    valuefile_ = prefix + ".values";
+    kfp_ = fopen(keyfile_.c_str(), mode);
+    if (!kfp_) {
+      throw std::runtime_error("Failed to open key file" + keyfile_);
+    }
+    vfp_ = fopen(valuefile_.c_str(), mode);
+    if (!vfp_) {
+      throw std::runtime_error("Failed to open value file" + valuefile_);
+    }
+  }
+
+  ~PosixKVFile() {
+    if (kfp_) {
+      fclose(kfp_);
+    }
+    if (vfp_) {
+      fclose(vfp_);
+    }
+  }
+
+  size_t Read(Key* keys, V* vectors, M* metas, size_t nkeys) {
+    size_t nread_keys = fread(keys, sizeof(Key), nkeys, kfp_);
+    size_t nread_vevs = fread(vectors, sizeof(V) * DIM, nkeys, vfp_);
+    if (nread_keys != nread_vevs) {
+      throw std::runtime_error(
+          "Get different keys and vectors number when read from " + keyfile_ +
+          " and " + valuefile_);
+    }
+    return nread_keys;
+  }
+
+  size_t Write(const Key* keys, const V* vectors, const M* metas,
+               size_t nkeys) {
+    size_t nwritten_keys = fwrite(keys, sizeof(Key), nkeys, kfp_);
+    size_t nwritten_vecs = fwrite(vectors, sizeof(V) * DIM, nkeys, vfp_);
+    if (nwritten_keys != nwritten_vecs) {
+      throw std::runtime_error(
+          "Get different keys and vectors number when write to " + keyfile_ +
+          " and " + valuefile_);
+    }
+    return nwritten_keys;
+  }
+
+ private:
+  std::string keyfile_;
+  std::string valuefile_;
+  FILE* kfp_;
+  FILE* vfp_;
+  size_t size_;
+};
 
 }  // namespace merlin
 }  // namespace nv
