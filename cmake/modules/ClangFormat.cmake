@@ -28,7 +28,6 @@ function(clangformat_setup clangformat_srcs)
 
   add_custom_target(${PROJECT_NAME}_clangformat ALL
                     COMMAND ${CLANGFORMAT_EXECUTABLE}
-                            -style=google
                             -i
                             ${clangformat_srcs}
                     COMMENT "Formating with ${CLANGFORMAT_EXECUTABLE} ...")

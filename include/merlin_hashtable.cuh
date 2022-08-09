@@ -19,12 +19,10 @@
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
-
 #include <condition_variable>
 #include <list>
 #include <mutex>
 #include <type_traits>
-
 #include "merlin/core_kernels.cuh"
 #include "merlin/initializers.cuh"
 #include "merlin/utils.cuh"

@@ -19,7 +19,6 @@
 #include <cuda_runtime.h>
 #include <curand.h>
 #include <curand_kernel.h>
-
 #include "curand_philox4x32_x.h"
 #include "types.cuh"
 #include "utils.cuh"

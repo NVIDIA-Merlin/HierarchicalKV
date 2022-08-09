@@ -17,7 +17,6 @@
 #pragma once
 
 #include <cuda_runtime.h>
-
 #include "types.cuh"
 #include "utils.cuh"
 
