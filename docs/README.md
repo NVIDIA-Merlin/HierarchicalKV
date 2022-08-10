@@ -61,88 +61,38 @@ the underscores in the link even though they are converted to hyphens in the HTM
 
 Refer to the following examples:
 
-* `../QAList.md#24-how-to-set-workspace_size_per_gpu_in_mb-and-slot_size_array`
-* `./api/python_interface.md#save_params_to_files-method`
+* `../somefile.md#2heading-with-spaces-and_underscore_separated_words-too`
+* `./otherfile.md#save_params_to_files-method`
 
 #### Docs-to-docs links
 
 There is no concern for the GitHub browsing experience for files in the `docs/source/` directory.
-You can use a relative path for the link.  For example--and using the HugeCTR repository
-for an example--the following link is in the `docs/source/hugectr_user_guide.md` file
-and links to the "Build HugeCTR from Source" heading in the
-`docs/source/hugectr_contributor_guide.md` file:
+You can use a relative path for the link.  For example--both the `README.md` file and the
+`CONTRIBUTING.md` file are copied to `docs/source`. Because they are are both in the same
+directory, you could add a link to a heading in the `README.md` file like this:
 
 ```markdown
-To build HugeCTR from scratch, refer to
-[Build HugeCTR from source code](./hugectr_contributor_guide.md#build-hugectr-from-source).
+To build Merlin-KV from scratch, refer to
+[How to Build](./README.md#how-to-build) in the `README` file.
 ```
+
+When Sphinx renders the link, the `.md` file suffix is replaced with `.html`.
 
 #### Docs-to-repository links
 
-Some files that we publish as docs, such as HugeCTR's `release_notes.md` file, refer readers to files
-that are not published as docs. For example, we currently do not publish information from the following
-directories:
+Some files that we publish as docs, such as the `CONTRIBUTING.md` file, refer readers to files
+that are not published as docs. For example, we currently do not publish the `STYLE_GUIDE.md`
+file.
 
-* `gpu_cache`
-* `onnx_converter`
-* `samples`
-* `tools`
-* `tutorial`
-
-To refer a reader to a README or program in one of the preceding directories, state that
-the link is to the repository:
+To refer a reader to the `STYLE_GUIDE.md`, a README, or program, state that the link is to
+the repository:
 
 ```markdown
-+ **Python Script and documentation demonstrating how to analyze model files**: In this release,
-we provide a script to retrieve vocabulary information from model file. Please find more details
-in the README in the
-[tools/model_analyzer](https://github.com/NVIDIA-Merlin/HugeCTR/tree/v3.5/tools/model_analyzer)
-directory of the repository.
+## Coding Style
+Refer to the [Style Guide](http://github.com/NVIDIA-Merlin/merlin-kv/STYLE_GUIDE.md)
+in the GitHub repository for more details.
 ```
 
 The idea is to let a reader know that following the link&mdash;whether from an HTML docs page or
 from browsing GitHub&mdash;results in viewing our repository on GitHub.
 
-> TIP: In the `release_notes.md` file, use the tag such as `v3.5` instead of `master` so that
-> the link is durable.
-
-#### Links to notebooks
-
-The notebooks are published as documentation. The few exceptions are identified in the
-`docs/source/conf.py` file in the `exclude_patterns` list:
-
-```python
-exclude_patterns = [
-    "notebooks/prototype_indices.ipynb",
-]
-```
-
-If the document that you link from is also published as docs, such as `release_notes.md`, then
-a relative path works both in the HTML docs page and in the repository browsing experience:
-
-```markdown
-+ **Support HDFS Parameter Server in Training**:
-    + ...snip...
-    + ...snip...
-    + Added a [notebook](notebooks/training_with_hdfs.ipynb) to show how to use HugeCTR with HDFS.
-```
-
-If the document that you link from is not published as docs, such as a file in the `tools`
-or `samples` directory, then either a relative path or a link to the HTML notebook is OK.
-
-A link to the HTML notebook is like the following:
-
-```markdown
-<https://nvidia-merlin.github.io/HugeCTR/master/notebooks/continuous_training.html>
-```
-
-#### Links from notebooks to docs
-
-Use a link to the HTML page like the following:
-
-```markdown
-<https://nvidia-merlin.github.io/HugeCTR/master/hugectr_user_guide.html>
-```
-
-> I'd like to change this in the future. My preference would be to use a relative
-> path, but I need to research and change how Sphinx handles relative links.

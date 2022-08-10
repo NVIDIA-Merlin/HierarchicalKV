@@ -1,10 +1,8 @@
-dl.class > dt > span.pre { padding-right: 2px; }
+dl.cpp > dt > span.pre { padding-right: 2px; }
 
-dl.type > dt span.pre { padding-right: 2px; }
+/* dl.cpp > dt > a > span.pre { padding-right: 2px; } */
 
-dl.function > dt span.pre { padding-right: 2px; }
+dl > dt > em > span.pre { padding-right: 0px; padding-left: 2px; }
 
-dl > dt > em.property > span.pre { padding-right: 0px; }
-
-dl > dt > code.sig-name { padding-left: 1px; }
+dl > dt > code.sig-name > span.pre { padding-left: 2px; }
 
