@@ -110,7 +110,7 @@ class HashTable {
   static constexpr size_type DIM = D;
   using key_type = K;
   using value_type = V;
-  using vector_type = Vector<value_type, DIM>;
+  using vector_type = Vector;
   using meta_type = M;
   using Pred = EraseIfPredict<key_type, meta_type>;
 
