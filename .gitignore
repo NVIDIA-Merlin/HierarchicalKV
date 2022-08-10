@@ -2,3 +2,6 @@
 .idea
 .vscode
 build
+
+docs/build
+docs/source/api
