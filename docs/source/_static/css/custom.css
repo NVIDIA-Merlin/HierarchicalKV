@@ -1,0 +1,10 @@
+dl.class > dt > span.pre { padding-right: 2px; }
+
+dl.type > dt span.pre { padding-right: 2px; }
+
+dl.function > dt span.pre { padding-right: 2px; }
+
+dl > dt > em.property > span.pre { padding-right: 0px; }
+
+dl > dt > code.sig-name { padding-left: 1px; }
+

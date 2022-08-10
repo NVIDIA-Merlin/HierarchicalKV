@@ -1,41 +1,51 @@
-# Merlin-KV: A generic Key-Value library for RecSys
------------------
-[![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](docs/api_docs/)
+# [NVIDIA Merlin-KV](https://github.com/NVIDIA-Merlin/merlin-kv)
 
-# What's the Merlin-KV?
-[Merlin-KV](https://github.com/NVIDIA-Merlin/merlin-kv) is an open source library of NVIDIA Merlin.
+![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/NVIDIA-Merlin/merlin-kv?sort=semver)
+![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/merlin-kv)
+[![Documentation](https://img.shields.io/badge/documentation-blue.svg)](https://nvidia-merlin.github.io/merlin-kv/master/README.html)
 
-- Merlin-KV is a generic Key-Value library designed with full considerations of RecSys requirements.
-- Storing the key-value (feature-embedding) on both of the HBM and Host memory (SSD/NVMe is coming soon)
-- Can also be used as a generic Key-Value storage
+## About Merlin-KV
 
-# Benefits
+Merlin Key-Value is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
 
-When building large recommender systems, machine learning (ML) engineers have been faced with the following challenges:
+The key capability of Merlin-KV is to store key-value feature-embeddings on high-bandwidth memory (HBM) of GPUs and in host memory.
 
-- GPUs are needed, but HBM on a single GPU is too small for the large DLRMs with several Tera Bytes
-- Improving communication performance is getting harder in larger and larger CPU clusters
-- Difficult to efficiently control consumption growth of limited HBM with customized strategies
-- Low HBM/HMEM utilization when using the generic Key-Value library
+You can also use the library for generic key-value storage.
 
-Merlin-KV alleviates these challenges and helps the machine learning (ML) engineers in RecSys:
+## Benefits of Merlin-KV
 
-- Training the large RecSys models on HBM and Host memory at the same time
-- Better performance by CPUs fully bypass and less communication workload
-- Model size restraint strategies based on timestamp or occurrences, implemented by CUDA kernels and customizable
-- High working status load factor which is close to 1.0
+When building large recommender systems, machine learning (ML) engineers face the following challenges:
 
-Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of **Search, Recommendations, and Advertising** and 
-makes building, evaluating, and serving sophisticated recommenders models easy.
+- GPUs are needed, but HBM on a single GPU is too small for the large DLRMs that scale to several terabytes.
+- Improving communication performance is getting more difficult in larger and larger CPU clusters.
+- It is difficult to efficiently control consumption growth of limited HBM with customized strategies.
+- Most generic key-value libraries provide low HBM and host memory utilization.
+
+Merlin-KV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:
+
+- Supports training large RecSys models on HBM and host memory at the same time.
+- Provides better performance by bypassing CPUs and reducing the communication workload.
+- Implements model-size restraint strategies that are based on timestamp or occurrences.
+  The strategies are implemented by CUDA kernels and are customizable.
+- Operates at a high working-status load factor that is close to 1.0.
+
+Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of search, recommendations, and advertising.
+The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.
+
+## API Documentation
+
+Refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/README.html)
+
 
 ## Contributors
 
-Merlin-KV is maintianed by [NVIDIA Merlin Team](https://github.com/NVIDIA-Merlin) 
+Merlin-KV is co-maintianed by [NVIDIA Merlin Team](https://github.com/NVIDIA-Merlin) and NVIDIA product end-users,
 and also open for public contributions, bug fixes, and documentation. [[Contribute](CONTRIBUTING.md)]
 
 ## How to build
-
+  
 Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.
+
 ```bash
 git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
 cd merlin-kv && mkdir -p build && cd build
@@ -48,14 +58,19 @@ cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
 ./merlin_hashtable_test
 ```
 
+Your environment must meet the following requirements:
+
+- CUDA version >= 11.2
+- NVIDIA GPU with compute capbility 8.0, 8.6, or 8.7
+
 
 ## Benchmark
 
+* GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0
 * Key Type = uint64_t
 * Value Type = float32 * dim
 * Key-Values per OP = 1,048,576
 * ***Throughput Unit: Billion-KV/second***
-
 
 ### On pure HBM mode:
 
@@ -90,16 +105,3 @@ cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
 | 128 |   536870912 |        0.75 |      56 |      200 |  0.041 | 0.040 |
 | 128 |   536870912 |        1.00 |      56 |      200 |  0.035 | 0.038 |
 
-
-## Tutorials & Demos
-
-Merlin-KV is positioned as a header-only library. The environment requirement is :
-
-- CUDA version >= 11.2
-- NVIDIA GPU with Compute capbility 8.0 8.6 or 8.7
-
-See [tutorials](docs/api_docs/html/index.html) and [demo(TBD)](tests/merlin_hashtable_test.cc.cu) for end-to-end examples of each subpackages.
-
-## API docs
-
-Refer to [API Docs](docs/api_docs/)
