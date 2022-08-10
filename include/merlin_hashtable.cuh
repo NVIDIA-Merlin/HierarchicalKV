@@ -32,22 +32,25 @@ namespace merlin {
  * @brief The options struct of Merlin-KV.
  */
 struct HashTableOptions {
-  size_t init_capacity = 0;        ///< The initial capacity.
-  size_t max_capacity = 0;         ///< The maximum capacity.
-  size_t max_hbm_for_vectors = 0;  ///< Max HBM allocated for vectors, by bytes.
-  size_t max_bucket_size = 128;    ///< The length of each buckets.
-  float max_load_factor = 0.75f;   ///< The max load factor before rehashing.
-  int block_size = 1024;           ///< default block size for CUDA kernels.
-  int device_id = 0;               ///< the id of device.
-  bool primary = true;             ///< no used, reserved for future.
+  size_t init_capacity = 0;        ///< The initial capacity of the hash table.
+  size_t max_capacity = 0;         ///< The maximum capacity of the hash table.
+  size_t max_hbm_for_vectors = 0;  ///< The maximum HBM that is allocated for vectors, in bytes.
+  size_t max_bucket_size = 128;    ///< The length of each bucket.
+  float max_load_factor = 0.75f;   ///< The maximum load factor before rehashing.
+  int block_size = 1024;           ///< The default block size for CUDA kernels.
+  int device_id = 0;               ///< The ID of device.
+  bool primary = true;             ///< This argument is not used and is reserved for future use.
 };
 
 /**
- * @brief A function template is used as `erase_if` first input, which help
- * end-users implements customized and flexible erase(or evict) strategies.
+ * @brief A function template that erases keys from the hash table if the
+ * key matches the specified pattern.
  *
- * The erase_if will traverse all of the items by this function, the items which
- * return `true` will be removed.
+ * You can use this function to implement custom and flexible erase (or evict)
+ * strategies.
+ *
+ * The `erase_if` traverses all of the items by this function and the items
+ * that return `true` are removed.
  *
  *  Example:
  *
@@ -63,33 +66,34 @@ struct HashTableOptions {
  *    ```
  */
 template <class K, class M>
-using EraseIfPredict = bool (*)(const K& key,       ///< traversed key in table
-                                const M& meta,      ///< traversed meta in table
-                                const K& pattern,   ///< input key from caller
-                                const M& threshold  ///< input meta from caller
+using EraseIfPredict = bool (*)(const K& key,       ///< The traversed key in a hash table.
+                                const M& meta,      ///< The traversed meta in a hash table.
+                                const K& pattern,   ///< The key pattern to compare with the `key` argument.
+                                const M& threshold  ///< The threshold to compare with the `meta` argument.
 );
 
 /**
- * Merlin HashTable is a concurrent and hierarchical HashTable powered by GPUs
- * which can use both HBM, Host MEM and SSD(WIP) as storage for Key-Values.
+ * A Merlin-KV hash table is a concurrent and hierarchical hash table that is
+ * powered by GPUs and can use HBM and host memory as storage for key-value
+ * pairs. Support for SSD storage is a future consideration.
  *
- * @note Supports concurrent insert_or_assign, but not concurrent
- * insert_or_assign and find now. The insert_or_assign means insert or update if
- * already exists.
+ * Eviction occurs automatically when a hash table is almost full.
+ * The class has a `meta` concept to help implement it. The keys with the
+ * minimum `meta` value are evicted first. We recommend using the timestamp or
+ * frequency of the key occurrence as the `meta` value for each key. You can
+ * assign values to the `meta` value that have a different meaning to perform
+ * a customized eviction strategy.
  *
+ * @note This class supports concurrent `insert_or_assign`, but does not support
+ * concurrent `insert_or_assign` with `find`. The `insert_or_assign` performs an
+ * insert or update if the key already exists.
  *
- * @note The eviction will happen automatically when table is almost full. We
- * introduce the `meta` concept to help implement it. The keys with minimum meta
- * will be evicted first. We recommend using the timestamp or times
- * of the key occurrence as the meta value for each keys. The user can also
- * customize the meaning of the meta value that is equivalent to customize an
- * eviction strategy.
- *
- * @tparam K type of the key
- * @tparam V type of the Vector's item type, which should be basic types of
- * C++/CUDA.
- * @tparam M type of the meta and must be uint64_t in this release.
- * @tparam D dimension of the vectors
+ * @tparam K The data type of the key.
+ * @tparam V The data type of the vector's item type.
+ *         The item data type should be a basic data type of C++/CUDA.
+ * @tparam M The data type for `meta`.
+ *           The currently supported data type is `uint64_t`.
+ * @tparam D The dimension of the vectors.
  *
  *
  */
@@ -97,7 +101,7 @@ template <class K, class V, class M, size_t D>
 class HashTable {
  public:
   /**
-   * @brief value type of Merlin-KV.
+   * @brief The value type of a Merlin-KV hash table.
    */
   struct Vector {
     using value_type = V;
@@ -129,12 +133,13 @@ class HashTable {
 
  public:
   /**
-   * @brief Default Construct a table object.
+   * @brief Default constructor for the hash table class.
    */
   HashTable(){};
 
   /**
-   * @brief Frees the resources of the table and destroys the table object.
+   * @brief Frees the resources used by the hash table and destroys the hash
+   * table object.
    */
   ~HashTable() {
     if (initialized_) {
@@ -172,26 +177,29 @@ class HashTable {
   }
 
   /**
-   * @brief Insert new key-value-meta tuples into the table,
-   * if key already exists, the values and metas will be assigned.
+   * @brief Insert new key-value-meta tuples into the hash table.
+   * If the key already exists, the values and metas are assigned new values.
    *
-   * @note If the target bucket is full, the keys with minimum meta will be
+   * If the target bucket is full, the keys with minimum meta will be
    * overwritten. If the meta of the new key is even less than minimum meta of
    * the target bucket, it will not be inserted.
    *
-   * @param n Number of Key-Value-Meta tuples to be inserted or assigned.
-   * @param keys The keys to be inserted on GPU accessible memory with shape
+   * @param n Number of key-value-meta tuples to inserted or assign.
+   * @param keys The keys to insert on GPU-accessible memory with shape
    * (n).
-   * @param values The values to be inserted on GPU accessible memory with
+   * @param values The values to insert on GPU-accessible memory with
    * shape (n, DIM).
-   * @param metas The metas to be inserted on GPU accessible memory with shape
+   * @param metas The metas to insert on GPU-accessible memory with shape
    * (n).
+   * @parblock
+   * The metas must be a `uint64_t` value. You can specify a value that
+   * such as the timestamp of the key insertion, number of the key
+   * occurrences, or another value to perform a custom eviction strategy.
    *
-   * @notice: The metas must be uint64_t value which could stand for the
-   * timestamp of the key inserted or the number of the key occurrences. if
-   * @p metas is nullptr, the LRU strategy will be applied.
+   * If `metas` is `nullptr`, the LRU eviction strategy is applied.
+   * @endparblock
    *
-   * @param stream The CUDA stream used to execute the operation.
+   * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void insert_or_assign(size_type n,
@@ -289,31 +297,29 @@ class HashTable {
   }
 
   /**
-   * Searches for each key in @p keys in the table.
-   * If the key is found and corresponding value in @p accum_or_assigns is true,
-   * the @p vectors_or_deltas will be treated as delta against to the old
-   * value, and the delta will be add to the old value of the key.
+   * Searches for each key in `keys` in the hash table.
+   * If the key is found and the corresponding value in `accum_or_assigns` is
+   * `true`, the `vectors_or_deltas` is treated as a delta to the old
+   * value, and the delta is added to the old value of the key.
    *
-   * If the key is not found and corresponding value in @p accum_or_assigns is
-   * false, the @p vectors_or_deltas will be treated as a new value and the
-   * key-value pair will be updated into the table directly.
+   * If the key is not found and the corresponding value in `accum_or_assigns`
+   * is `false`, the `vectors_or_deltas` is treated as a new value and the
+   * key-value pair is updated in the table directly.
    *
-   * @note Specially when the key is found and value of @p accum_or_assigns is
-   * false, or the key is not found and value of @p accum_or_assigns is true,
-   * nothing will be changed and this operation will be ignored, for we assume
-   * these situations occur while the key was modified or removed by other
-   * processes just now.
+   * @note When the key is found and the value of `accum_or_assigns` is
+   * `false`, or when the key is not found and the value of `accum_or_assigns`
+   * is `true`, nothing is changed and this operation is ignored.
+   * The algorithm assumes these situations occur while the key was modified or
+   * removed by other processes just now.
    *
-   * @param n Number of key_type-Value pairs to be processed.
-   * @param keys The keys to be inserted on GPU accessible memory with shape
-   * (n).
-   * @param value_or_deltas The values or deltas to be inserted on GPU
-   * accessible memory with shape (n, DIM).
-   * @param accum_or_assigns Indicate the operation type with shape (n), true
-   * means accum, false means assign.
-   * @param metas The metas to be inserted on GPU accessible memory with shape
-   * (n).
-   * @param stream The CUDA stream used to execute the operation
+   * @param n The number of key-value pairs to process.
+   * @param keys The keys to insert on GPU-accessible memory with shape (n).
+   * @param value_or_deltas The values or deltas to insert on GPU-accessible
+   * memory with shape (n, DIM).
+   * @param accum_or_assigns The operation type with shape (n). A value of
+   * `true` indicates to accum and `false` indicates to assign.
+   * @param metas The metas to insert on GPU-accessible memory with shape (n).
+   * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void accum_or_assign(size_type n,
@@ -392,20 +398,18 @@ class HashTable {
   }
 
   /**
-   * @brief Searches the table for the specified keys.
+   * @brief Searches the hash table for the specified keys.
    *
-   * @note When a key is missing, the value in @p values will not changed.
+   * @note When a key is missing, the value in `values` is not changed.
    *
-   * @param n Number of Key-Value-Meta tuples to be searched.
-   * @param keys The keys to be searched on GPU accessible memory with shape
-   * (n).
-   * @param values The values to be searched on GPU accessible memory with
+   * @param n The number of key-value-meta tuples to search.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param values The values to search on GPU-accessible memory with
    * shape (n, DIM).
-   * @param founds The status indicates if the keys are found on GPU accessible
-   * memory with shape (n).
-   * @param metas The metas to be searched on GPU accessible memory with shape
-   * (n).
-   * @param stream The CUDA stream used to execute the operation.
+   * @param founds The status that indicates if the keys are found on
+   * GPU-accessible memory with shape (n).
+   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void find(size_type n, const key_type* keys, value_type* values, bool* founds,
@@ -480,13 +484,13 @@ class HashTable {
   }
 
   /**
-   * @brief Removes specified elements from the table.
+   * @brief Removes specified elements from the hash table.
    *
-   * @param n Number of Key to be removed.
-   * @param keys The keys to be removed on GPU accessible memory.
-   * @param stream The CUDA stream used to execute the operation.
+   * @param n The number of keys to remove.
+   * @param keys The keys to remove on GPU-accessible memory.
+   * @param stream The CUDA stream that is used to execute the operation.
    *
-   * @return Number of elements removed
+   * @return The number of elements removed.
    */
   size_t erase(size_type n, const key_type* keys, cudaStream_t stream = 0) {
     const size_t block_size = 128;
@@ -510,16 +514,11 @@ class HashTable {
   }
 
   /**
-   * @brief Erases all elements that satisfy the predicate @p pred from the
-   * table.
+   * @brief Erases all elements that satisfy the predicate `pred` from the
+   * hash table.
    *
-   * @param pred predicate that returns true if the element should be erased.
-   * @param pattern the 3rd user-defined argument to @p pred with key_type type.
-   * @param threshold the 4th user-defined argument to @p pred with meta_type
-   * type.
-   * @param stream The CUDA stream used to execute the operation.
-   *
-   * @notice: pred should be a function defined like the Example:
+   * The value for `pred` should be a function defined like the following
+   * example:
    *
    *    ```
    *    template <class K, class M>
@@ -531,7 +530,14 @@ class HashTable {
    *    }
    *    ```
    *
-   * @return Number of elements removed
+   * @param pred The predicate function that returns `true` if the element
+   * should be erased.
+   * @param pattern The third user-defined argument to `pred` with key_type type.
+   * @param threshold The fourth user-defined argument to `pred` with meta_type
+   * type.
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   * @return The number of elements removed.
    *
    */
   size_t erase_if(Pred& pred, const key_type& pattern,
@@ -562,7 +568,7 @@ class HashTable {
   }
 
   /**
-   * @brief Remove all of the elements in the table with no release object.
+   * @brief Removes all of the elements in the hash table with no release object.
    */
   void clear(cudaStream_t stream = 0) {
     const size_t N = table_->buckets_num * table_->bucket_max_size;
@@ -575,21 +581,22 @@ class HashTable {
 
  public:
   /**
-   * @brief Export a certain number of the key-value-meta tuples from the table.
+   * @brief Exports a certain number of the key-value-meta tuples from the
+   * hash table.
    *
-   * @param n Maximum number of exported pairs.
-   * @param offset Number of Key to be removed.
-   * @param keys The keys to be dumped on GPU accessible memory with shape (n).
-   * @param values The values to be dumped on GPU accessible memory with shape
+   * @param n The maximum number of exported pairs.
+   * @param offset The position of the key to remove.
+   * @param keys The keys to dump from GPU-accessible memory with shape (n).
+   * @param values The values to dump from GPU-accessible memory with shape
    * (n, DIM).
-   * @param metas The metas to be searched on GPU accessible memory with shape
-   * (n).
-   * @param stream The CUDA stream used to execute the operation.
+   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param stream The CUDA stream that is used to execute the operation.
    *
-   * @return the number of items dumped.
+   * @return The number of elements dumped.
    *
-   * @throw CudaException If the K-V size is too large for GPU shared memory.
-   * Reducing the @ p max_num is needed at this time.
+   * @throw CudaException If the key-value size is too large for GPU shared
+   * memory. Reducing the value for `n` is currently required if this exception
+   * occurs.
    */
   size_type export_batch(size_type n, size_type offset,
                          key_type* keys,              // (n)
@@ -630,18 +637,18 @@ class HashTable {
 
  public:
   /**
-   * @brief Checks if the table has no elements.
+   * @brief Indicates if the hash table has no elements.
    *
-   * @param stream The CUDA stream used to execute the operation.
-   * @return true if the table is empty, false otherwise
+   * @param stream The CUDA stream that is used to execute the operation.
+   * @return `true` if the table is empty and `false` otherwise.
    */
   bool empty(cudaStream_t stream = 0) const { return size(stream) == 0; }
 
   /**
-   * @brief Get the table size.
+   * @brief Returns the hash table size.
    *
-   * @param stream The CUDA stream used to execute the operation.
-   * @return The table size
+   * @param stream The CUDA stream that is used to execute the operation.
+   * @return The table size.
    */
   size_type size(cudaStream_t stream = 0) const {
     size_t h_size = 0;
@@ -660,28 +667,29 @@ class HashTable {
   }
 
   /**
-   * @brief Get the table capacity.
+   * @brief Returns the hash table capacity.
    *
-   * @note The capacity is requested by the caller and the value may be
-   * less than the actual capacity of the table because the table keeps
-   * the capacity to be the power of 2 for performance consideration in this
-   * release.
+   * @note The value that is returned might be less than the actual capacity of
+   * the hash table because the hash table currently keeps the capacity to be
+   * a power of 2 for performance considerations.
    *
-   * @return The table capacity
+   * @return The table capacity.
    */
   size_type capacity() const { return table_->capacity; }
 
   /**
-   * @brief Sets the number of buckets to the number needed to accomodate at
-   * least count elements without exceeding maximum load factor and rehashes the
-   * table, i.e. puts the elements into appropriate buckets considering that
-   * total number of buckets has changed.
+   * @brief Sets the number of buckets to the number that is needed to
+   * accomodate at least `new_capacity` elements without exceeding the maximum
+   * load factor. This method rehashes the hash table. Rehasing puts the
+   * elements into the appropriate buckets considering that total number of
+   * buckets has changed.
    *
-   * @note If the count or double of the count is greater or equal than
-   * options_.max_capacity, the reserve will not happen.
+   * @note If the value of `new_capacity` or double of `new_capacity` is greater
+   * or equal than `options_.max_capacity`, the reserve does not perform any
+   * change to the hash table.
    *
-   * @param count new capacity of the table.
-   * @param stream The CUDA stream used to execute the operation.
+   * @param new_capacity The requested capacity for the hash table.
+   * @param stream The CUDA stream that is used to execute the operation.
    */
   void reserve(size_type new_capacity, cudaStream_t stream = 0) {
     if (reach_max_capacity_ || new_capacity > options_.max_capacity) {
@@ -708,9 +716,9 @@ class HashTable {
   /**
    * @brief Returns the maximum number of elements the table.
    *
-   * @param stream The CUDA stream used to execute the operation.
+   * @param stream The CUDA stream that is used to execute the operation.
    *
-   * @return The table max size
+   * @return The table maximum size.
    */
   float load_factor(cudaStream_t stream = 0) const {
     return static_cast<float>((size(stream) * 1.0) / (capacity() * 1.0));
