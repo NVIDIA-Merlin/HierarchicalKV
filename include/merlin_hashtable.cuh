@@ -23,6 +23,7 @@
 #include <list>
 #include <mutex>
 #include <type_traits>
+#include <vector>
 #include "merlin/core_kernels.cuh"
 #include "merlin/initializers.cuh"
 #include "merlin/utils.cuh"
@@ -214,11 +215,11 @@ class HashTable {
    * @param stream The CUDA stream used to execute the operation.
    *
    */
-  void insert_or_assign(const size_type num_items,
-                        const key_type* const keys,      // (num_items)
-                        const value_type* const values,  // (num_items, DIM)
-                        const meta_type* const metas = nullptr,  // (num_items)
-                        cudaStream_t const stream = 0) {
+  void insert_or_assign(size_type num_items,
+                        const key_type* keys,              // (num_items)
+                        const value_type* values,          // (num_items, DIM)
+                        const meta_type* metas = nullptr,  // (num_items)
+                        cudaStream_t stream = 0) {
     if (num_items == 0) {
       return;
     }
@@ -338,13 +339,12 @@ class HashTable {
    * @param stream The CUDA stream used to execute the operation
    *
    */
-  void accum_or_assign(
-      const size_type num_items,
-      const key_type* const keys,               // (num_items)
-      const value_type* const value_or_deltas,  // (num_items, DIM)
-      const bool* const accum_or_assigns,       // (num_items)
-      const meta_type* const metas = nullptr,   // (num_items)
-      cudaStream_t const stream = 0) {
+  void accum_or_assign(size_type num_items,
+                       const key_type* keys,               // (num_items)
+                       const value_type* value_or_deltas,  // (num_items, DIM)
+                       const bool* accum_or_assigns,       // (num_items)
+                       const meta_type* metas = nullptr,   // (num_items)
+                       cudaStream_t stream = 0) {
     if (num_items == 0) {
       return;
     }
@@ -432,12 +432,12 @@ class HashTable {
    * @param stream The CUDA stream used to execute the operation.
    *
    */
-  void find(const size_type num_keys,
-            const key_type* const keys,        // (num_keys)
-            value_type* const values,          // (num_keys, DIM)
-            bool* const founds,                // (num_keys)
-            meta_type* const metas = nullptr,  // (num_keys)
-            cudaStream_t const stream = 0) const {
+  void find(size_type num_keys,
+            const key_type* keys,        // (num_keys)
+            value_type* values,          // (num_keys, DIM)
+            bool* founds,                // (num_keys)
+            meta_type* metas = nullptr,  // (num_keys)
+            cudaStream_t stream = 0) const {
     if (num_keys == 0) {
       return;
     }
@@ -520,9 +520,9 @@ class HashTable {
    *
    * @return Number of elements removed.
    */
-  size_t erase(const size_type num_keys,
-               const key_type* const keys,  // (num_keys)
-               cudaStream_t const stream = 0) {
+  size_t erase(size_type num_keys,
+               const key_type* keys,  // (num_keys)
+               cudaStream_t stream = 0) {
     Workspace<1> ws(this, stream);
     size_t* d_count = ws[0]->size;
 
@@ -574,7 +574,7 @@ class HashTable {
    *
    */
   size_t erase_if(Pred& pred, const key_type& pattern,
-                  const meta_type& threshold, cudaStream_t const stream = 0) {
+                  const meta_type& threshold, cudaStream_t stream = 0) {
     Workspace<1> ws(this, stream);
     size_t* d_count = ws[0]->size;
 
@@ -606,7 +606,7 @@ class HashTable {
   /**
    * @brief Remove all of the elements in the table with no release object.
    */
-  void clear(cudaStream_t const stream = 0) {
+  void clear(cudaStream_t stream = 0) {
     const size_t N = table_->buckets_num * table_->bucket_max_size;
     const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
     clear_kernel<key_type, vector_type, meta_type, DIM>
@@ -633,11 +633,11 @@ class HashTable {
    * @throw CudaException If the K-V size is too large for GPU shared memory.
    * Reducing the @ p max_num is needed at this time.
    */
-  size_type export_batch(const size_type num_items, const size_type offset,
-                         key_type* const keys,              // (num_items)
-                         value_type* const values,          // (num_items, DIM)
-                         meta_type* const metas = nullptr,  // (num_items)
-                         cudaStream_t const stream = 0) const {
+  size_type export_batch(size_type num_items, size_type offset,
+                         key_type* keys,              // (num_items)
+                         value_type* values,          // (num_items, DIM)
+                         meta_type* metas = nullptr,  // (num_items)
+                         cudaStream_t stream = 0) const {
     const size_type meta_size = (metas == nullptr ? 0 : sizeof(meta_type));
     const size_t block_size =
         std::min(shared_mem_size_ / 2 /
@@ -800,18 +800,22 @@ class HashTable {
       size_t* size;
       bool* b8;
       int* i32;
-      // uint64_t u64;
     };
 
-    WorkspaceBuffer(const size_t size) {
-      const size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
+    explicit WorkspaceBuffer(size_t size) {
+      constexpr size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
       CUDA_CHECK(cudaMalloc(&ptr, item_size * size));
     }
 
-    WorkspaceBuffer(const size_t size, cudaStream_t const stream) {
-      const size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
+    explicit WorkspaceBuffer(size_t size, cudaStream_t stream) {
+      constexpr size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
       CUDA_CHECK(cudaMallocAsync(&vec, item_size * size, stream));
     }
+
+    WorkspaceBuffer(const WorkspaceBuffer&) = delete;
+    WorkspaceBuffer(WorkspaceBuffer&&) = delete;
+    WorkspaceBuffer& operator=(const WorkspaceBuffer&) = delete;
+    WorkspaceBuffer& operator=(WorkspaceBuffer&&) = delete;
 
     ~WorkspaceBuffer() { CUDA_CHECK(cudaFree(ptr)); }
   };
@@ -820,21 +824,26 @@ class HashTable {
   template <size_t SIZE>
   class Workspace final {
    public:
-    Workspace(const this_type* const parent, cudaStream_t const stream)
+    Workspace(const this_type* parent, cudaStream_t stream)
         : parent_{parent}, stream_{stream} {
-      parent_->claim_ws_(*this, stream);
+      parent_->claim_ws_(this, stream);
     }
+
+    Workspace(const Workspace&) = delete;
+    Workspace(Workspace&&) = delete;
+    Workspace& operator=(const Workspace&) = delete;
+    Workspace& operator=(Workspace&&) = delete;
 
     ~Workspace() {
       CUDA_CHECK(cudaStreamSynchronize(stream_));
-      parent_->release_ws_(*this, stream_);
+      parent_->release_ws_(this, stream_);
     }
 
-    constexpr WorkspaceBuffer*& operator[](const size_t i) {
+    constexpr WorkspaceBuffer*& operator[](size_t i) {
       assert(i < SIZE);
       return buffers_[i];
     }
-    constexpr const WorkspaceBuffer*& operator[](const size_t i) const {
+    constexpr const WorkspaceBuffer*& operator[](size_t i) const {
       assert(i < SIZE);
       return buffers_[i];
     }
@@ -845,19 +854,19 @@ class HashTable {
     WorkspaceBuffer* buffers_[SIZE];
   };
 
-  mutable std::mutex ws_mtx_;
+  mutable std::mutex ws_mutex_;
   mutable std::list<WorkspaceBuffer> ws_;
   mutable std::vector<WorkspaceBuffer*> avail_ws_;
   mutable std::condition_variable ws_returned_;
 
   template <size_t SIZE>
-  void claim_ws_(Workspace<SIZE>& ws, cudaStream_t const stream) const {
-    std::unique_lock<std::mutex> lock(ws_mtx_);
+  void claim_ws_(Workspace<SIZE>* ws, cudaStream_t stream) const {
+    std::unique_lock<std::mutex> lock(ws_mutex_);
 
     // If have a prellocated workspace available.
     if (avail_ws_.size() >= SIZE) {
       for (size_t i = 0; i < SIZE; i++) {
-        ws[i] = avail_ws_.back();
+        (*ws)[i] = avail_ws_.back();
         avail_ws_.pop_back();
       }
     }
@@ -865,7 +874,7 @@ class HashTable {
     else if (ws_.size() + SIZE <= options_.max_num_ws) {
       for (size_t i = 0; i < SIZE; i++) {
         ws_.emplace_back(options_.max_batch_size, stream);
-        ws[i] = &ws_.back();
+        (*ws)[i] = &ws_.back();
       }
     }
     // Creation quota reached. Wait for another thread to return a
@@ -878,7 +887,7 @@ class HashTable {
         }
 
         for (size_t i = 0; i < SIZE; i++) {
-          ws[i] = avail_ws_.back();
+          (*ws)[i] = avail_ws_.back();
           avail_ws_.pop_back();
         }
         break;
@@ -887,21 +896,21 @@ class HashTable {
   }
 
   template <size_t SIZE>
-  void release_ws_(Workspace<SIZE>& ws, cudaStream_t const stream) const {
-    std::lock_guard<std::mutex> lock(ws_mtx_);
+  void release_ws_(Workspace<SIZE>* ws, cudaStream_t stream) const {
+    std::lock_guard<std::mutex> lock(ws_mutex_);
     size_t i = 0;
 
     // Fill up available buffers until reach reserve capacity.
     bool has_returned_ws = false;
-    for (; i < SIZE && avail_ws_.size() < options_.min_num_ws; i++) {
-      avail_ws_.emplace_back(ws[i]);
+    for (; i < SIZE && avail_ws_.size() < options_.min_num_ws; ++i) {
+      avail_ws_.emplace_back((*ws)[i]);
       has_returned_ws = true;
     }
 
     // Discard remaining buffers.
-    for (; i < SIZE; i++) {
-      for (auto it = ws_.begin(); it != ws_.end(); it++) {
-        if (&(*it) == ws[i]) {
+    for (; i < SIZE; ++i) {
+      for (auto it = ws_.begin(); it != ws_.end(); ++it) {
+        if (&(*it) == (*ws)[i]) {
           // TODO: Use stream to avoid stalling.
           ws_.erase(it);
         }
