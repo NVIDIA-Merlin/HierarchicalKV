@@ -241,8 +241,8 @@ __global__ void rehash_kernel(const Table<K, V, M, DIM>* __restrict table,
         atomicExch(&(new_bucket->metas[key_idx].val),
                    bucket->metas[key_idx].val);
         for (int i = 0; i < DIM; i++) {
-          new_bucket->vectors[key_idx].value[i] =
-              bucket->vectors[key_idx].value[i];
+          new_bucket->vectors[key_idx].values[i] =
+              bucket->vectors[key_idx].values[i];
         }
         atomicAdd(&(table->buckets_size[key_bkt_idx]), 1);
         atomicMin(&(table->buckets_size[key_bkt_idx]), bucket_max_size);
@@ -272,10 +272,11 @@ __global__ void write_kernel(const V* __restrict src, V** __restrict dst,
 
     if (dst[vec_index] != nullptr) {
       if (src_offset != nullptr) {
-        (*(dst[vec_index])).value[dim_index] =
-            src[src_offset[vec_index]].value[dim_index];
+        (*(dst[vec_index])).values[dim_index] =
+            src[src_offset[vec_index]].values[dim_index];
       } else {
-        (*(dst[vec_index])).value[dim_index] = src[vec_index].value[dim_index];
+        (*(dst[vec_index])).values[dim_index] =
+            src[vec_index].values[dim_index];
       }
     }
   }
@@ -312,11 +313,11 @@ __global__ void write_with_accum_kernel(const V* __restrict delta_or_val,
     if (dst[vec_index] != nullptr &&
         existed[src_offset[vec_index]] == status[src_offset[vec_index]]) {
       if (status[src_offset[vec_index]]) {
-        (*(dst[vec_index])).value[dim_index] +=
-            delta_or_val[src_offset[vec_index]].value[dim_index];
+        (*(dst[vec_index])).values[dim_index] +=
+            delta_or_val[src_offset[vec_index]].values[dim_index];
       } else {
-        (*(dst[vec_index])).value[dim_index] =
-            delta_or_val[src_offset[vec_index]].value[dim_index];
+        (*(dst[vec_index])).values[dim_index] =
+            delta_or_val[src_offset[vec_index]].values[dim_index];
       }
     }
   }
@@ -342,8 +343,8 @@ __global__ void write_with_accum_kernel(const V* __restrict delta,
     int dim_index = t % DIM;
 
     if (dst[vec_index] != nullptr) {
-      (*(dst[vec_index])).value[dim_index] +=
-          delta[src_offset[vec_index]].value[dim_index];
+      (*(dst[vec_index])).values[dim_index] +=
+          delta[src_offset[vec_index]].values[dim_index];
     }
   }
 }
@@ -378,7 +379,8 @@ __global__ void read_kernel(const V* const* __restrict src, V* __restrict dst,
 
     /// Copy selected values and fill in default value for all others.
     if (mask[real_dst_offset] && src[vec_index] != nullptr) {
-      dst[real_dst_offset].value[dim_index] = src[vec_index]->value[dim_index];
+      dst[real_dst_offset].values[dim_index] =
+          src[vec_index]->values[dim_index];
     }
   }
 }
@@ -404,7 +406,8 @@ __global__ void read_kernel(V** __restrict src, V* __restrict dst,
         dst_offset != nullptr ? dst_offset[vec_index] : vec_index;
     int dim_index = t % DIM;
     if (src[vec_index] != nullptr) {
-      dst[real_dst_offset].value[dim_index] = src[vec_index]->value[dim_index];
+      dst[real_dst_offset].values[dim_index] =
+          src[vec_index]->values[dim_index];
     }
   }
 }
@@ -436,7 +439,7 @@ template <class V, size_t DIM, uint32_t TILE_SIZE = 8>
 __forceinline__ __device__ void copy_vector(cg::thread_block_tile<TILE_SIZE> g,
                                             const V* src, V* dst) {
   for (auto i = g.thread_rank(); i < DIM; i += g.size()) {
-    dst->value[i] = src->value[i];
+    dst->values[i] = src->values[i];
   }
 }
 
@@ -1136,8 +1139,8 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
                 *(bucket->keys + empty_pos) = *(bucket->keys + key_idx);
                 bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
                 for (int j = 0; j < DIM; j++) {
-                  bucket->vectors[empty_pos].value[j] =
-                      bucket->vectors[key_idx].value[j];
+                  bucket->vectors[empty_pos].values[j] =
+                      bucket->vectors[key_idx].values[j];
                 }
                 *(bucket->keys + key_idx) = EMPTY_KEY;
                 empty_pos = key_idx;
@@ -1206,8 +1209,8 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
               *(bucket->keys + empty_pos) = *(bucket->keys + key_idx);
               bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
               for (uint32_t j = 0; j < DIM; j++) {
-                bucket->vectors[empty_pos].value[j] =
-                    bucket->vectors[key_idx].value[j];
+                bucket->vectors[empty_pos].values[j] =
+                    bucket->vectors[key_idx].values[j];
               }
               *(bucket->keys + key_idx) = EMPTY_KEY;
               empty_pos = key_idx;
@@ -1223,27 +1226,6 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
     unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
   }
 }
-//{
-//  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-//  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-//    int key_idx = t % bucket_max_size;
-//    int bkt_idx = t / bucket_max_size;
-//    Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
-//    if (*(buckets_size + bkt_idx) > 0) {
-//      K target_key = bucket->keys[key_idx];
-//      if (target_key != EMPTY_KEY) {
-//        if (pred(target_key, bucket->metas[key_idx].val, pattern, threshold))
-//        {
-//          atomicExch((K*)&(bucket->keys[key_idx]), EMPTY_KEY);
-//          atomicExch((K*)&(bucket->metas[key_idx].val), EMPTY_META);
-//          atomicSub(&(table->buckets_size[bkt_idx]), 1);
-//          atomicMax(&(table->buckets_size[bkt_idx]), 0);
-//          atomicAdd(count, 1);
-//        }
-//      }
-//    }
-//  }
-//}
 
 /* Dump with meta. */
 template <class K, class V, class M, size_t DIM>
@@ -1276,8 +1258,8 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = bucket->keys[key_idx];
       for (int i = 0; i < DIM; i++) {
-        atomicExch(&(block_result_val[local_index].value[i]),
-                   bucket->vectors[key_idx].value[i]);
+        atomicExch(&(block_result_val[local_index].values[i]),
+                   bucket->vectors[key_idx].values[i]);
       }
       if (d_meta != nullptr) {
         block_result_meta[local_index] = bucket->metas[key_idx].val;
@@ -1294,8 +1276,8 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
   if (threadIdx.x < block_acc) {
     d_key[global_acc + threadIdx.x] = block_result_key[threadIdx.x];
     for (int i = 0; i < DIM; i++) {
-      d_val[global_acc + threadIdx.x].value[i] =
-          block_result_val[threadIdx.x].value[i];
+      d_val[global_acc + threadIdx.x].values[i] =
+          block_result_val[threadIdx.x].values[i];
     }
     if (d_meta != nullptr) {
       d_meta[global_acc + threadIdx.x] = block_result_meta[threadIdx.x];
