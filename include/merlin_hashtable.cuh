@@ -28,22 +28,6 @@
 namespace nv {
 namespace merlin {
 
-// TODO(kimi): why not use std::array<T, D>?
-/**
- * @brief value type of Merlin-KV.
- *
- * @tparam T type of elements of the vector. It must be POD.
- * @tparam D dimension of the vector.
- */
-template <typename T, size_t D>
-struct Vector {
-  static_assert(std::is_pod<T>::value, "T must be POD.");
-  using value_type = T;
-  static constexpr size_t DIM = D;
-  // TODO(kimi): rename value to values?
-  value_type value[DIM];
-};
-
 /**
  * @brief The options struct of Merlin-KV.
  */
@@ -112,11 +96,21 @@ using EraseIfPredict = bool (*)(const K& key,       ///< traversed key in table
 template <class K, class V, class M, size_t D>
 class HashTable {
  public:
+  /**
+   * @brief value type of Merlin-KV.
+   */
+  struct Vector {
+    using value_type = V;
+    static constexpr size_t DIM = D;
+    value_type values[DIM];
+  };
+
+ public:
   using size_type = size_t;
   static constexpr size_type DIM = D;
   using key_type = K;
   using value_type = V;
-  using vector_type = Vector<value_type, DIM>;
+  using vector_type = Vector;
   using meta_type = M;
   using Pred = EraseIfPredict<key_type, meta_type>;
 
