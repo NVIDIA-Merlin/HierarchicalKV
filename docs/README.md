@@ -37,6 +37,15 @@ Check that your edits formatted correctly and read well.
 
 ## Decisions
 
+### Rebuild the documentation on GitHub Pages
+
+The `.github/workflows/docs-sched-rebuild.yaml` file rebuilds the documentation
+for the `master` branch and the six most recent tags.  The job runs daily,
+but you can trigger it manually by going to the following URL and clicking
+the *Run workflow* button.
+
+<https://github.com/NVIDIA-Merlin/merlin-kv/actions/workflows/docs-sched-rebuild.yaml>
+
 ### Source management: README and index files
 
 * To preserve Sphinx's expectation that all source files are child files and directories
