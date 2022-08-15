@@ -1,0 +1,63 @@
+
+.. _file_merlin_optimizers.cuh:
+
+File merlin_optimizers.cuh
+==========================
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``merlin_optimizers.cuh``)
+--------------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_merlin_optimizers.cuh.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``/home/runner/work/merlin-kv/merlin-kv/include/merlin/types.cuh``
+
+- ``/home/runner/work/merlin-kv/merlin-kv/include/merlin/utils.cuh``
+
+- ``cuda_runtime.h``
+
+- ``merlin/embedding_kernels.cuh``
+
+- ``merlin/optimizers.cuh``
+
+- ``merlin_hashtable.cuh`` (:ref:`file_merlin_hashtable.cuh`)
+
+
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nv`
+
+- :ref:`namespace_nv__merlin`
+
+- :ref:`namespace_nv__merlin__optimizers`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classnv_1_1merlin_1_1optimizers_1_1Adam`
+
+- :ref:`exhale_class_classnv_1_1merlin_1_1optimizers_1_1Optimizer`
+

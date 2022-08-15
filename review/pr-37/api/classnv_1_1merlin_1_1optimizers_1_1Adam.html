@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Template Class Adam &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="../_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Template Class Optimizer" href="classnv_1_1merlin_1_1optimizers_1_1Optimizer.html" />
+    <link rel="prev" title="Template Class RandomNormal" href="classnv_1_1merlin_1_1initializers_1_1RandomNormal.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Documentation</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#class-hierarchy">Class Hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#file-hierarchy">File Hierarchy</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#complete-merlin-kv-api">Complete Merlin-KV API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../CONTRIBUTING.html">Contributing to Merlin-KV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="index.html">Merlin-KV C++ API Documentation</a> &raquo;</li>
+      <li>Template Class Adam</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="template-class-adam">
+<span id="exhale-class-classnv-1-1merlin-1-1optimizers-1-1adam"></span><h1>Template Class Adam<a class="headerlink" href="#template-class-adam" title="Permalink to this headline"></a></h1>
+<ul class="simple">
+<li><p>Defined in <a class="reference internal" href="file_merlin_optimizers.cuh.html#file-merlin-optimizers-cuh"><span class="std std-ref">File merlin_optimizers.cuh</span></a></p></li>
+</ul>
+<div class="section" id="inheritance-relationships">
+<h2>Inheritance Relationships<a class="headerlink" href="#inheritance-relationships" title="Permalink to this headline"></a></h2>
+<div class="section" id="base-type">
+<h3>Base Type<a class="headerlink" href="#base-type" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">public</span> <span class="pre">nv::merlin::optimizers::Optimizer&lt;</span> <span class="pre">K,</span> <span class="pre">V,</span> <span class="pre">M,</span> <span class="pre">T,</span> <span class="pre">DIM</span> <span class="pre">&gt;</span></code></p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="class-documentation">
+<h2>Class Documentation<a class="headerlink" href="#class-documentation" title="Permalink to this headline"></a></h2>
+<dl class="cpp class">
+<dt id="_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE">
+<span id="_CPPv3I0000_6size_tEN2nv6merlin10optimizers4AdamE"></span><span id="_CPPv2I0000_6size_tEN2nv6merlin10optimizers4AdamE"></span><span class="pre">template&lt;</span><span class="pre">class</span> <code class="sig-name descname"><span class="pre">K</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">V</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">M</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">T</span></code><span class="pre">,</span> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">DIM</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1optimizers_1_1Adam"></span><em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><span class="pre">::</span><span class="pre">optimizers</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">Adam</span></code> <span class="pre">:</span> <em class="property"><span class="pre">public</span></em> <span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><span class="pre">::</span><span class="pre">optimizers</span><span class="pre">::</span><a class="reference internal" href="classnv_1_1merlin_1_1optimizers_1_1Optimizer.html#_CPPv4I0000_6size_tEN2nv6merlin10optimizers9OptimizerE" title="nv::merlin::optimizers::Optimizer"><span class="pre">Optimizer</span></a><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::K"><span class="pre">K</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::V"><span class="pre">V</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::M"><span class="pre">M</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::T"><span class="pre">T</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::DIM"><span class="pre">DIM</span></a><span class="pre">&gt;</span><a class="headerlink" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="Permalink to this definition"></a><br /></dt>
+<dd><div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin10optimizers4Adam5TableE">
+<span id="_CPPv3N2nv6merlin10optimizers4Adam5TableE"></span><span id="_CPPv2N2nv6merlin10optimizers4Adam5TableE"></span><span class="target" id="classnv_1_1merlin_1_1optimizers_1_1Adam_1ae71010bc2fa3c089a666e0e064a1b015"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">Table</span></code> <span class="pre">=</span> <span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><span class="pre">::</span><span class="pre">Table</span><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::K"><span class="pre">K</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::V"><span class="pre">V</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::M"><span class="pre">M</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::DIM"><span class="pre">DIM</span></a><span class="pre">&gt;</span><a class="headerlink" href="#_CPPv4N2nv6merlin10optimizers4Adam5TableE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin10optimizers4Adam4AdamEP5Tablefffff">
+<span id="_CPPv3N2nv6merlin10optimizers4Adam4AdamEP5Tablefffff"></span><span id="_CPPv2N2nv6merlin10optimizers4Adam4AdamEP5Tablefffff"></span><span id="nv::merlin::optimizers::Adam::Adam__TableP.float.float.float.float.float"></span><span class="target" id="classnv_1_1merlin_1_1optimizers_1_1Adam_1aa554efe5909cf5d69c8eb7eee3cfec71"></span><em class="property"><span class="pre">inline</span></em> <code class="sig-name descname"><span class="pre">Adam</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N2nv6merlin10optimizers4Adam5TableE" title="nv::merlin::optimizers::Adam::Table"><span class="pre">Table</span></a> <span class="pre">*</span><em><span class="pre">weights</span></em>, <span class="pre">float</span> <em><span class="pre">alpha</span></em>, <span class="pre">float</span> <em><span class="pre">beta1</span></em>, <span class="pre">float</span> <em><span class="pre">beta2</span></em>, <span class="pre">float</span> <em><span class="pre">epsilon</span></em>, <span class="pre">float</span> <em><span class="pre">scaler</span></em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin10optimizers4Adam4AdamEP5Tablefffff" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin10optimizers4AdamD0Ev">
+<span id="_CPPv3N2nv6merlin10optimizers4AdamD0Ev"></span><span id="_CPPv2N2nv6merlin10optimizers4AdamD0Ev"></span><span id="nv::merlin::optimizers::Adam::~Adam"></span><span class="target" id="classnv_1_1merlin_1_1optimizers_1_1Adam_1ac4f9a8760c499dbc4a39e51c5c58c725"></span><em class="property"><span class="pre">inline</span></em> <code class="sig-name descname"><span class="pre">~Adam</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin10optimizers4AdamD0Ev" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin10optimizers4Adam6updateEPK1KPK1Vi12cudaStream_t">
+<span id="_CPPv3N2nv6merlin10optimizers4Adam6updateEPK1KPK1Vi12cudaStream_t"></span><span id="_CPPv2N2nv6merlin10optimizers4Adam6updateEPK1KPK1Vi12cudaStream_t"></span><span id="nv::merlin::optimizers::Adam::update__KCP.VCP.i.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1optimizers_1_1Adam_1a383b2829987cdbd0d791c7f6e8b40190"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">update</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::K"><span class="pre">K</span></a> <span class="pre">*</span><em><span class="pre">d_keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I0000_6size_tEN2nv6merlin10optimizers4AdamE" title="nv::merlin::optimizers::Adam::V"><span class="pre">V</span></a> <span class="pre">*</span><em><span class="pre">d_grad</span></em>, <span class="pre">int</span> <em><span class="pre">len</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em><span class="sig-paren">)</span> <em class="property"><span class="pre">override</span></em><a class="headerlink" href="#_CPPv4N2nv6merlin10optimizers4Adam6updateEPK1KPK1Vi12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="classnv_1_1merlin_1_1initializers_1_1RandomNormal.html" class="btn btn-neutral float-left" title="Template Class RandomNormal" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="classnv_1_1merlin_1_1optimizers_1_1Optimizer.html" class="btn btn-neutral float-right" title="Template Class Optimizer" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
