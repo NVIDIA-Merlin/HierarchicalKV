@@ -1,0 +1,24 @@
+:orphan:
+
+
+Complete Merlin-KV API
+======================
+
+Files
+*****
+
+
+.. toctree::
+   :maxdepth: 5
+
+   file_merlin_hashtable.cuh.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   file_merlin_initializers.cuh.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   file_merlin_optimizers.cuh.rst
