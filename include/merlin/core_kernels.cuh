@@ -215,39 +215,164 @@ void destroy_table(Table<K, V, M, DIM>** table) {
   CudaCheckError();
 }
 
-template <class K, class V, class M, size_t DIM>
-__global__ void rehash_kernel(const Table<K, V, M, DIM>* __restrict table,
-                              size_t N) {
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+__forceinline__ __device__ void defragmentation_for_remove(
+    Bucket<K, V, M, DIM>* __restrict bucket, uint32_t remove_pos,
+    const size_t bucket_max_size, const size_t buckets_num) {
+  uint32_t key_idx;
+  size_t global_idx = 0;
+  size_t start_idx = 0;
+  K find_key;
+  K hashed_key;
+
+  uint32_t empty_pos = remove_pos;
+
+  int i = 1;
+  while (i < bucket_max_size) {
+    key_idx = (remove_pos + i) & (bucket_max_size - 1);
+    find_key = *(bucket->keys + key_idx);
+    if (find_key == EMPTY_KEY) {
+      break;
+    }
+    hashed_key = Murmur3HashDevice(find_key);
+    global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+    start_idx = global_idx % bucket_max_size;
+
+    if ((start_idx <= empty_pos && empty_pos < key_idx) ||
+        (key_idx < start_idx && start_idx <= empty_pos) ||
+        (empty_pos <= key_idx && key_idx < start_idx)) {
+      *(bucket->keys + empty_pos) = *(bucket->keys + key_idx);
+      bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
+      for (int j = 0; j < DIM; j++) {
+        bucket->vectors[empty_pos].values[j] =
+            bucket->vectors[key_idx].values[j];
+      }
+      *(bucket->keys + key_idx) = EMPTY_KEY;
+      empty_pos = key_idx;
+      remove_pos = key_idx;
+      i = 1;
+    } else {
+      i++;
+    }
+  }
+}
+
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+__forceinline__ __device__ void refresh_bucket_meta(
+    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M, DIM>* bucket,
+    const size_t bucket_max_size) {
+  M min_val = MAX_META;
+  int min_pos = 0;
+
+  for (int i = g.thread_rank(); i < bucket_max_size; i += TILE_SIZE) {
+    if (bucket->keys[i] == EMPTY_KEY) {
+      continue;
+    }
+    if (bucket->metas[i].val < min_val) {
+      min_pos = i;
+      min_val = bucket->metas[i].val;
+    }
+  }
+  M global_min_val = cg::reduce(g, min_val, cg::less<M>());
+  if (min_val == global_min_val) {
+    bucket->min_pos = min_pos;
+    bucket->min_meta = min_val;
+  }
+}
+
+template <class V, size_t DIM, uint32_t TILE_SIZE = 8>
+__forceinline__ __device__ void copy_vector(cg::thread_block_tile<TILE_SIZE> g,
+                                            const V* src, V* dst) {
+  for (auto i = g.thread_rank(); i < DIM; i += g.size()) {
+    dst->values[i] = src->values[i];
+  }
+}
+
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+__forceinline__ __device__ void move_key_to_new_bucket(
+    cg::thread_block_tile<TILE_SIZE> g, int rank, const K& key, const M& meta,
+    const V* __restrict vector, Bucket<K, V, M, DIM>* __restrict new_bucket,
+    size_t new_bkt_idx, size_t new_start_idx, int* __restrict buckets_size,
+    const size_t bucket_max_size, const size_t buckets_num) {
+  uint32_t key_pos;
+  unsigned empty_vote;
+  int local_size;
+  int src_lane;
+
+#pragma unroll
+  for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+       tile_offset += TILE_SIZE) {
+    size_t key_offset =
+        (new_start_idx + tile_offset + rank) & (bucket_max_size - 1);
+    K current_key = *(new_bucket->keys + key_offset);
+    empty_vote = g.ballot(current_key == EMPTY_KEY);
+    if (empty_vote) {
+      src_lane = __ffs(empty_vote) - 1;
+      key_pos =
+          (new_start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
+      local_size = buckets_size[new_bkt_idx];
+      if (rank == src_lane) {
+        new_bucket->keys[key_pos] = key;
+        new_bucket->metas[key_pos].val = meta;
+        buckets_size[new_bkt_idx]++;
+      }
+      local_size = g.shfl(local_size, src_lane);
+      if (local_size >= bucket_max_size) {
+        refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, new_bucket,
+                                                     bucket_max_size);
+      }
+      copy_vector<V, DIM, TILE_SIZE>(g, vector, new_bucket->vectors + key_pos);
+      break;
+    }
+  }
+}
+
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+__global__ void rehash_kernel_for_fast_mode(
+    const Table<K, V, M, DIM>* __restrict table,
+    Bucket<K, V, M, DIM>* __restrict buckets, int* __restrict buckets_size,
+    const size_t bucket_max_size, const size_t buckets_num, size_t N) {
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  int rank = g.thread_rank();
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  const size_t buckets_num = table->buckets_num;
-  const size_t bucket_max_size = table->bucket_max_size;
+  size_t global_idx;
+  uint32_t start_idx = 0;
+  K target_key;
+
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int bkt_idx = t / bucket_max_size;
-    int key_idx = t % bucket_max_size;
-    Bucket<K, V, M, DIM>* bucket = &(table->buckets[bkt_idx]);
-    K target_key = bucket->keys[key_idx];
-    if (target_key != EMPTY_KEY) {
-      K hashed_key = Murmur3HashDevice(target_key);
-      int key_bkt_idx = hashed_key % buckets_num;
+    uint32_t bkt_idx = t / TILE_SIZE;
+    Bucket<K, V, M, DIM>* bucket = (buckets + bkt_idx);
 
-      if (key_bkt_idx != bkt_idx) {
-        Bucket<K, V, M, DIM>* new_bucket = &(table->buckets[key_bkt_idx]);
-        atomicExch(&(new_bucket->keys[key_idx]), target_key);
-        atomicExch(&(bucket->keys[key_idx]), EMPTY_KEY);
-
-        atomicSub(&(table->buckets_size[bkt_idx]), 1);
-        atomicMax(&(table->buckets_size[bkt_idx]), 0);
-
-        atomicExch(&(new_bucket->metas[key_idx].val),
-                   bucket->metas[key_idx].val);
-        for (int i = 0; i < DIM; i++) {
-          new_bucket->vectors[key_idx].values[i] =
-              bucket->vectors[key_idx].values[i];
+    lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
+    uint32_t key_idx = 0;
+    while (key_idx < bucket_max_size) {
+      key_idx = g.shfl(key_idx, 0);
+      target_key = bucket->keys[key_idx];
+      if (target_key != EMPTY_KEY) {
+        K hashed_key = Murmur3HashDevice(target_key);
+        global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+        uint32_t new_bkt_idx = global_idx / bucket_max_size;
+        if (new_bkt_idx != bkt_idx) {
+          start_idx = global_idx % bucket_max_size;
+          move_key_to_new_bucket<K, V, M, DIM, TILE_SIZE>(
+              g, rank, target_key, bucket->metas[key_idx].val,
+              (bucket->vectors + key_idx), buckets + new_bkt_idx, new_bkt_idx,
+              start_idx, buckets_size, bucket_max_size, buckets_num);
+          if (rank == 0) {
+            bucket->keys[key_idx] = EMPTY_KEY;
+            buckets_size[bkt_idx]--;
+            defragmentation_for_remove<K, V, M, DIM, TILE_SIZE>(
+                bucket, key_idx, bucket_max_size, buckets_num / 2);
+            key_idx = 0;
+          }
+        } else {
+          key_idx++;
         }
-        atomicAdd(&(table->buckets_size[key_bkt_idx]), 1);
-        atomicMin(&(table->buckets_size[key_bkt_idx]), bucket_max_size);
+      } else {
+        key_idx++;
       }
     }
+    unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
   }
 }
 
@@ -409,37 +534,6 @@ __global__ void read_kernel(V** __restrict src, V* __restrict dst,
       dst[real_dst_offset].values[dim_index] =
           src[vec_index]->values[dim_index];
     }
-  }
-}
-
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
-__forceinline__ __device__ void refresh_bucket_meta(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M, DIM>* bucket,
-    const size_t bucket_max_size) {
-  M min_val = MAX_META;
-  int min_pos = 0;
-
-  for (int i = g.thread_rank(); i < bucket_max_size; i += TILE_SIZE) {
-    if (bucket->keys[i] == EMPTY_KEY) {
-      continue;
-    }
-    if (bucket->metas[i].val < min_val) {
-      min_pos = i;
-      min_val = bucket->metas[i].val;
-    }
-  }
-  M global_min_val = cg::reduce(g, min_val, cg::less<M>());
-  if (min_val == global_min_val) {
-    bucket->min_pos = min_pos;
-    bucket->min_meta = min_val;
-  }
-}
-
-template <class V, size_t DIM, uint32_t TILE_SIZE = 8>
-__forceinline__ __device__ void copy_vector(cg::thread_block_tile<TILE_SIZE> g,
-                                            const V* src, V* dst) {
-  for (auto i = g.thread_rank(); i < DIM; i += g.size()) {
-    dst->values[i] = src->values[i];
   }
 }
 
@@ -1089,7 +1183,6 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
        t += blockDim.x * gridDim.x) {
     int key_idx = t / TILE_SIZE;
     int key_pos = -1;
-    int empty_pos = -1;
     bool local_found = false;
 
     K find_key = keys[key_idx];
@@ -1122,30 +1215,8 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
             atomicAdd(count, 1);
             *(bucket->keys + key_pos) = EMPTY_KEY;
             buckets_size[bkt_idx]--;
-            empty_pos = key_pos;
-            for (int i = 1; i < bucket_max_size; i++) {
-              key_idx = (key_pos + i) & (bucket_max_size - 1);
-              find_key = *(bucket->keys + key_idx);
-              if (find_key == EMPTY_KEY) {
-                break;
-              }
-              hashed_key = Murmur3HashDevice(find_key);
-              global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
-              start_idx = global_idx % bucket_max_size;
-
-              if ((start_idx <= empty_pos && empty_pos < key_idx) ||
-                  (key_idx < start_idx && start_idx <= empty_pos) ||
-                  (empty_pos <= key_idx && key_idx < start_idx)) {
-                *(bucket->keys + empty_pos) = *(bucket->keys + key_idx);
-                bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
-                for (int j = 0; j < DIM; j++) {
-                  bucket->vectors[empty_pos].values[j] =
-                      bucket->vectors[key_idx].values[j];
-                }
-                *(bucket->keys + key_idx) = EMPTY_KEY;
-                empty_pos = key_idx;
-              }
-            }
+            defragmentation_for_remove<K, V, M, DIM, TILE_SIZE>(
+                bucket, key_pos, bucket_max_size, buckets_num);
           }
         }
         break;
@@ -1170,13 +1241,7 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
   for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
        t += blockDim.x * gridDim.x) {
     uint32_t bkt_idx = t;
-    uint32_t key_idx = 0;
     uint32_t key_pos = 0;
-    uint32_t empty_pos = 0;
-    size_t global_idx = 0;
-    size_t start_idx = 0;
-    K find_key;
-    K hashed_key;
 
     Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
@@ -1192,30 +1257,8 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
           key_pos = key_offset;
           *(bucket->keys + key_pos) = EMPTY_KEY;
           buckets_size[bkt_idx]--;
-          empty_pos = key_pos;
-          for (uint32_t i = 1; i < bucket_max_size; i++) {
-            key_idx = (key_pos + i) & (bucket_max_size - 1);
-            find_key = *(bucket->keys + key_idx);
-            if (find_key == EMPTY_KEY) {
-              break;
-            }
-            hashed_key = Murmur3HashDevice(find_key);
-            global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
-            start_idx = global_idx % bucket_max_size;
-
-            if ((start_idx <= empty_pos && empty_pos < key_idx) ||
-                (key_idx < start_idx && start_idx <= empty_pos) ||
-                (empty_pos <= key_idx && key_idx < start_idx)) {
-              *(bucket->keys + empty_pos) = *(bucket->keys + key_idx);
-              bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
-              for (uint32_t j = 0; j < DIM; j++) {
-                bucket->vectors[empty_pos].values[j] =
-                    bucket->vectors[key_idx].values[j];
-              }
-              *(bucket->keys + key_idx) = EMPTY_KEY;
-              empty_pos = key_idx;
-            }
-          }
+          defragmentation_for_remove<K, V, M, DIM, TILE_SIZE>(
+              bucket, key_pos, bucket_max_size, buckets_num);
         } else {
           key_offset++;
         }
