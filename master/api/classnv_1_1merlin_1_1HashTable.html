@@ -378,13 +378,13 @@
 <dl class="cpp function">
 <dt id="_CPPv4NK2nv6merlin9HashTable11load_factorE12cudaStream_t">
 <span id="_CPPv3NK2nv6merlin9HashTable11load_factorE12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin9HashTable11load_factorE12cudaStream_t"></span><span id="nv::merlin::HashTable::load_factor__cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1af84676832a27c304aa716b26d60b6155"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">float</span> <code class="sig-name descname"><span class="pre">load_factor</span></code><span class="sig-paren">(</span><span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em><a class="headerlink" href="#_CPPv4NK2nv6merlin9HashTable11load_factorE12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Returns the maximum number of elements the table. </p>
+<dd><p>Returns the average number of elements per slot, that is, <a class="reference internal" href="#classnv_1_1merlin_1_1HashTable_1aa1285cf08dc2831ddf5f2a8ac99e8e98"><span class="std std-ref">size()</span></a> divided by <a class="reference internal" href="#classnv_1_1merlin_1_1HashTable_1a2a76c4a235d18e645769fae437f3a440"><span class="std std-ref">capacity()</span></a>. </p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The table maximum size. </p>
+<dd class="field-even"><p>The load factor </p>
 </dd>
 </dl>
 </dd></dl>

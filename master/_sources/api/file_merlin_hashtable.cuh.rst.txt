@@ -37,25 +37,17 @@ Includes
 
 - ``cuda_fp16.h``
 
-- ``cuda_runtime.h``
-
 - ``cuda_runtime_api.h``
-
-- ``curand.h``
-
-- ``curand_kernel.h``
-
-- ``curand_philox4x32_x.h``
 
 - ``exception``
 
 - ``merlin/core_kernels.cuh``
 
-- ``merlin/initializers.cuh``
-
 - ``merlin/utils.cuh``
 
 - ``mutex``
+
+- ``shared_mutex``
 
 - ``string``
 

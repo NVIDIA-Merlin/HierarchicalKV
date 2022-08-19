@@ -25,6 +25,18 @@ Includes
 --------
 
 
+- ``/home/runner/work/merlin-kv/merlin-kv/include/merlin/types.cuh``
+
+- ``/home/runner/work/merlin-kv/merlin-kv/include/merlin/utils.cuh``
+
+- ``cuda_runtime.h``
+
+- ``curand.h``
+
+- ``curand_kernel.h``
+
+- ``curand_philox4x32_x.h``
+
 - ``merlin/initializers.cuh``
 
 - ``merlin_hashtable.cuh`` (:ref:`file_merlin_hashtable.cuh`)
