@@ -26,8 +26,6 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include "merlin/initializers.cuh"
-#include "merlin/optimizers.cuh"
 #include "merlin_hashtable.cuh"
 
 using std::cerr;

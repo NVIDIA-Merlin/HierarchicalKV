@@ -32,14 +32,16 @@ namespace merlin {
  * @brief The options struct of Merlin-KV.
  */
 struct HashTableOptions {
-  size_t init_capacity = 0;        ///< The initial capacity of the hash table.
-  size_t max_capacity = 0;         ///< The maximum capacity of the hash table.
-  size_t max_hbm_for_vectors = 0;  ///< The maximum HBM that is allocated for vectors, in bytes.
-  size_t max_bucket_size = 128;    ///< The length of each bucket.
-  float max_load_factor = 0.5f;    ///< The max load factor before rehashing.
-  int block_size = 1024;           ///< The default block size for CUDA kernels.
-  int device_id = 0;               ///< The ID of device.
-  bool primary = true;             ///< This argument is not used and is reserved for future use.
+  size_t init_capacity = 0;  ///< The initial capacity of the hash table.
+  size_t max_capacity = 0;   ///< The maximum capacity of the hash table.
+  size_t max_hbm_for_vectors =
+      0;  ///< The maximum HBM that is allocated for vectors, in bytes.
+  size_t max_bucket_size = 128;  ///< The length of each bucket.
+  float max_load_factor = 0.5f;  ///< The max load factor before rehashing.
+  int block_size = 1024;         ///< The default block size for CUDA kernels.
+  int device_id = 0;             ///< The ID of device.
+  bool primary =
+      true;  ///< This argument is not used and is reserved for future use.
 };
 
 /**
@@ -66,10 +68,11 @@ struct HashTableOptions {
  *    ```
  */
 template <class K, class M>
-using EraseIfPredict = bool (*)(const K& key,       ///< The traversed key in a hash table.
-                                const M& meta,      ///< The traversed meta in a hash table.
-                                const K& pattern,   ///< The key pattern to compare with the `key` argument.
-                                const M& threshold  ///< The threshold to compare with the `meta` argument.
+using EraseIfPredict = bool (*)(
+    const K& key,       ///< The traversed key in a hash table.
+    const M& meta,      ///< The traversed meta in a hash table.
+    const K& pattern,   ///< The key pattern to compare with the `key` argument.
+    const M& threshold  ///< The threshold to compare with the `meta` argument.
 );
 
 /**
@@ -568,7 +571,8 @@ class HashTable {
    *
    * @param pred The predicate function that returns `true` if the element
    * should be erased.
-   * @param pattern The third user-defined argument to `pred` with key_type type.
+   * @param pattern The third user-defined argument to `pred` with key_type
+   * type.
    * @param threshold The fourth user-defined argument to `pred` with meta_type
    * type.
    * @param stream The CUDA stream that is used to execute the operation.
@@ -609,7 +613,8 @@ class HashTable {
   }
 
   /**
-   * @brief Removes all of the elements in the hash table with no release object.
+   * @brief Removes all of the elements in the hash table with no release
+   * object.
    */
   void clear(cudaStream_t stream = 0) {
     const size_t N = table_->buckets_num * table_->bucket_max_size;
