@@ -68,3 +68,8 @@ set(CMAKE_BUILD_TYPE "Debug")
 add_executable(merlin_hashtable_test tests/merlin_hashtable_test.cc.cu)
 target_compile_features(merlin_hashtable_test PUBLIC cxx_std_14)
 set_target_properties(merlin_hashtable_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+
+set(CMAKE_BUILD_TYPE "Debug")
+add_executable(save_and_load_test tests/save_and_load_test.cc.cu)
+target_compile_features(save_and_load_test PUBLIC cxx_std_14)
+set_target_properties(save_and_load_test PROPERTIES  CUDA_ARCHITECTURES OFF)
