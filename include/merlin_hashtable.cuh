@@ -617,13 +617,14 @@ class HashTable {
    * object.
    */
   void clear(cudaStream_t stream = 0) {
-    const size_t N = table_->buckets_num * table_->bucket_max_size;
-    const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
     if (!reach_max_capacity_) {
       lock.lock();
     }
+
+    const size_t N = table_->buckets_num * table_->bucket_max_size;
+    const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
 
     clear_kernel<key_type, vector_type, meta_type, DIM>
         <<<grid_size, options_.block_size, 0, stream>>>(table_, N);
