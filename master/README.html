@@ -82,8 +82,8 @@
              
   <div class="tex2jax_ignore mathjax_ignore section" id="nvidia-merlin-kv">
 <h1><a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv">NVIDIA Merlin-KV</a><a class="headerlink" href="#nvidia-merlin-kv" title="Permalink to this headline"></a></h1>
-<p><img alt="GitHub tag (latest SemVer)" src="https://img.shields.io/github/v/tag/NVIDIA-Merlin/merlin-kv?sort=semver" />
-<img alt="GitHub License" src="https://img.shields.io/github/license/NVIDIA-Merlin/merlin-kv" />
+<p><a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/releases"><img alt="Version" src="https://img.shields.io/github/v/release/NVIDIA-Merlin/merlin-kv?color=orange" /></a>
+<a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/NVIDIA-Merlin/merlin-kv" /></a>
 <a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/README.html"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue.svg" /></a></p>
 <div class="section" id="about-merlin-kv">
 <h2>About Merlin-KV<a class="headerlink" href="#about-merlin-kv" title="Permalink to this headline"></a></h2>
@@ -113,7 +113,7 @@ The library simplifies the common challenges to building, evaluating, and servin
 </div>
 <div class="section" id="api-documentation">
 <h2>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline"></a></h2>
-<p>Refer to <a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/README.html">API Docs</a></p>
+<p>Refer to <a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/api/index.html">API Docs</a></p>
 </div>
 <div class="section" id="contributors">
 <h2>Contributors<a class="headerlink" href="#contributors" title="Permalink to this headline"></a></h2>
@@ -123,7 +123,7 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="section" id="how-to-build">
 <h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
 <p>Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
 <span class="nb">cd</span> merlin-kv <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
 cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -DSM<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
 
@@ -137,7 +137,7 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -DSM<span class="o">=</s
 <p>Your environment must meet the following requirements:</p>
 <ul class="simple">
 <li><p>CUDA version &gt;= 11.2</p></li>
-<li><p>NVIDIA GPU with compute capbility 8.0, 8.6, or 8.7</p></li>
+<li><p>NVIDIA GPU with compute capability 8.0, 8.6, or 8.7</p></li>
 </ul>
 </div>
 <div class="section" id="benchmark">
@@ -374,6 +374,18 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -DSM<span class="o">=</s
 </tr>
 </tbody>
 </table>
+</div>
+<div class="section" id="support-and-feedback">
+<h3>Support and Feedback:<a class="headerlink" href="#support-and-feedback" title="Permalink to this headline"></a></h3>
+<p>If you encounter any issues or have questions, go to <a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/issues">https://github.com/NVIDIA-Merlin/merlin-kv/issues</a> and submit an issue so that we can provide you with the necessary resolutions and answers.</p>
+</div>
+<div class="section" id="acknowledgment">
+<h3>Acknowledgment<a class="headerlink" href="#acknowledgment" title="Permalink to this headline"></a></h3>
+<p>We are very grateful to external initial contributors <a class="reference external" href="https://github.com/zhangyafeikimi">&#64;Zhangyafei</a> and <a class="reference external" href="https://github.com/Lifann">&#64;Lifan</a> for their design, coding, and review work.</p>
+</div>
+<div class="section" id="license">
+<h3>License<a class="headerlink" href="#license" title="Permalink to this headline"></a></h3>
+<p>Apache License 2.0</p>
 </div>
 </div>
 </div>

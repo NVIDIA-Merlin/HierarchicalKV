@@ -23,7 +23,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Template Class RandomNormal" href="classnv_1_1merlin_1_1initializers_1_1RandomNormal.html" />
+    <link rel="next" title="Typedef nv::merlin::EraseIfPredict" href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html" />
     <link rel="prev" title="Struct HashTableOptions" href="structnv_1_1merlin_1_1HashTableOptions.html" /> 
 </head>
 
@@ -142,7 +142,7 @@
 
 <dl class="cpp type">
 <dt id="_CPPv4N2nv6merlin9HashTable4PredE">
-<span id="_CPPv3N2nv6merlin9HashTable4PredE"></span><span id="_CPPv2N2nv6merlin9HashTable4PredE"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a1650a7455cc7cbe4844e955245a9e4be"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">Pred</span></code> <span class="pre">=</span> <a class="reference internal" href="typedef_merlin__hashtable_8cuh_1ac8f98038c25ea5b1c0035a22d283c7a3.html#_CPPv4I00EN2nv6merlin14EraseIfPredictE" title="nv::merlin::EraseIfPredict"><span class="pre">EraseIfPredict</span></a><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9meta_typeE" title="nv::merlin::HashTable::meta_type"><span class="pre">meta_type</span></a><span class="pre">&gt;</span><a class="headerlink" href="#_CPPv4N2nv6merlin9HashTable4PredE" title="Permalink to this definition"></a><br /></dt>
+<span id="_CPPv3N2nv6merlin9HashTable4PredE"></span><span id="_CPPv2N2nv6merlin9HashTable4PredE"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a1650a7455cc7cbe4844e955245a9e4be"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">Pred</span></code> <span class="pre">=</span> <a class="reference internal" href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html#_CPPv4I00EN2nv6merlin14EraseIfPredictE" title="nv::merlin::EraseIfPredict"><span class="pre">EraseIfPredict</span></a><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9meta_typeE" title="nv::merlin::HashTable::meta_type"><span class="pre">meta_type</span></a><span class="pre">&gt;</span><a class="headerlink" href="#_CPPv4N2nv6merlin9HashTable4PredE" title="Permalink to this definition"></a><br /></dt>
 <dd></dd></dl>
 
 </div>
@@ -183,7 +183,7 @@
 <li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>values</strong> – The values to insert on GPU-accessible memory with shape (n, DIM). </p></li>
 <li><p><strong>metas</strong> – The metas to insert on GPU-accessible memory with shape (n). <p>The metas must be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
-<p>If <code class="docutils literal notranslate"><span class="pre">metas</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the LRU eviction strategy is applied. </p>
+<p>The <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
 </ul>
@@ -203,11 +203,13 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>n</strong> – The number of key-value pairs to process. </p></li>
+<li><p><strong>n</strong> – The number of key-value-meta tuples to process. </p></li>
 <li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>value_or_deltas</strong> – The values or deltas to insert on GPU-accessible memory with shape (n, DIM). </p></li>
 <li><p><strong>accum_or_assigns</strong> – The operation type with shape (n). A value of <code class="docutils literal notranslate"><span class="pre">true</span></code> indicates to accum and <code class="docutils literal notranslate"><span class="pre">false</span></code> indicates to assign. </p></li>
-<li><p><strong>metas</strong> – The metas to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>metas</strong> – The metas to insert on GPU-accessible memory with shape (n). <p>The metas must be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
+</p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
 </ul>
 </dd>
@@ -229,7 +231,8 @@
 <li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>values</strong> – The values to search on GPU-accessible memory with shape (n, DIM). </p></li>
 <li><p><strong>founds</strong> – The status that indicates if the keys are found on GPU-accessible memory with shape (n). </p></li>
-<li><p><strong>metas</strong> – The metas to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>metas</strong> – The metas to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">metas</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the meta for each key will not be returned. </p>
+</p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
 </ul>
 </dd>
@@ -258,7 +261,7 @@
 <dt id="_CPPv4N2nv6merlin9HashTable8erase_ifER4PredRK8key_typeRK9meta_type12cudaStream_t">
 <span id="_CPPv3N2nv6merlin9HashTable8erase_ifER4PredRK8key_typeRK9meta_type12cudaStream_t"></span><span id="_CPPv2N2nv6merlin9HashTable8erase_ifER4PredRK8key_typeRK9meta_type12cudaStream_t"></span><span id="nv::merlin::HashTable::erase_if__PredR.key_typeCR.meta_typeCR.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a3eccd0010759164dd550b92d24c792c4"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">erase_if</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable4PredE" title="nv::merlin::HashTable::Pred"><span class="pre">Pred</span></a> <span class="pre">&amp;</span><em><span class="pre">pred</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a> <span class="pre">&amp;</span><em><span class="pre">pattern</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9meta_typeE" title="nv::merlin::HashTable::meta_type"><span class="pre">meta_type</span></a> <span class="pre">&amp;</span><em><span class="pre">threshold</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin9HashTable8erase_ifER4PredRK8key_typeRK9meta_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
 <dd><p>Erases all elements that satisfy the predicate <code class="docutils literal notranslate"><span class="pre">pred</span></code> from the hash table. </p>
-<p>The value for <code class="docutils literal notranslate"><span class="pre">pred</span></code> should be a function defined like the following example:</p>
+<p>The value for <code class="docutils literal notranslate"><span class="pre">pred</span></code> should be a function with type <code class="docutils literal notranslate"><span class="pre">Pred</span></code> defined like the following example:</p>
 <p><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">K</span><span class="p">,</span> <span class="k">class</span> <span class="nc">M</span><span class="o">&gt;</span>
 <span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">erase_if_pred</span><span class="p">(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
                                               <span class="n">const</span> <span class="n">M</span><span class="o">&amp;</span> <span class="n">meta</span><span class="p">,</span>
@@ -272,7 +275,7 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>pred</strong> – The predicate function that returns <code class="docutils literal notranslate"><span class="pre">true</span></code> if the element should be erased. </p></li>
+<li><p><strong>pred</strong> – The predicate function with type <code class="docutils literal notranslate"><span class="pre">Pred</span></code> that returns <code class="docutils literal notranslate"><span class="pre">true</span></code> if the element should be erased. </p></li>
 <li><p><strong>pattern</strong> – The third user-defined argument to <code class="docutils literal notranslate"><span class="pre">pred</span></code> with key_type type. </p></li>
 <li><p><strong>threshold</strong> – The fourth user-defined argument to <code class="docutils literal notranslate"><span class="pre">pred</span></code> with meta_type type. </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
@@ -301,7 +304,8 @@
 <li><p><strong>offset</strong> – The position of the key to remove. </p></li>
 <li><p><strong>keys</strong> – The keys to dump from GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>values</strong> – The values to dump from GPU-accessible memory with shape (n, DIM). </p></li>
-<li><p><strong>metas</strong> – The metas to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>metas</strong> – The metas to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">metas</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the meta for each key will not be returned. </p>
+</p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
 </ul>
 </dd>
@@ -438,7 +442,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="structnv_1_1merlin_1_1HashTableOptions.html" class="btn btn-neutral float-left" title="Struct HashTableOptions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="classnv_1_1merlin_1_1initializers_1_1RandomNormal.html" class="btn btn-neutral float-right" title="Template Class RandomNormal" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html" class="btn btn-neutral float-right" title="Typedef nv::merlin::EraseIfPredict" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -61,14 +61,6 @@ Includes
 
 
 
-Included By
------------
-
-
-- :ref:`file_merlin_initializers.cuh`
-
-- :ref:`file_merlin_optimizers.cuh`
-
 
 
 
@@ -96,5 +88,5 @@ Typedefs
 --------
 
 
-- :ref:`exhale_typedef_merlin__hashtable_8cuh_1ac8f98038c25ea5b1c0035a22d283c7a3`
+- :ref:`exhale_typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e`
 
