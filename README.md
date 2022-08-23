@@ -1,7 +1,7 @@
 # [NVIDIA Merlin-KV](https://github.com/NVIDIA-Merlin/merlin-kv)
 
-![GitHub tag (latest SemVer)](https://img.shields.io/github/v/tag/NVIDIA-Merlin/merlin-kv?sort=semver)
-![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/merlin-kv)
+[![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/merlin-kv?color=orange)](https://github.com/NVIDIA-Merlin/merlin-kv/releases)
+[![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/merlin-kv)](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/LICENSE)
 [![Documentation](https://img.shields.io/badge/documentation-blue.svg)](https://nvidia-merlin.github.io/merlin-kv/master/README.html)
 
 ## About Merlin-KV
@@ -34,7 +34,7 @@ The library simplifies the common challenges to building, evaluating, and servin
 
 ## API Documentation
 
-Refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/README.html)
+Refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
 
 
 ## Contributors
@@ -46,7 +46,7 @@ and also open for public contributions, bug fixes, and documentation. [[Contribu
   
 Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
-```bash
+```shell
 git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
 cd merlin-kv && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
@@ -61,7 +61,7 @@ cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
 Your environment must meet the following requirements:
 
 - CUDA version >= 11.2
-- NVIDIA GPU with compute capbility 8.0, 8.6, or 8.7
+- NVIDIA GPU with compute capability 8.0, 8.6, or 8.7
 
 
 ## Benchmark
@@ -105,3 +105,12 @@ Your environment must meet the following requirements:
 | 128 |   536870912 |        0.75 |      56 |      200 |  0.041 | 0.040 |
 | 128 |   536870912 |        1.00 |      56 |      200 |  0.035 | 0.038 |
 
+### Support and Feedback:
+
+If you encounter any issues or have questions, go to [https://github.com/NVIDIA-Merlin/merlin-kv/issues](https://github.com/NVIDIA-Merlin/merlin-kv/issues) and submit an issue so that we can provide you with the necessary resolutions and answers.
+
+### Acknowledgment
+We are very grateful to external initial contributors [@Zhangyafei](https://github.com/zhangyafeikimi) and [@Lifan](https://github.com/Lifann) for their design, coding, and review work.
+
+### License
+Apache License 2.0
