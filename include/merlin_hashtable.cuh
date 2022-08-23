@@ -32,16 +32,13 @@ namespace merlin {
  * @brief The options struct of Merlin-KV.
  */
 struct HashTableOptions {
-  size_t init_capacity = 0;  ///< The initial capacity of the hash table.
-  size_t max_capacity = 0;   ///< The maximum capacity of the hash table.
-  size_t max_hbm_for_vectors =
-      0;  ///< The maximum HBM that is allocated for vectors, in bytes.
-  size_t max_bucket_size = 128;  ///< The length of each bucket.
-  float max_load_factor = 0.5f;  ///< The max load factor before rehashing.
-  int block_size = 1024;         ///< The default block size for CUDA kernels.
-  int device_id = 0;             ///< The ID of device.
-  bool primary =
-      true;  ///< This argument is not used and is reserved for future use.
+  size_t init_capacity = 0;        ///< The initial capacity of the hash table.
+  size_t max_capacity = 0;         ///< The maximum capacity of the hash table.
+  size_t max_hbm_for_vectors = 0;  ///< The maximum HBM for vectors, in bytes.
+  size_t max_bucket_size = 128;    ///< The length of each bucket.
+  float max_load_factor = 0.5f;    ///< The max load factor before rehashing.
+  int block_size = 1024;           ///< The default block size for CUDA kernels.
+  int device_id = 0;               ///< The ID of device.
 };
 
 /**
@@ -174,8 +171,7 @@ class HashTable {
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
     create_table<key_type, vector_type, meta_type, DIM>(
         &table_, options_.init_capacity, options_.max_capacity,
-        options_.max_hbm_for_vectors, options_.max_bucket_size,
-        options_.primary);
+        options_.max_hbm_for_vectors, options_.max_bucket_size);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
     initialized_ = true;
@@ -202,7 +198,8 @@ class HashTable {
    * such as the timestamp of the key insertion, number of the key
    * occurrences, or another value to perform a custom eviction strategy.
    *
-   * If `metas` is `nullptr`, the LRU eviction strategy is applied.
+   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * applied.
    * @endparblock
    *
    * @param stream The CUDA stream that is used to execute the operation.
@@ -330,13 +327,22 @@ class HashTable {
    * The algorithm assumes these situations occur while the key was modified or
    * removed by other processes just now.
    *
-   * @param n The number of key-value pairs to process.
+   * @param n The number of key-value-meta tuples to process.
    * @param keys The keys to insert on GPU-accessible memory with shape (n).
    * @param value_or_deltas The values or deltas to insert on GPU-accessible
    * memory with shape (n, DIM).
    * @param accum_or_assigns The operation type with shape (n). A value of
    * `true` indicates to accum and `false` indicates to assign.
    * @param metas The metas to insert on GPU-accessible memory with shape (n).
+   * @parblock
+   * The metas must be a `uint64_t` value. You can specify a value that
+   * such as the timestamp of the key insertion, number of the key
+   * occurrences, or another value to perform a custom eviction strategy.
+   *
+   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * applied.
+   * @endparblock
+   *
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
@@ -437,11 +443,17 @@ class HashTable {
    * @param founds The status that indicates if the keys are found on
    * GPU-accessible memory with shape (n).
    * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
-  void find(size_type n, const key_type* keys, value_type* values, bool* founds,
-            meta_type* metas = nullptr, cudaStream_t stream = 0) const {
+  void find(size_type n, const key_type* keys,  // (n)
+            value_type* values,                 // (n, DIM)
+            bool* founds,                       // (n)
+            meta_type* metas = nullptr,         // (n)
+            cudaStream_t stream = 0) const {
     if (n == 0) {
       return;
     }
@@ -556,8 +568,8 @@ class HashTable {
    * @brief Erases all elements that satisfy the predicate `pred` from the
    * hash table.
    *
-   * The value for `pred` should be a function defined like the following
-   * example:
+   * The value for `pred` should be a function with type `Pred` defined like the
+   * following example:
    *
    *    ```
    *    template <class K, class M>
@@ -569,8 +581,8 @@ class HashTable {
    *    }
    *    ```
    *
-   * @param pred The predicate function that returns `true` if the element
-   * should be erased.
+   * @param pred The predicate function with type `Pred` that returns `true` if
+   * the element should be erased.
    * @param pattern The third user-defined argument to `pred` with key_type
    * type.
    * @param threshold The fourth user-defined argument to `pred` with meta_type
@@ -643,6 +655,10 @@ class HashTable {
    * @param values The values to dump from GPU-accessible memory with shape
    * (n, DIM).
    * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * @endparblock
+   *
    * @param stream The CUDA stream that is used to execute the operation.
    *
    * @return The number of elements dumped.
