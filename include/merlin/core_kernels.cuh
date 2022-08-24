@@ -511,15 +511,15 @@ __global__ void read_kernel(const V* const* __restrict src, V* __restrict dst,
 }
 
 /* Read the N data from src to each address in *dst,
-   usually called by upsert kernel.
-
-   `src`: A pointer of pointer of V which should be on HBM,
-          but each value (a pointer of V) could point to a
-          memory on HBM or HMEM.
-   `dst`: A continue memory pointer with Vector
-          which should be HBM.
-   `N`: Number of vectors needed to be read.
-*/
+ *  usually called by upsert kernel.
+ *
+ *  `src`: A pointer of pointer of V which should be on HBM,
+ *         but each value (a pointer of V) could point to a
+ *         memory on HBM or HMEM.
+ *  `dst`: A continue memory pointer with Vector
+ *         which should be HBM.
+ *  `N`: Number of vectors needed to be read.
+ */
 template <class K, class V, class M, size_t DIM>
 __global__ void read_kernel(V** __restrict src, V* __restrict dst,
                             const int* __restrict dst_offset, size_t N) {
@@ -537,6 +537,9 @@ __global__ void read_kernel(V** __restrict src, V* __restrict dst,
   }
 }
 
+/* Upsert with IO operation. This kernel is
+ * usually used for the pure HBM mode for better performance
+ */
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void upsert_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
@@ -610,6 +613,9 @@ __global__ void upsert_kernel_with_io(
   }
 }
 
+/* Upsert with IO operation. This kernel is
+ * usually used for the pure HBM mode for better performance.
+ */
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void upsert_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
@@ -687,6 +693,8 @@ __global__ void upsert_kernel_with_io(
   }
 }
 
+/* Upsert with the end-user specified meta.
+ */
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,
@@ -935,6 +943,8 @@ __global__ void accum_kernel(
   }
 }
 
+/* Accum kernel with customized metas.
+ */
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void accum_kernel(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
@@ -1017,6 +1027,9 @@ __global__ void accum_kernel(
   }
 }
 
+/* lookup with IO operation. This kernel is
+ * usually used for the pure HBM mode for better performance.
+ */
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void lookup_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
@@ -1081,6 +1094,8 @@ __global__ void lookup_kernel_with_io(
   }
 }
 
+/* lookup kernel.
+ */
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void lookup_kernel(const Table<K, V, M, DIM>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,

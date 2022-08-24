@@ -10,10 +10,11 @@ Follow the instructions below to be able to build the docs.
 1. Install required documentation tools and extensions:
 
 ```shell
+sudo apt-get install doxygen
 pip install -r docs/requirements-doc.txt
 ```
 
-1. Build the documentation:
+2. Build the documentation:
 
 `make -C docs clean html`
 
