@@ -23,22 +23,25 @@ When building large recommender systems, machine learning (ML) engineers face th
 
 Merlin-KV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:
 
-- Supports training large RecSys models on HBM and host memory at the same time.
-- Provides better performance by bypassing CPUs and reducing the communication workload.
-- Implements model-size restraint strategies that are based on timestamp or occurrences.
-  The strategies are implemented by CUDA kernels and are customizable.
+- Supports training large RecSys models on **HBM and host memory** at the same time.
+- Provides better performance by **full bypassing CPUs** and reducing the communication workload.
+- Implements table-size restraint strategies that are based on **LRU or customized strategies**.
+  The strategies are implemented by CUDA kernels.
 - Operates at a high working-status load factor that is close to 1.0.
 
-Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of search, recommendations, and advertising.
+Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of ***search, recommendations, and advertising***.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.
 
 ## API Documentation
 
-- `class HashTable`: [Code](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L101), [API doc](https://nvidia-merlin.github.io/merlin-kv/master/api/classnv_1_1merlin_1_1HashTable.html#exhale-class-classnv-1-1merlin-1-1hashtable)
-- `struct HashTableOptions`: [Code](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L34), [API doc](https://nvidia-merlin.github.io/merlin-kv/master/api/structnv_1_1merlin_1_1HashTableOptions.html#exhale-struct-structnv-1-1merlin-1-1hashtableoptions)
-- `Struct HashTable::Vector`: [Code](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106), [API doc](https://nvidia-merlin.github.io/merlin-kv/master/api/structnv_1_1merlin_1_1HashTable_1_1Vector.html#exhale-struct-structnv-1-1merlin-1-1hashtable-1-1vector)
+The main classes and structs are below, and it's recommended to read the comments in the source code directly:
 
-For more detail, please refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
+- [`class HashTable`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L101)
+- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106)
+- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L34)
+- [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106)
+
+For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
 
 
 ## Contributors
@@ -72,7 +75,7 @@ Your environment must meet the following requirements:
 
 * GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0
 * Key Type = uint64_t
-* Value Type = float32 * dim
+* Value Type = float32 * {dim}
 * Key-Values per OP = 1,048,576
 * ***Throughput Unit: Billion-KV/second***
 

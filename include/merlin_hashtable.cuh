@@ -62,14 +62,11 @@ struct HashTableOptions {
 };
 
 /**
- * @brief A function template that erases keys from the hash table if the
- * key matches the specified pattern.
+ * @brief A customizable template function indicates which keys should be
+ * erased from the hash table by returning `true`.
  *
- * You can use this function to implement custom and flexible erase (or evict)
- * strategies.
- *
- * The `erase_if` traverses all of the items by this function and the items
- * that return `true` are removed.
+ * @note The `erase_if` API traverses all of the items by this function and the
+ * items that return `true` are removed.
  *
  *  Example:
  *
@@ -97,24 +94,22 @@ using EraseIfPredict = bool (*)(
  * powered by GPUs and can use HBM and host memory as storage for key-value
  * pairs. Support for SSD storage is a future consideration.
  *
- * Eviction occurs automatically when a hash table is almost full.
- * The class has a `meta` concept to help implement it. The keys with the
- * minimum `meta` value are evicted first. We recommend using the timestamp or
- * frequency of the key occurrence as the `meta` value for each key. You can
- * assign values to the `meta` value that have a different meaning to perform
- * a customized eviction strategy.
+ * The `meta` is introduced to define the importance of each key, the
+ * larger, the more important, the less likely they will be evicted. Eviction
+ * occurs automatically when a bucket is full. The keys with the minimum `meta`
+ * value are evicted first. In a customized eviction strategy, we recommend
+ * using the timestamp or frequency of the key occurrence as the `meta` value
+ * for each key. You can also assign a special value to the `meta` to
+ * perform a customized eviction strategy.
  *
- * @note This class supports concurrent `insert_or_assign`, but does not support
- * concurrent `insert_or_assign` with `find`. The `insert_or_assign` performs an
- * insert or update if the key already exists.
+ * @note By default configuration, this class is thread-safe.
  *
  * @tparam K The data type of the key.
  * @tparam V The data type of the vector's item type.
  *         The item data type should be a basic data type of C++/CUDA.
  * @tparam M The data type for `meta`.
- *           The currently supported data type is `uint64_t`.
+ *           The currently supported data type is only `uint64_t`.
  * @tparam D The dimension of the vectors.
- *
  *
  */
 template <class K, class V, class M, size_t D>
@@ -194,8 +189,8 @@ class HashTable {
    * If the key already exists, the values and metas are assigned new values.
    *
    * If the target bucket is full, the keys with minimum meta will be
-   * overwritten. If the meta of the new key is even less than minimum meta of
-   * the target bucket, it will not be inserted.
+   * overwritten by new key unless the meta of the new key is even less than
+   * minimum meta of the target bucket.
    *
    * @param n Number of key-value-meta tuples to inserted or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
@@ -323,17 +318,17 @@ class HashTable {
   }
 
   /**
-   * Searches for each key in `keys` in the hash table.
-   * If the key is found and the corresponding value in `accum_or_assigns` is
-   * `true`, the `vectors_or_deltas` is treated as a delta to the old
+   * Searches for each key in @p keys in the hash table.
+   * If the key is found and the corresponding value in @p accum_or_assigns is
+   * `true`, the @p vectors_or_deltas is treated as a delta to the old
    * value, and the delta is added to the old value of the key.
    *
-   * If the key is not found and the corresponding value in `accum_or_assigns`
-   * is `false`, the `vectors_or_deltas` is treated as a new value and the
+   * If the key is not found and the corresponding value in @p accum_or_assigns
+   * is `false`, the @p vectors_or_deltas is treated as a new value and the
    * key-value pair is updated in the table directly.
    *
-   * @note When the key is found and the value of `accum_or_assigns` is
-   * `false`, or when the key is not found and the value of `accum_or_assigns`
+   * @note When the key is found and the value of @p accum_or_assigns is
+   * `false`, or when the key is not found and the value of @p accum_or_assigns
    * is `true`, nothing is changed and this operation is ignored.
    * The algorithm assumes these situations occur while the key was modified or
    * removed by other processes just now.
@@ -445,7 +440,7 @@ class HashTable {
   /**
    * @brief Searches the hash table for the specified keys.
    *
-   * @note When a key is missing, the value in `values` is not changed.
+   * @note When a key is missing, the value in @p values is not changed.
    *
    * @param n The number of key-value-meta tuples to search.
    * @param keys The keys to search on GPU-accessible memory with shape (n).
@@ -576,11 +571,11 @@ class HashTable {
   }
 
   /**
-   * @brief Erases all elements that satisfy the predicate `pred` from the
+   * @brief Erases all elements that satisfy the predicate @p pred from the
    * hash table.
    *
-   * The value for `pred` should be a function with type `Pred` defined like the
-   * following example:
+   * The value for @p pred should be a function with type `Pred` defined like
+   * the following example:
    *
    *    ```
    *    template <class K, class M>
@@ -592,11 +587,11 @@ class HashTable {
    *    }
    *    ```
    *
-   * @param pred The predicate function with type `Pred` that returns `true` if
+   * @param pred The predicate function with type Pred that returns `true` if
    * the element should be erased.
-   * @param pattern The third user-defined argument to `pred` with key_type
+   * @param pattern The third user-defined argument to @p pred with key_type
    * type.
-   * @param threshold The fourth user-defined argument to `pred` with meta_type
+   * @param threshold The fourth user-defined argument to @p pred with meta_type
    * type.
    * @param stream The CUDA stream that is used to execute the operation.
    *
@@ -675,7 +670,7 @@ class HashTable {
    * @return The number of elements dumped.
    *
    * @throw CudaException If the key-value size is too large for GPU shared
-   * memory. Reducing the value for `n` is currently required if this exception
+   * memory. Reducing the value for @p n is currently required if this exception
    * occurs.
    */
   void export_batch(size_type n, size_type offset, size_type* d_counter,
@@ -779,14 +774,14 @@ class HashTable {
 
   /**
    * @brief Sets the number of buckets to the number that is needed to
-   * accomodate at least `new_capacity` elements without exceeding the maximum
-   * load factor. This method rehashes the hash table. Rehasing puts the
+   * accommodate at least @p new_capacity elements without exceeding the maximum
+   * load factor. This method rehashes the hash table. Rehashing puts the
    * elements into the appropriate buckets considering that total number of
    * buckets has changed.
    *
-   * @note If the value of `new_capacity` or double of `new_capacity` is greater
-   * or equal than `options_.max_capacity`, the reserve does not perform any
-   * change to the hash table.
+   * @note If the value of @p new_capacity or double of @p new_capacity is
+   * greater or equal than `options_.max_capacity`, the reserve does not perform
+   * any change to the hash table.
    *
    * @param new_capacity The requested capacity for the hash table.
    * @param stream The CUDA stream that is used to execute the operation.
@@ -984,7 +979,7 @@ class HashTable {
   /**
    * @brief Returns the load factor by sampling up to 1024 buckets.
    *
-   * @notice For performance consideration, the returned load factor is
+   * @note For performance consideration, the returned load factor is
    * inaccurate but within an error in 1% empirically which is enough for
    * capacity control. But it's not suitable for end-users.
    *

@@ -133,9 +133,9 @@ html_css_files = [ "css/custom.css" ]
 source_suffix = [".rst", ".md"]
 
 breathe_projects = {
-    "Merlin Key-Value": "/tmp/doxygen/xml"
+    "Merlin-KV": "/tmp/doxygen/xml"
 }
-breathe_default_project = "Merlin Key-Value"
+breathe_default_project = "Merlin-KV"
 
 exhale_args = {
     "containmentFolder": "./api",

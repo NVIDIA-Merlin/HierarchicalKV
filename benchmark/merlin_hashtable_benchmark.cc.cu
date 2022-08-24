@@ -249,7 +249,7 @@ int main() {
        << "* GPU: 1 x " << props.name << ": " << props.major << "."
        << props.minor << endl
        << "* Key Type = uint64_t" << endl
-       << "* Value Type = float32 * dim" << endl
+       << "* Value Type = float32 * {dim}" << endl
        << "* Key-Values per OP = " << key_num_per_op << endl
        << "* ***Throughput Unit: Billion-KV/second***" << endl
        << endl
