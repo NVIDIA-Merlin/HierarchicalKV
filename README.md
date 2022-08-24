@@ -6,9 +6,9 @@
 
 ## About Merlin-KV
 
-Merlin Key-Value is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
+Merlin-KV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
 
-The key capability of Merlin-KV is to store key-value feature-embeddings on high-bandwidth memory (HBM) of GPUs and in host memory.
+The key capability of Merlin-KV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.
 
 You can also use the library for generic key-value storage.
 
@@ -34,7 +34,11 @@ The library simplifies the common challenges to building, evaluating, and servin
 
 ## API Documentation
 
-Refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
+- `class HashTable`: [Code](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L101), [API doc](https://nvidia-merlin.github.io/merlin-kv/master/api/classnv_1_1merlin_1_1HashTable.html#exhale-class-classnv-1-1merlin-1-1hashtable)
+- `struct HashTableOptions`: [Code](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L34), [API doc](https://nvidia-merlin.github.io/merlin-kv/master/api/structnv_1_1merlin_1_1HashTableOptions.html#exhale-struct-structnv-1-1merlin-1-1hashtableoptions)
+- `Struct HashTable::Vector`: [Code](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106), [API doc](https://nvidia-merlin.github.io/merlin-kv/master/api/structnv_1_1merlin_1_1HashTable_1_1Vector.html#exhale-struct-structnv-1-1merlin-1-1hashtable-1-1vector)
+
+For more detail, please refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
 
 
 ## Contributors
@@ -43,7 +47,7 @@ Merlin-KV is co-maintianed by [NVIDIA Merlin Team](https://github.com/NVIDIA-Mer
 and also open for public contributions, bug fixes, and documentation. [[Contribute](CONTRIBUTING.md)]
 
 ## How to build
-  
+
 Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
 ```shell

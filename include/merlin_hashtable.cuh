@@ -30,6 +30,24 @@ namespace nv {
 namespace merlin {
 
 /**
+ * @brief Enumeration of the eviction strategies.
+ *
+ * @note The `meta` is introduced to define the importance of each key, the
+ * larger, the more important, the less likely they will be evicted. On `kLru`
+ * mode, the `metas` parameter of the APIs should keep `nullptr`, the meta for
+ * each key is assigned internally in LRU(Least Recently Used) policy. On
+ * `kCustomized` mode, the `metas` should be provided by caller.
+ *
+ * @note Eviction occurs automatically when a bucket is full. The keys with the
+ * minimum `meta` value are evicted first.
+ *
+ */
+enum class EvictStrategy {
+  kLru = 0,        ///< LRU mode.
+  kCustomized = 1  ///< Customized mode.
+};
+
+/**
  * @brief The options struct of Merlin-KV.
  */
 struct HashTableOptions {
@@ -40,6 +58,7 @@ struct HashTableOptions {
   float max_load_factor = 0.5f;    ///< The max load factor before rehashing.
   int block_size = 1024;           ///< The default block size for CUDA kernels.
   int device_id = 0;               ///< The ID of device.
+  EvictStrategy evict_strategy = EvictStrategy::kLru;  ///< The evict strategy.
 };
 
 /**
@@ -123,15 +142,6 @@ class HashTable {
   using TableCore = nv::merlin::Table<key_type, vector_type, meta_type, DIM>;
   static constexpr unsigned int TILE_SIZE = 8;
 
-  /**
-   * @brief Enumeration of the eviction strategies.
-   */
-  enum class EvictStrategy {
-    kUndefined = 0,  ///< undefined.
-    kLru = 1,        ///< kLru mode.
-    kCustomized = 2  ///< Customized mode.
-  };
-
  public:
   /**
    * @brief Default constructor for the hash table class.
@@ -195,7 +205,7 @@ class HashTable {
    * @param metas The metas to insert on GPU-accessible memory with shape
    * (n).
    * @parblock
-   * The metas must be a `uint64_t` value. You can specify a value that
+   * The metas should be a `uint64_t` value. You can specify a value that
    * such as the timestamp of the key insertion, number of the key
    * occurrences, or another value to perform a custom eviction strategy.
    *
@@ -219,7 +229,7 @@ class HashTable {
       reserve(capacity() * 2);
     }
 
-    evict_strategy_check(metas);
+    check_evict_strategy(metas);
 
     if (is_fast_mode()) {
       const size_t block_size = 128;
@@ -280,7 +290,7 @@ class HashTable {
       {
         static_assert(sizeof(value_type*) == sizeof(uint64_t),
                       "[merlin-kv] illegal conversation. value_type pointer "
-                      "must be 64 bit!");
+                      "should be 64 bit!");
 
         const size_t N = n;
         thrust::device_ptr<uint64_t> d_dst_ptr(
@@ -336,7 +346,7 @@ class HashTable {
    * `true` indicates to accum and `false` indicates to assign.
    * @param metas The metas to insert on GPU-accessible memory with shape (n).
    * @parblock
-   * The metas must be a `uint64_t` value. You can specify a value that
+   * The metas should be a `uint64_t` value. You can specify a value that
    * such as the timestamp of the key insertion, number of the key
    * occurrences, or another value to perform a custom eviction strategy.
    *
@@ -361,7 +371,7 @@ class HashTable {
       reserve(capacity() * 2);
     }
 
-    evict_strategy_check(metas);
+    check_evict_strategy(metas);
 
     vector_type** dst;
     int* src_offset;
@@ -1006,21 +1016,16 @@ class HashTable {
                               (options_.max_bucket_size * N * 1.0));
   }
 
-  inline void evict_strategy_check(const meta_type* metas) {
-    if (evict_strategy_ == EvictStrategy::kUndefined) {
-      evict_strategy_ =
-          metas == nullptr ? EvictStrategy::kLru : EvictStrategy::kCustomized;
-    }
-
-    if (evict_strategy_ == EvictStrategy::kLru) {
+  inline void check_evict_strategy(const meta_type* metas) {
+    if (options_.evict_strategy == EvictStrategy::kLru) {
       MERLIN_CHECK((metas == nullptr),
-                   "the metas should not be specified when already running on "
+                   "the metas should not be specified when running on "
                    "LRU mode.");
     }
 
-    if (evict_strategy_ == EvictStrategy::kCustomized) {
+    if (options_.evict_strategy == EvictStrategy::kCustomized) {
       MERLIN_CHECK((metas != nullptr),
-                   "the metas should be specified when already running on "
+                   "the metas should be specified when running on "
                    "customized mode.")
     }
   }
@@ -1031,7 +1036,6 @@ class HashTable {
   size_t shared_mem_size_ = 0;
   bool reach_max_capacity_ = false;
   bool initialized_ = false;
-  EvictStrategy evict_strategy_ = EvictStrategy::kUndefined;
   mutable std::shared_timed_mutex mutex_;
 };
 
