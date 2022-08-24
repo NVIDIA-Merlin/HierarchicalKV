@@ -150,6 +150,7 @@ int test_basic() {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.max_hbm_for_vectors = nv::merlin::GB(16);
+  options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
@@ -304,6 +305,7 @@ int test_erase_if_pred() {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.max_hbm_for_vectors = nv::merlin::GB(16);
+  options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
@@ -426,6 +428,7 @@ int test_rehash() {
   options.max_capacity = MAX_CAPACITY;
   options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(16);
+  options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
@@ -556,6 +559,7 @@ int test_dynamic_rehash_on_multi_threads() {
   options.max_load_factor = 0.50f;
   options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(16);
+  options.evict_strategy = nv::merlin::EvictStrategy::kLru;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);

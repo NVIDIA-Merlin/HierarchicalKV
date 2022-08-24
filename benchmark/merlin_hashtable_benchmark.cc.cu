@@ -36,6 +36,8 @@ using std::setfill;
 using std::setprecision;
 using std::setw;
 
+using namespace nv::merlin;
+
 uint64_t getTimestamp() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::system_clock::now().time_since_epoch())
@@ -103,6 +105,7 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
   options.init_capacity = init_capacity;
   options.max_capacity = init_capacity;
   options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
+  options.evict_strategy = EvictStrategy::kCustomized;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
