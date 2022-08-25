@@ -23,7 +23,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Typedef nv::merlin::EraseIfPredict" href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html" />
+    <link rel="next" title="Enum EvictStrategy" href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" />
     <link rel="prev" title="Struct HashTableOptions" href="structnv_1_1merlin_1_1HashTableOptions.html" /> 
 </head>
 
@@ -98,17 +98,17 @@
 <dt id="_CPPv4I000_6size_tEN2nv6merlin9HashTableE">
 <span id="_CPPv3I000_6size_tEN2nv6merlin9HashTableE"></span><span id="_CPPv2I000_6size_tEN2nv6merlin9HashTableE"></span><span class="pre">template&lt;</span><span class="pre">class</span> <code class="sig-name descname"><span class="pre">K</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">V</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">M</span></code><span class="pre">,</span> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">D</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1HashTable"></span><em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">HashTable</span></code><a class="headerlink" href="#_CPPv4I000_6size_tEN2nv6merlin9HashTableE" title="Permalink to this definition"></a><br /></dt>
 <dd><p>A Merlin-KV hash table is a concurrent and hierarchical hash table that is powered by GPUs and can use HBM and host memory as storage for key-value pairs. Support for SSD storage is a future consideration.</p>
-<p>Eviction occurs automatically when a hash table is almost full. The class has a <code class="docutils literal notranslate"><span class="pre">meta</span></code> concept to help implement it. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">meta</span></code> value are evicted first. We recommend using the timestamp or frequency of the key occurrence as the <code class="docutils literal notranslate"><span class="pre">meta</span></code> value for each key. You can assign values to the <code class="docutils literal notranslate"><span class="pre">meta</span></code> value that have a different meaning to perform a customized eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">meta</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">meta</span></code> value are evicted first. In a customized eviction strategy, we recommend using the timestamp or frequency of the key occurrence as the <code class="docutils literal notranslate"><span class="pre">meta</span></code> value for each key. You can also assign a special value to the <code class="docutils literal notranslate"><span class="pre">meta</span></code> to perform a customized eviction strategy.</p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>This class supports concurrent <code class="docutils literal notranslate"><span class="pre">insert_or_assign</span></code>, but does not support concurrent <code class="docutils literal notranslate"><span class="pre">insert_or_assign</span></code> with <code class="docutils literal notranslate"><span class="pre">find</span></code>. The <code class="docutils literal notranslate"><span class="pre">insert_or_assign</span></code> performs an insert or update if the key already exists.</p>
+<p>By default configuration, this class is thread-safe.</p>
 </div>
 <dl class="field-list simple">
 <dt class="field-odd">Template Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>K</strong> – The data type of the key. </p></li>
 <li><p><strong>V</strong> – The data type of the vector’s item type. The item data type should be a basic data type of C++/CUDA. </p></li>
-<li><p><strong>M</strong> – The data type for <code class="docutils literal notranslate"><span class="pre">meta</span></code>. The currently supported data type is <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>. </p></li>
+<li><p><strong>M</strong> – The data type for <code class="docutils literal notranslate"><span class="pre">meta</span></code>. The currently supported data type is only <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>. </p></li>
 <li><p><strong>D</strong> – The dimension of the vectors. </p></li>
 </ul>
 </dd>
@@ -175,14 +175,14 @@
 <dt id="_CPPv4N2nv6merlin9HashTable16insert_or_assignE9size_typePK8key_typePK10value_typePK9meta_type12cudaStream_t">
 <span id="_CPPv3N2nv6merlin9HashTable16insert_or_assignE9size_typePK8key_typePK10value_typePK9meta_type12cudaStream_t"></span><span id="_CPPv2N2nv6merlin9HashTable16insert_or_assignE9size_typePK8key_typePK10value_typePK9meta_type12cudaStream_t"></span><span id="nv::merlin::HashTable::insert_or_assign__size_type.key_typeCP.value_typeCP.meta_typeCP.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a9844d879aaa8771bf8fd0645f03eddc4"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">insert_or_assign</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable10value_typeE" title="nv::merlin::HashTable::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9meta_typeE" title="nv::merlin::HashTable::meta_type"><span class="pre">meta_type</span></a> <span class="pre">*</span><em><span class="pre">metas</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin9HashTable16insert_or_assignE9size_typePK8key_typePK10value_typePK9meta_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
 <dd><p>Insert new key-value-meta tuples into the hash table. If the key already exists, the values and metas are assigned new values. </p>
-<p>If the target bucket is full, the keys with minimum meta will be overwritten. If the meta of the new key is even less than minimum meta of the target bucket, it will not be inserted.</p>
+<p>If the target bucket is full, the keys with minimum meta will be overwritten by new key unless the meta of the new key is even less than minimum meta of the target bucket.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>n</strong> – Number of key-value-meta tuples to inserted or assign. </p></li>
 <li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>values</strong> – The values to insert on GPU-accessible memory with shape (n, DIM). </p></li>
-<li><p><strong>metas</strong> – The metas to insert on GPU-accessible memory with shape (n). <p>The metas must be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
+<li><p><strong>metas</strong> – The metas to insert on GPU-accessible memory with shape (n). <p>The metas should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
@@ -207,7 +207,7 @@
 <li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>value_or_deltas</strong> – The values or deltas to insert on GPU-accessible memory with shape (n, DIM). </p></li>
 <li><p><strong>accum_or_assigns</strong> – The operation type with shape (n). A value of <code class="docutils literal notranslate"><span class="pre">true</span></code> indicates to accum and <code class="docutils literal notranslate"><span class="pre">false</span></code> indicates to assign. </p></li>
-<li><p><strong>metas</strong> – The metas to insert on GPU-accessible memory with shape (n). <p>The metas must be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
+<li><p><strong>metas</strong> – The metas to insert on GPU-accessible memory with shape (n). <p>The metas should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
@@ -275,7 +275,7 @@
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>pred</strong> – The predicate function with type <code class="docutils literal notranslate"><span class="pre">Pred</span></code> that returns <code class="docutils literal notranslate"><span class="pre">true</span></code> if the element should be erased. </p></li>
+<li><p><strong>pred</strong> – The predicate function with type Pred that returns <code class="docutils literal notranslate"><span class="pre">true</span></code> if the element should be erased. </p></li>
 <li><p><strong>pattern</strong> – The third user-defined argument to <code class="docutils literal notranslate"><span class="pre">pred</span></code> with key_type type. </p></li>
 <li><p><strong>threshold</strong> – The fourth user-defined argument to <code class="docutils literal notranslate"><span class="pre">pred</span></code> with meta_type type. </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
@@ -369,7 +369,7 @@
 <dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin9HashTable7reserveE9size_type12cudaStream_t">
 <span id="_CPPv3N2nv6merlin9HashTable7reserveE9size_type12cudaStream_t"></span><span id="_CPPv2N2nv6merlin9HashTable7reserveE9size_type12cudaStream_t"></span><span id="nv::merlin::HashTable::reserve__size_type.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a242d0fd45f21b76bf40ee4b5575116bb"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">reserve</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">new_capacity</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin9HashTable7reserveE9size_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Sets the number of buckets to the number that is needed to accomodate at least <code class="docutils literal notranslate"><span class="pre">new_capacity</span></code> elements without exceeding the maximum load factor. This method rehashes the hash table. Rehasing puts the elements into the appropriate buckets considering that total number of buckets has changed. </p>
+<dd><p>Sets the number of buckets to the number that is needed to accommodate at least <code class="docutils literal notranslate"><span class="pre">new_capacity</span></code> elements without exceeding the maximum load factor. This method rehashes the hash table. Rehashing puts the elements into the appropriate buckets considering that total number of buckets has changed. </p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
 <p>If the value of <code class="docutils literal notranslate"><span class="pre">new_capacity</span></code> or double of <code class="docutils literal notranslate"><span class="pre">new_capacity</span></code> is greater or equal than <code class="docutils literal notranslate"><span class="pre">options_.max_capacity</span></code>, the reserve does not perform any change to the hash table.</p>
@@ -483,7 +483,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="structnv_1_1merlin_1_1HashTableOptions.html" class="btn btn-neutral float-left" title="Struct HashTableOptions" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html" class="btn btn-neutral float-right" title="Typedef nv::merlin::EraseIfPredict" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" class="btn btn-neutral float-right" title="Enum EvictStrategy" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

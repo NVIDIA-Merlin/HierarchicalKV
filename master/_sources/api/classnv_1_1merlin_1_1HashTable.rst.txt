@@ -21,7 +21,7 @@ Class Documentation
 
 
 .. doxygenclass:: nv::merlin::HashTable
-   :project: Merlin Key-Value
+   :project: Merlin-KV
    :members:
    :protected-members:
    :undoc-members:

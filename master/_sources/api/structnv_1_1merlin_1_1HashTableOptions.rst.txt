@@ -11,7 +11,7 @@ Struct Documentation
 
 
 .. doxygenstruct:: nv::merlin::HashTableOptions
-   :project: Merlin Key-Value
+   :project: Merlin-KV
    :members:
    :protected-members:
    :undoc-members:

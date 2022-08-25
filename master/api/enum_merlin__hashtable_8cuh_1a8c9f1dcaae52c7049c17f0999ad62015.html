@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Namespace nv::merlin &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <title>Enum EvictStrategy &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
       <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
@@ -23,8 +23,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Struct HashTable::Vector" href="structnv_1_1merlin_1_1HashTable_1_1Vector.html" />
-    <link rel="prev" title="Namespace nv" href="namespace_nv.html" /> 
+    <link rel="next" title="Typedef nv::merlin::EraseIfPredict" href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html" />
+    <link rel="prev" title="Template Class HashTable" href="classnv_1_1merlin_1_1HashTable.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -69,7 +69,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
           <li><a href="index.html">Merlin-KV C++ API Documentation</a> &raquo;</li>
-      <li>Namespace nv::merlin</li>
+      <li>Enum EvictStrategy</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -78,35 +78,40 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <div class="section" id="namespace-nv-merlin">
-<span id="id1"></span><h1>Namespace nv::merlin<a class="headerlink" href="#namespace-nv-merlin" title="Permalink to this headline"></a></h1>
-<div class="contents local topic" id="contents">
-<p class="topic-title">Contents</p>
+  <div class="section" id="enum-evictstrategy">
+<span id="exhale-enum-merlin-hashtable-8cuh-1a8c9f1dcaae52c7049c17f0999ad62015"></span><h1>Enum EvictStrategy<a class="headerlink" href="#enum-evictstrategy" title="Permalink to this headline"></a></h1>
 <ul class="simple">
-<li><p><a class="reference internal" href="#classes" id="id2">Classes</a></p></li>
-<li><p><a class="reference internal" href="#enums" id="id3">Enums</a></p></li>
-<li><p><a class="reference internal" href="#typedefs" id="id4">Typedefs</a></p></li>
+<li><p>Defined in <a class="reference internal" href="file_merlin_hashtable.cuh.html#file-merlin-hashtable-cuh"><span class="std std-ref">File merlin_hashtable.cuh</span></a></p></li>
 </ul>
+<div class="section" id="enum-documentation">
+<h2>Enum Documentation<a class="headerlink" href="#enum-documentation" title="Permalink to this headline"></a></h2>
+<dl class="cpp enum-class">
+<dt id="_CPPv4N2nv6merlin13EvictStrategyE">
+<span id="_CPPv3N2nv6merlin13EvictStrategyE"></span><span id="_CPPv2N2nv6merlin13EvictStrategyE"></span><span class="target" id="merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015"></span><em class="property"><span class="pre">enum</span> <span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">EvictStrategy</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategyE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Enumeration of the eviction strategies. </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">meta</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. On <code class="docutils literal notranslate"><span class="pre">kLru</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">metas</span></code> parameter of the APIs should keep <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the meta for each key is assigned internally in LRU(Least Recently Used) policy. On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be provided by caller.</p>
 </div>
-<div class="section" id="classes">
-<h2>Classes<a class="headerlink" href="#classes" title="Permalink to this headline"></a></h2>
-<ul class="simple">
-<li><p><a class="reference internal" href="structnv_1_1merlin_1_1HashTable_1_1Vector.html#exhale-struct-structnv-1-1merlin-1-1hashtable-1-1vector"><span class="std std-ref">Struct HashTable::Vector</span></a></p></li>
-<li><p><a class="reference internal" href="structnv_1_1merlin_1_1HashTableOptions.html#exhale-struct-structnv-1-1merlin-1-1hashtableoptions"><span class="std std-ref">Struct HashTableOptions</span></a></p></li>
-<li><p><a class="reference internal" href="classnv_1_1merlin_1_1HashTable.html#exhale-class-classnv-1-1merlin-1-1hashtable"><span class="std std-ref">Template Class HashTable</span></a></p></li>
-</ul>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">meta</span></code> value are evicted first. </p>
 </div>
-<div class="section" id="enums">
-<h2>Enums<a class="headerlink" href="#enums" title="Permalink to this headline"></a></h2>
-<ul class="simple">
-<li><p><a class="reference internal" href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html#exhale-enum-merlin-hashtable-8cuh-1a8c9f1dcaae52c7049c17f0999ad62015"><span class="std std-ref">Enum EvictStrategy</span></a></p></li>
-</ul>
-</div>
-<div class="section" id="typedefs">
-<h2>Typedefs<a class="headerlink" href="#typedefs" title="Permalink to this headline"></a></h2>
-<ul class="simple">
-<li><p><a class="reference internal" href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html#exhale-typedef-merlin-hashtable-8cuh-1a75860344e3d48da549d33c7941686e7e"><span class="std std-ref">Typedef nv::merlin::EraseIfPredict</span></a></p></li>
-</ul>
+<p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy4kLruE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy4kLruE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy4kLruE"></span><span class="target" id="merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015a6fa602117fd270b7310b22c838ce9532"></span><em class="property"><span class="pre">enumerator</span> </em><code class="sig-name descname"><span class="pre">kLru</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy4kLruE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>LRU mode. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy11kCustomizedE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy11kCustomizedE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy11kCustomizedE"></span><span class="target" id="merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015aa7084af765c7ec7bb312fb8b2e615084"></span><em class="property"><span class="pre">enumerator</span> </em><code class="sig-name descname"><span class="pre">kCustomized</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy11kCustomizedE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Customized mode. </p>
+</dd></dl>
+
+</dd></dl>
+
 </div>
 </div>
 
@@ -114,8 +119,8 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="namespace_nv.html" class="btn btn-neutral float-left" title="Namespace nv" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="structnv_1_1merlin_1_1HashTable_1_1Vector.html" class="btn btn-neutral float-right" title="Struct HashTable::Vector" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="classnv_1_1merlin_1_1HashTable.html" class="btn btn-neutral float-left" title="Template Class HashTable" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e.html" class="btn btn-neutral float-right" title="Typedef nv::merlin::EraseIfPredict" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
@@ -144,7 +149,7 @@
   <div class="rst-other-versions">
     <dl>
       <dt>Branches</dt>
-      <dd><a href="namespace_nv__merlin.html">master</a></dd>
+      <dd><a href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html">master</a></dd>
     </dl>
   </div>
 </div><script>

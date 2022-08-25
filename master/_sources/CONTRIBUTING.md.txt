@@ -2,7 +2,7 @@
 
 ## About Merlin-KV
 
-Merlin Key-Value is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
+Merlin-KV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
 
 The key capability of Merlin-KV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.
 
@@ -30,7 +30,7 @@ Refer to the [Style Guide](http://github.com/NVIDIA-Merlin/merlin-kv/STYLE_GUIDE
 
 In addition to the above requirements, contribution also needs to meet the following criteria:
 * The change needs to include unit tests and integration tests if any.
-* Each PR needs to provide necessary documentation or API comment for when and how to use it.
+* Each PR needs to provide necessary documentation for when and how to use it.
 
 ## Community
 

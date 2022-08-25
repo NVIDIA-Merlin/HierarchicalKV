@@ -87,8 +87,8 @@
 <a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/README.html"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue.svg" /></a></p>
 <div class="section" id="about-merlin-kv">
 <h2>About Merlin-KV<a class="headerlink" href="#about-merlin-kv" title="Permalink to this headline"></a></h2>
-<p>Merlin Key-Value is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.</p>
-<p>The key capability of Merlin-KV is to store key-value feature-embeddings on high-bandwidth memory (HBM) of GPUs and in host memory.</p>
+<p>Merlin-KV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.</p>
+<p>The key capability of Merlin-KV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.</p>
 <p>You can also use the library for generic key-value storage.</p>
 </div>
 <div class="section" id="benefits-of-merlin-kv">
@@ -102,18 +102,25 @@
 </ul>
 <p>Merlin-KV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:</p>
 <ul class="simple">
-<li><p>Supports training large RecSys models on HBM and host memory at the same time.</p></li>
-<li><p>Provides better performance by bypassing CPUs and reducing the communication workload.</p></li>
-<li><p>Implements model-size restraint strategies that are based on timestamp or occurrences.
-The strategies are implemented by CUDA kernels and are customizable.</p></li>
+<li><p>Supports training large RecSys models on <strong>HBM and host memory</strong> at the same time.</p></li>
+<li><p>Provides better performance by <strong>full bypassing CPUs</strong> and reducing the communication workload.</p></li>
+<li><p>Implements table-size restraint strategies that are based on <strong>LRU or customized strategies</strong>.
+The strategies are implemented by CUDA kernels.</p></li>
 <li><p>Operates at a high working-status load factor that is close to 1.0.</p></li>
 </ul>
-<p>Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of search, recommendations, and advertising.
+<p>Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of <em><strong>search, recommendations, and advertising</strong></em>.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.</p>
 </div>
 <div class="section" id="api-documentation">
 <h2>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline"></a></h2>
-<p>Refer to <a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/api/index.html">API Docs</a></p>
+<p>The main classes and structs are below, and it’s recommended to read the comments in the source code directly:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L101"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">HashTable</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">EvictStrategy</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L34"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">Struct</span> <span class="pre">HashTable::Vector</span></code></a></p></li>
+</ul>
+<p>For regular API doc, please refer to <a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/api/index.html">API Docs</a></p>
 </div>
 <div class="section" id="contributors">
 <h2>Contributors<a class="headerlink" href="#contributors" title="Permalink to this headline"></a></h2>
@@ -145,7 +152,7 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -DSM<span class="o">=</s
 <ul class="simple">
 <li><p>GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0</p></li>
 <li><p>Key Type = uint64_t</p></li>
-<li><p>Value Type = float32 * dim</p></li>
+<li><p>Value Type = float32 * {dim}</p></li>
 <li><p>Key-Values per OP = 1,048,576</p></li>
 <li><p><em><strong>Throughput Unit: Billion-KV/second</strong></em></p></li>
 </ul>

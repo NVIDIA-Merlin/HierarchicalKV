@@ -24,7 +24,7 @@
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Contributing" href="../CONTRIBUTING.html" />
-    <link rel="prev" title="Template Class HashTable" href="classnv_1_1merlin_1_1HashTable.html" /> 
+    <link rel="prev" title="Enum EvictStrategy" href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -88,10 +88,9 @@
 <dl class="cpp type">
 <dt id="_CPPv4I00EN2nv6merlin14EraseIfPredictE">
 <span id="_CPPv3I00EN2nv6merlin14EraseIfPredictE"></span><span id="_CPPv2I00EN2nv6merlin14EraseIfPredictE"></span><span class="pre">template&lt;</span><span class="pre">class</span> <code class="sig-name descname"><span class="pre">K</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">M</span></code><span class="pre">&gt;</span><br /><span class="target" id="merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e"></span><em class="property"><span class="pre">using</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">EraseIfPredict</span></code> <span class="pre">=</span> <span class="pre">bool</span> <span class="pre">(</span><span class="pre">*</span><span class="pre">)</span><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I00EN2nv6merlin14EraseIfPredictE" title="nv::merlin::EraseIfPredict::K"><span class="pre">K</span></a> <span class="pre">&amp;</span><span class="pre">key</span>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I00EN2nv6merlin14EraseIfPredictE" title="nv::merlin::EraseIfPredict::M"><span class="pre">M</span></a> <span class="pre">&amp;</span><span class="pre">meta</span>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I00EN2nv6merlin14EraseIfPredictE" title="nv::merlin::EraseIfPredict::K"><span class="pre">K</span></a> <span class="pre">&amp;</span><span class="pre">pattern</span>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I00EN2nv6merlin14EraseIfPredictE" title="nv::merlin::EraseIfPredict::M"><span class="pre">M</span></a> <span class="pre">&amp;</span><span class="pre">threshold</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I00EN2nv6merlin14EraseIfPredictE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>A function template that erases keys from the hash table if the key matches the specified pattern. </p>
-<p>You can use this function to implement custom and flexible erase (or evict) strategies.</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">erase_if</span></code> traverses all of the items by this function and the items that return <code class="docutils literal notranslate"><span class="pre">true</span></code> are removed.</p>
-<p>Example:</p>
+<dd><p>A customizable template function indicates which keys should be erased from the hash table by returning <code class="docutils literal notranslate"><span class="pre">true</span></code>. </p>
+<p>
+Example:</p>
 <p><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">K</span><span class="p">,</span> <span class="k">class</span> <span class="nc">M</span><span class="o">&gt;</span>
 <span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">erase_if_pred</span><span class="p">(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
                                               <span class="n">const</span> <span class="n">M</span><span class="o">&amp;</span> <span class="n">meta</span><span class="p">,</span>
@@ -103,6 +102,10 @@
 </pre></div>
 </div>
  </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">erase_if</span></code> API traverses all of the items by this function and the items that return <code class="docutils literal notranslate"><span class="pre">true</span></code> are removed.</p>
+</div>
 </dd></dl>
 
 </div>
@@ -112,7 +115,7 @@
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="classnv_1_1merlin_1_1HashTable.html" class="btn btn-neutral float-left" title="Template Class HashTable" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" class="btn btn-neutral float-left" title="Enum EvictStrategy" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="../CONTRIBUTING.html" class="btn btn-neutral float-right" title="Contributing" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

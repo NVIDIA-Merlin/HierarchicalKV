@@ -6,9 +6,9 @@
 
 ## About Merlin-KV
 
-Merlin Key-Value is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
+Merlin-KV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
 
-The key capability of Merlin-KV is to store key-value feature-embeddings on high-bandwidth memory (HBM) of GPUs and in host memory.
+The key capability of Merlin-KV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.
 
 You can also use the library for generic key-value storage.
 
@@ -23,18 +23,25 @@ When building large recommender systems, machine learning (ML) engineers face th
 
 Merlin-KV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:
 
-- Supports training large RecSys models on HBM and host memory at the same time.
-- Provides better performance by bypassing CPUs and reducing the communication workload.
-- Implements model-size restraint strategies that are based on timestamp or occurrences.
-  The strategies are implemented by CUDA kernels and are customizable.
+- Supports training large RecSys models on **HBM and host memory** at the same time.
+- Provides better performance by **full bypassing CPUs** and reducing the communication workload.
+- Implements table-size restraint strategies that are based on **LRU or customized strategies**.
+  The strategies are implemented by CUDA kernels.
 - Operates at a high working-status load factor that is close to 1.0.
 
-Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of search, recommendations, and advertising.
+Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of ***search, recommendations, and advertising***.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.
 
 ## API Documentation
 
-Refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
+The main classes and structs are below, and it's recommended to read the comments in the source code directly:
+
+- [`class HashTable`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L101)
+- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106)
+- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L34)
+- [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106)
+
+For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
 
 
 ## Contributors
@@ -43,7 +50,7 @@ Merlin-KV is co-maintianed by [NVIDIA Merlin Team](https://github.com/NVIDIA-Mer
 and also open for public contributions, bug fixes, and documentation. [[Contribute](CONTRIBUTING.md)]
 
 ## How to build
-  
+
 Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
 ```shell
@@ -68,7 +75,7 @@ Your environment must meet the following requirements:
 
 * GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0
 * Key Type = uint64_t
-* Value Type = float32 * dim
+* Value Type = float32 * {dim}
 * Key-Values per OP = 1,048,576
 * ***Throughput Unit: Billion-KV/second***
 

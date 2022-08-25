@@ -41,6 +41,11 @@ Program Listing for File merlin_hashtable.cuh
    namespace nv {
    namespace merlin {
    
+   enum class EvictStrategy {
+     kLru = 0,        
+     kCustomized = 1  
+   };
+   
    struct HashTableOptions {
      size_t init_capacity = 0;        
      size_t max_capacity = 0;         
@@ -49,6 +54,7 @@ Program Listing for File merlin_hashtable.cuh
      float max_load_factor = 0.5f;    
      int block_size = 1024;           
      int device_id = 0;               
+     EvictStrategy evict_strategy = EvictStrategy::kLru;  
    };
    
    template <class K, class M>
@@ -80,12 +86,6 @@ Program Listing for File merlin_hashtable.cuh
     private:
      using TableCore = nv::merlin::Table<key_type, vector_type, meta_type, DIM>;
      static constexpr unsigned int TILE_SIZE = 8;
-   
-     enum class EvictStrategy {
-       kUndefined = 0,  
-       kLru = 1,        
-       kCustomized = 2  
-     };
    
     public:
      HashTable(){};
@@ -135,7 +135,7 @@ Program Listing for File merlin_hashtable.cuh
          reserve(capacity() * 2);
        }
    
-       evict_strategy_check(metas);
+       check_evict_strategy(metas);
    
        if (is_fast_mode()) {
          const size_t block_size = 128;
@@ -196,7 +196,7 @@ Program Listing for File merlin_hashtable.cuh
          {
            static_assert(sizeof(value_type*) == sizeof(uint64_t),
                          "[merlin-kv] illegal conversation. value_type pointer "
-                         "must be 64 bit!");
+                         "should be 64 bit!");
    
            const size_t N = n;
            thrust::device_ptr<uint64_t> d_dst_ptr(
@@ -242,7 +242,7 @@ Program Listing for File merlin_hashtable.cuh
          reserve(capacity() * 2);
        }
    
-       evict_strategy_check(metas);
+       check_evict_strategy(metas);
    
        vector_type** dst;
        int* src_offset;
@@ -415,6 +415,7 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_t),
                                   cudaMemcpyDeviceToHost, stream));
        CUDA_CHECK(cudaFreeAsync(d_count, stream));
+       CUDA_CHECK(cudaStreamSynchronize(stream));
        CudaCheckError();
        return count;
      }
@@ -447,6 +448,7 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_t),
                                   cudaMemcpyDeviceToHost, stream));
        CUDA_CHECK(cudaFreeAsync(d_count, stream));
+       CUDA_CHECK(cudaStreamSynchronize(stream));
        CudaCheckError();
        return count;
      }
@@ -734,21 +736,16 @@ Program Listing for File merlin_hashtable.cuh
                                  (options_.max_bucket_size * N * 1.0));
      }
    
-     inline void evict_strategy_check(const meta_type* metas) {
-       if (evict_strategy_ == EvictStrategy::kUndefined) {
-         evict_strategy_ =
-             metas == nullptr ? EvictStrategy::kLru : EvictStrategy::kCustomized;
-       }
-   
-       if (evict_strategy_ == EvictStrategy::kLru) {
+     inline void check_evict_strategy(const meta_type* metas) {
+       if (options_.evict_strategy == EvictStrategy::kLru) {
          MERLIN_CHECK((metas == nullptr),
-                      "the metas should not be specified when already running on "
+                      "the metas should not be specified when running on "
                       "LRU mode.");
        }
    
-       if (evict_strategy_ == EvictStrategy::kCustomized) {
+       if (options_.evict_strategy == EvictStrategy::kCustomized) {
          MERLIN_CHECK((metas != nullptr),
-                      "the metas should be specified when already running on "
+                      "the metas should be specified when running on "
                       "customized mode.")
        }
      }
@@ -759,7 +756,6 @@ Program Listing for File merlin_hashtable.cuh
      size_t shared_mem_size_ = 0;
      bool reach_max_capacity_ = false;
      bool initialized_ = false;
-     EvictStrategy evict_strategy_ = EvictStrategy::kUndefined;
      mutable std::shared_timed_mutex mutex_;
    };
    
