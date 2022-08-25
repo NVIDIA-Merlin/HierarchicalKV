@@ -28,9 +28,9 @@ struct Meta {
   M val;
 };
 
-constexpr uint64_t EMPTY_KEY = std::numeric_limits<uint64_t>::max();
-constexpr uint64_t MAX_META = std::numeric_limits<uint64_t>::max();
-constexpr uint64_t EMPTY_META = std::numeric_limits<uint64_t>::min();
+constexpr uint64_t EMPTY_KEY = 0xFFFFFFFFFFFFFFFF;
+constexpr uint64_t MAX_META = 0xFFFFFFFFFFFFFFFF;
+constexpr uint64_t EMPTY_META = 0lu;
 
 template <class K, class V, class M, size_t DIM>
 struct Bucket {
