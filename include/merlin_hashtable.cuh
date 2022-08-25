@@ -566,6 +566,7 @@ class HashTable {
     CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_t),
                                cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaFreeAsync(d_count, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     CudaCheckError();
     return count;
   }
@@ -626,6 +627,7 @@ class HashTable {
     CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_t),
                                cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaFreeAsync(d_count, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     CudaCheckError();
     return count;
   }
