@@ -16,9 +16,7 @@
 
 #pragma once
 
-#include <stdio.h>
 #include <cuda/std/semaphore>
-#include <string>
 
 namespace nv {
 namespace merlin {
@@ -84,69 +82,24 @@ using EraseIfPredictInternal =
              const M& threshold  ///< input meta from caller
     );
 
-template <typename Key, typename V, typename M, size_t DIM>
-class KVFile {
+/**
+ * The abstract class of KV file.
+ *
+ * @tparam K The data type of the key.
+ * @tparam V The data type of the vector's item type.
+ *         The item data type should be a basic data type of C++/CUDA.
+ * @tparam M The data type for `meta`.
+ *           The currently supported data type is only `uint64_t`.
+ * @tparam D The dimension of the vectors.
+ *
+ */
+template <class K, class V, class M, size_t D>
+class BaseKVFile {
  public:
-  virtual ~KVFile() {}
-  virtual ssize_t Read(size_t n, Key* keys, V* vectors, M* metas) = 0;
-  virtual ssize_t Write(size_t n, const Key* keys, const V* vectors,
+  virtual ~BaseKVFile() {}
+  virtual ssize_t Read(size_t n, K* keys, V* vectors, M* metas) = 0;
+  virtual ssize_t Write(size_t n, const K* keys, const V* vectors,
                         const M* metas) = 0;
-};
-
-template <typename Key, typename V, typename M, size_t DIM>
-class DefaultKVFile : public KVFile<Key, V, M, DIM> {
- public:
-  DefaultKVFile() : kfp_(nullptr), vfp_(nullptr) {}
-
-  int Open(std::string& keyfile, std::string& valuefile, const char* mode) {
-    kfp_ = fopen(keyfile.c_str(), mode);
-    if (!kfp_) {
-      return -1;
-    }
-    vfp_ = fopen(valuefile.c_str(), mode);
-    if (!vfp_) {
-      fclose(kfp_);
-      kfp_ = nullptr;
-      return -1;
-    }
-    return 0;
-  }
-
-  int Close() {
-    if (kfp_) {
-      fclose(kfp_);
-      kfp_ = nullptr;
-    }
-    if (vfp_) {
-      fclose(vfp_);
-      vfp_ = nullptr;
-    }
-    return 0;
-  }
-
-  ~DefaultKVFile() { Close(); }
-
-  ssize_t Read(size_t n, Key* keys, V* vectors, M* metas) {
-    size_t nread_keys = fread(keys, sizeof(Key), n, kfp_);
-    size_t nread_vevs = fread(vectors, sizeof(V) * DIM, n, vfp_);
-    if (nread_keys != nread_vevs) {
-      return -1;
-    }
-    return static_cast<ssize_t>(nread_keys);
-  }
-
-  ssize_t Write(size_t n, const Key* keys, const V* vectors, const M* metas) {
-    size_t nwritten_keys = fwrite(keys, sizeof(Key), n, kfp_);
-    size_t nwritten_vecs = fwrite(vectors, sizeof(V) * DIM, n, vfp_);
-    if (nwritten_keys != nwritten_vecs) {
-      return -1;
-    }
-    return static_cast<ssize_t>(nwritten_keys);
-  }
-
- private:
-  FILE* kfp_;
-  FILE* vfp_;
 };
 
 }  // namespace merlin

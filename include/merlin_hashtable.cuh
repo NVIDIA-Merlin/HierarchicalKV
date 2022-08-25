@@ -832,13 +832,14 @@ class HashTable {
   /**
    * @brief Save table to an abstract file.
    *
-   * @param file An KVFile object defined the file format within filesystem.
+   * @param file An BaseKVFile object defined the file format within filesystem.
    * @param buffer_size The size of buffer used for saving in bytes.
    * @param stream The CUDA stream used to execute the operation.
    *
    * @return Number of keys saved to file.
    */
-  size_type save(KVFile<K, V, M, DIM>* file, size_type buffer_size = 1048576,
+  size_type save(BaseKVFile<K, V, M, DIM>* file,
+                 size_type buffer_size = 1048576,
                  cudaStream_t stream = 0) const {
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
@@ -924,14 +925,14 @@ class HashTable {
   /**
    * @brief Load file and restore table.
    *
-   * @param file An KVFile object defined the file format within filesystem.
+   * @param file An BaseKVFile object defined the file format within filesystem.
    * @param buffer_size The size of buffer used for loading in bytes.
    * @param stream The CUDA stream used to execute the operation.
    *
    * @return Number of keys loaded from file.
    */
-  size_type load(KVFile<K, V, M, DIM>* file, size_type buffer_size = 1048576,
-                 cudaStream_t stream = 0) {
+  size_type load(BaseKVFile<K, V, M, DIM>* file,
+                 size_type buffer_size = 1048576, cudaStream_t stream = 0) {
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
     M* d_metas = nullptr;
