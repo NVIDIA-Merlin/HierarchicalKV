@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include "merlin/types.cuh"
 #include "merlin_hashtable.cuh"
+#include "merlin_localfile.h"
 #include "test_util.cuh"
 
 constexpr uint64_t DIM = 64;
@@ -59,19 +60,25 @@ void test_save_to_file(std::string& prefix) {
                              cudaMemcpyHostToDevice, stream));
   printf("Create buffers.\n");
 
-  TableOptions options;
-  options.init_capacity = capacity;
-  options.max_capacity = capacity;
+  TableOptions options1;
+  TableOptions options2;
+  options1.init_capacity = capacity;
+  options1.max_capacity = capacity;
+  options1.evict_strategy = nv::merlin::EvictStrategy::kLru;
+
+  options2 = options1;
+  options2.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+
   std::unique_ptr<Table> table_0 = std::make_unique<Table>();
   std::unique_ptr<Table> table_1 = std::make_unique<Table>();
-  table_0->init(options);
-  table_1->init(options);
+  table_0->init(options1);
+  table_1->init(options2);
   printf("Init tables.\n");
 
   table_0->insert_or_assign(keynum, d_keys, d_vectors, /*metas=*/nullptr,
                             stream);
   printf("Fill table_0.\n");
-  nv::merlin::DefaultKVFile<K, V, M, DIM> file;
+  nv::merlin::LocalKVFile<K, V, M, DIM> file;
   std::string keyfile = prefix + ".keys";
   std::string valuefile = prefix + ".values";
   file.Open(keyfile, valuefile, "wb");
