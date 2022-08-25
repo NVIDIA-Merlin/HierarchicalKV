@@ -43,11 +43,17 @@ Includes
 
 - ``merlin/core_kernels.cuh``
 
+- ``merlin/types.cuh``
+
 - ``merlin/utils.cuh``
 
 - ``mutex``
 
 - ``shared_mutex``
+
+- ``stdarg.h``
+
+- ``stdio.h``
 
 - ``string``
 
