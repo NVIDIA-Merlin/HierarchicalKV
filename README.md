@@ -43,6 +43,9 @@ The main classes and structs are below, and it's recommended to read the comment
 
 For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
 
+## Usage restrictions
+
+- The `key_type` and `meta_type` must be `uint64_t`.
 
 ## Contributors
 
@@ -56,7 +59,7 @@ Basically, Merlin-KV is a headers only library, the commands below only create b
 ```shell
 git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
 cd merlin-kv && mkdir -p build && cd build
-cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
+cmake -DCMAKE_BUILD_TYPE=Release -Dsm=80 .. && make -j
 
 // for Benchmark
 ./merlin_hashtable_benchmark
@@ -68,7 +71,7 @@ cmake -DCMAKE_BUILD_TYPE=Release -DSM=80 .. && make -j
 Your environment must meet the following requirements:
 
 - CUDA version >= 11.2
-- NVIDIA GPU with compute capability 8.0, 8.6, or 8.7
+- NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0
 
 
 ## Benchmark
