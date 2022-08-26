@@ -21,7 +21,7 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CUDA_STANDARD 14)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
-option(CLANGFORMAT "Clangformat source code before compiling" ON)
+option(CLANGFORMAT "Clangformat source code before compiling" OFF)
 if(CLANGFORMAT)
   configure_file(.clang-format .clang-format COPYONLY)
   include(ClangFormat)
