@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <assert.h>
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
