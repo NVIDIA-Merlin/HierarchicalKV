@@ -911,7 +911,7 @@ class HashTable {
     for (; i < SIZE; ++i) {
       for (auto it = ws_.begin(); it != ws_.end(); ++it) {
         if (&(*it) == (*ws)[i]) {
-          // TODO: Use stream to avoid stalling.
+          // TODO(M_LANGER): Use stream to avoid stalling.
           ws_.erase(it);
         }
       }
