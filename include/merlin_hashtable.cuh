@@ -865,14 +865,14 @@ class HashTable {
 
     // If have a prellocated workspace available.
     if (avail_ws_.size() >= SIZE) {
-      for (size_t i = 0; i < SIZE; i++) {
+      for (size_t i = 0; i < SIZE; ++i) {
         (*ws)[i] = avail_ws_.back();
         avail_ws_.pop_back();
       }
     }
     // If workspace creation quota not yet reached.
     else if (ws_.size() + SIZE <= options_.max_num_ws) {
-      for (size_t i = 0; i < SIZE; i++) {
+      for (size_t i = 0; i < SIZE; ++i) {
         ws_.emplace_back(options_.max_batch_size, stream);
         (*ws)[i] = &ws_.back();
       }
@@ -886,7 +886,7 @@ class HashTable {
           continue;
         }
 
-        for (size_t i = 0; i < SIZE; i++) {
+        for (size_t i = 0; i < SIZE; ++i) {
           (*ws)[i] = avail_ws_.back();
           avail_ws_.pop_back();
         }
