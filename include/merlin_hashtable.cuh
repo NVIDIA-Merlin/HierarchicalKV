@@ -843,7 +843,7 @@ class HashTable {
       assert(i < SIZE);
       return buffers_[i];
     }
-    constexpr const WorkspaceBuffer*& operator[](size_t i) const {
+    constexpr const WorkspaceBuffer* operator[](size_t i) const {
       assert(i < SIZE);
       return buffers_[i];
     }
