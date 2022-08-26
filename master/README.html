@@ -48,6 +48,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#about-merlin-kv">About Merlin-KV</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#benefits-of-merlin-kv">Benefits of Merlin-KV</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#api-documentation">API Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#usage-restrictions">Usage restrictions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#contributors">Contributors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-to-build">How to build</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#benchmark">Benchmark</a></li>
@@ -122,6 +123,12 @@ The library simplifies the common challenges to building, evaluating, and servin
 </ul>
 <p>For regular API doc, please refer to <a class="reference external" href="https://nvidia-merlin.github.io/merlin-kv/master/api/index.html">API Docs</a></p>
 </div>
+<div class="section" id="usage-restrictions">
+<h2>Usage restrictions<a class="headerlink" href="#usage-restrictions" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> and <code class="docutils literal notranslate"><span class="pre">meta_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
+</ul>
+</div>
 <div class="section" id="contributors">
 <h2>Contributors<a class="headerlink" href="#contributors" title="Permalink to this headline"></a></h2>
 <p>Merlin-KV is co-maintianed by <a class="reference external" href="https://github.com/NVIDIA-Merlin">NVIDIA Merlin Team</a> and NVIDIA product end-users,
@@ -132,7 +139,7 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <p>Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
 <span class="nb">cd</span> merlin-kv <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
-cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -DSM<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
+cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
 
 // <span class="k">for</span> Benchmark
 ./merlin_hashtable_benchmark
@@ -144,7 +151,7 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -DSM<span class="o">=</s
 <p>Your environment must meet the following requirements:</p>
 <ul class="simple">
 <li><p>CUDA version &gt;= 11.2</p></li>
-<li><p>NVIDIA GPU with compute capability 8.0, 8.6, or 8.7</p></li>
+<li><p>NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0</p></li>
 </ul>
 </div>
 <div class="section" id="benchmark">
