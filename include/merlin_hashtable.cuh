@@ -64,10 +64,10 @@ struct HashTableOptions {
   int device_id = 0;               ///< The ID of device.
   EvictStrategy evict_strategy = EvictStrategy::kLru;  ///< The evict strategy.
   size_t max_batch_size =
-      64 * 1024 * 1024;   ///< Maximum batch size, for batched operations (also
-                          ///< the size of a workspace).
-  size_t min_num_ws = 3;  ///< Number of workspaces to keep in reserve.
-  size_t max_num_ws = 5;  ///< Maximum number of workspaces.
+      64 * 1024 * 1024;  ///< Maximum batch size, for batched operations (also
+                         ///< the size of a workspace).
+  size_t min_num_workspaces = 3;  ///< Number of workspaces to keep in reserve.
+  size_t max_num_workspaces = 5;  ///< Maximum number of workspaces.
 };
 
 /**
@@ -160,11 +160,14 @@ class HashTable {
   ~HashTable() {
     CUDA_CHECK(cudaDeviceSynchronize());
 
+    // Destroy workspaces.
     avail_ws_.clear();
     for (char* ptr : ws_) {
       CUDA_CHECK(cudaFree(ptr));
     }
     ws_.clear();
+
+    // Erase table
     if (initialized_) {
       destroy_table<key_type, vector_type, meta_type, DIM>(&table_);
     }
@@ -184,10 +187,13 @@ class HashTable {
    */
  public:
   void init(const HashTableOptions options) {
+    // Prevent double call.
     if (initialized_) {
       return;
     }
     options_ = options;
+
+    // Construct table.
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaSetDevice(options_.device_id));
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
@@ -200,13 +206,13 @@ class HashTable {
     initialized_ = true;
 
     // Preallocate workspaces.
-    assert(options_.min_num_ws >= 1 &&
-           options_.min_num_ws <= options_.max_num_ws);
+    assert(options_.min_num_workspaces >= 1 &&
+           options_.min_num_workspaces <= options_.max_num_workspaces);
     ws_buffer_size_ =
         std::max(sizeof(void*), sizeof(uint64_t)) * options_.max_batch_size;
 
-    avail_ws_.reserve(options_.min_num_ws);
-    while (avail_ws_.size() < options_.min_num_ws) {
+    avail_ws_.reserve(options_.min_num_workspaces);
+    while (avail_ws_.size() < options_.min_num_workspaces) {
       char* ptr;
       CUDA_CHECK(cudaMalloc(&ptr, ws_buffer_size_));
       ws_.push_back(ptr);
@@ -1113,7 +1119,7 @@ class HashTable {
       }
     }
     // If workspace creation quota not yet reached.
-    else if (ws_.size() + SIZE <= options_.max_num_ws) {
+    else if (ws_.size() + SIZE <= options_.max_num_workspaces) {
       for (size_t i = 0; i < SIZE; ++i) {
         char* ptr;
         CUDA_CHECK(cudaMallocAsync(&ptr, ws_buffer_size_, stream));
@@ -1146,7 +1152,7 @@ class HashTable {
 
     // Fill up available buffers until reach reserve capacity.
     bool has_returned_ws = false;
-    for (; i < SIZE && avail_ws_.size() < options_.min_num_ws; ++i) {
+    for (; i < SIZE && avail_ws_.size() < options_.min_num_workspaces; ++i) {
       avail_ws_.emplace_back(buffers[i]);
       has_returned_ws = true;
     }
