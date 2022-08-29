@@ -963,11 +963,11 @@ class HashTable {
    */
   size_type load(KVFile<K, V, M, DIM>* file, cudaStream_t stream = 0) {
     // Precalc some constants.
-    const size_type max_n =
+    const size_type max_count =
         ws_buffer_size_ /
         std::max(std::max(sizeof(key_type), sizeof(vector_type)),
                  sizeof(meta_type));
-    assert(max_n > 0);
+    assert(max_count > 0);
 
     // Fetch temporary workspace.
     Workspace<3> ws(this, stream);
@@ -976,15 +976,15 @@ class HashTable {
     meta_type* d_metas = reinterpret_cast<meta_type*>(ws[2]);
 
     // Grab enough host memory to hold batch data.
-    auto h_keys = nv::merlin::make_unique_host<key_type>(max_n);
-    auto h_values = nv::merlin::make_unique_host<V>(DIM * max_n);
-    auto h_metas = nv::merlin::make_unique_host<meta_type>(max_n);
+    auto h_keys = nv::merlin::make_unique_host<key_type>(max_count);
+    auto h_values = nv::merlin::make_unique_host<V>(DIM * max_count);
+    auto h_metas = nv::merlin::make_unique_host<meta_type>(max_count);
 
     size_type total_count = 0;
     while (true) {
       // Read next batch.
       const size_type count =
-          file->Read(max_n, h_keys.get(), h_values.get(), h_metas.get());
+          file->Read(max_count, h_keys.get(), h_values.get(), h_metas.get());
       if (count <= 0) {
         break;
       }
