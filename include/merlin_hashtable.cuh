@@ -255,6 +255,15 @@ class HashTable {
                         const value_type* values,          // (n, DIM)
                         const meta_type* metas = nullptr,  // (n)
                         cudaStream_t stream = 0) {
+    insert_or_assign(n, keys, reinterpret_cast<const vector_type*>(values),
+                     metas, stream);
+  }
+
+  void insert_or_assign(size_type n,
+                        const key_type* keys,              // (n)
+                        const vector_type* values,         // (n, DIM)
+                        const meta_type* metas = nullptr,  // (n)
+                        cudaStream_t stream = 0) {
     if (n == 0) {
       return;
     }
@@ -275,21 +284,22 @@ class HashTable {
       // Precalc some constants
       const size_t block_size = 128;
       const size_t N = n * TILE_SIZE;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
       if (metas == nullptr) {
         upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<const vector_type*>(values),
-                table_->buckets, table_->buckets_size, table_->bucket_max_size,
-                table_->buckets_num, N);
+                table_, keys, values, table_->buckets, table_->buckets_size,
+                table_->bucket_max_size, table_->buckets_num, N);
       } else {
         upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<const vector_type*>(values),
-                metas, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, N);
+                table_, keys, values, metas, table_->buckets,
+                table_->buckets_size, table_->bucket_max_size,
+                table_->buckets_num, N);
       }
+
+      CudaCheckError();
     } else {
       Workspace<2> ws(this, stream);
       vector_type** d_dst = reinterpret_cast<vector_type**>(ws[0]);
@@ -342,18 +352,16 @@ class HashTable {
         }
 
         {
+          const size_t block_size = options_.block_size;
           const size_t N = bs * DIM;
-          const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
+          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
           write_kernel<key_type, vector_type, meta_type, DIM>
-              <<<grid_size, options_.block_size, 0, stream>>>(
-                  reinterpret_cast<const vector_type*>(&values[i]), d_dst,
-                  d_src_offset, N);
+              <<<grid_size, block_size, 0, stream>>>(&values[i], d_dst,
+                                                     d_src_offset, N);
         }
       }
     }
-
-    CudaCheckError();
   }
 
   /**
@@ -397,6 +405,17 @@ class HashTable {
                        const bool* accum_or_assigns,       // (n)
                        const meta_type* metas = nullptr,   // (n)
                        cudaStream_t stream = 0) {
+    accum_or_assign(n, keys,
+                    reinterpret_cast<const vector_type*>(value_or_deltas),
+                    accum_or_assigns, metas, stream);
+  }
+
+  void accum_or_assign(size_type n,
+                       const key_type* keys,                // (n)
+                       const vector_type* value_or_deltas,  // (n, DIM)
+                       const bool* accum_or_assigns,        // (n)
+                       const meta_type* metas = nullptr,    // (n)
+                       cudaStream_t stream = 0) {
     if (n == 0) {
       return;
     }
@@ -428,7 +447,7 @@ class HashTable {
       {
         const size_t block_size = 128;
         const size_t N = bs * TILE_SIZE;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         if (metas == nullptr) {
           accum_kernel<key_type, vector_type, meta_type, DIM>
@@ -465,13 +484,14 @@ class HashTable {
       }
 
       {
+        const size_t block_size = options_.block_size;
         const size_t N = bs * DIM;
-        const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         write_with_accum_kernel<key_type, vector_type, meta_type, DIM>
-            <<<grid_size, options_.block_size, 0, stream>>>(
-                reinterpret_cast<const vector_type*>(&value_or_deltas[i]), dst,
-                &accum_or_assigns[i], founds, src_offset, N);
+            <<<grid_size, block_size, 0, stream>>>(&value_or_deltas[i], dst,
+                                                   &accum_or_assigns[i], founds,
+                                                   src_offset, N);
       }
     }
 
@@ -502,6 +522,16 @@ class HashTable {
             bool* founds,                // (n)
             meta_type* metas = nullptr,  // (n)
             cudaStream_t stream = 0) const {
+    find(n, keys, reinterpret_cast<vector_type*>(values), founds, metas,
+         stream);
+  }
+
+  void find(size_type n,
+            const key_type* keys,        // (n)
+            vector_type* values,         // (n, DIM)
+            bool* founds,                // (n)
+            meta_type* metas = nullptr,  // (n)
+            cudaStream_t stream = 0) const {
     if (n == 0) {
       return;
     }
@@ -517,13 +547,13 @@ class HashTable {
     if (is_fast_mode()) {
       const size_t block_size = 128;
       const size_t N = n * TILE_SIZE;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
       lookup_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, keys, reinterpret_cast<vector_type*>(values), metas,
-              founds, table_->buckets, table_->buckets_size,
-              table_->bucket_max_size, table_->buckets_num, N);
+              table_, keys, values, metas, founds, table_->buckets,
+              table_->buckets_size, table_->bucket_max_size,
+              table_->buckets_num, N);
     } else {
       Workspace<2> ws(this, stream);
       vector_type** src = reinterpret_cast<vector_type**>(ws[0]);
@@ -538,14 +568,13 @@ class HashTable {
         {
           const size_t block_size = 128;
           const size_t N = bs * TILE_SIZE;
-          const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
           lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
               <<<grid_size, block_size, 0, stream>>>(
-                  table_, &keys[i], reinterpret_cast<vector_type**>(src),
-                  metas ? &metas[i] : nullptr, &founds[i], table_->buckets,
-                  table_->buckets_size, table_->bucket_max_size,
-                  table_->buckets_num, dst_offset, N);
+                  table_, &keys[i], src, metas ? &metas[i] : nullptr,
+                  &founds[i], table_->buckets, table_->buckets_size,
+                  table_->bucket_max_size, table_->buckets_num, dst_offset, N);
         }
 
         {
@@ -567,13 +596,13 @@ class HashTable {
         }
 
         {
+          const size_t block_size = options_.block_size;
           const size_t N = bs * DIM;
-          const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
+          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
           read_kernel<key_type, vector_type, meta_type, DIM>
-              <<<grid_size, options_.block_size, 0, stream>>>(
-                  src, reinterpret_cast<vector_type*>(&values[i]), &founds[i],
-                  dst_offset, N);
+              <<<grid_size, block_size, 0, stream>>>(src, &values[i],
+                                                     &founds[i], dst_offset, N);
         }
       }
     }
@@ -607,7 +636,7 @@ class HashTable {
 
       const size_t block_size = 128;
       const size_t N = bs * TILE_SIZE;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
       remove_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
@@ -669,7 +698,7 @@ class HashTable {
     {
       const size_t block_size = 256;
       const size_t N = table_->buckets_num;
-      const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
       remove_kernel<key_type, vector_type, meta_type, DIM>
           <<<grid_size, block_size, 0, stream>>>(
@@ -690,8 +719,8 @@ class HashTable {
    */
   void clear(cudaStream_t stream = 0) {
     // Precalc some constants.
-    const size_t N = table_->buckets_num * table_->bucket_max_size;
     const size_t block_size = options_.block_size;
+    const size_t N = table_->buckets_num * table_->bucket_max_size;
     const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
     // Unless we reached capacity, reallocation could happen.
@@ -848,9 +877,10 @@ class HashTable {
            capacity() * 2 <= options_.max_capacity) {
       double_capacity(&table_);
 
-      const size_t N = TILE_SIZE * table_->buckets_num / 2;
       const size_t block_size = 128;
+      const size_t N = TILE_SIZE * table_->buckets_num / 2;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+
       rehash_kernel_for_fast_mode<key_type, vector_type, meta_type, DIM,
                                   TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
