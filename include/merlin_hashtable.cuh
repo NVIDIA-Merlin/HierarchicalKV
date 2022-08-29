@@ -158,6 +158,13 @@ class HashTable {
    * table object.
    */
   ~HashTable() {
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    avail_ws_.clear();
+    for (char* ptr : ws_) {
+      CUDA_CHECK(cudaFree(ptr));
+    }
+    ws_.clear();
     if (initialized_) {
       destroy_table<key_type, vector_type, meta_type, DIM>(&table_);
     }
@@ -200,9 +207,12 @@ class HashTable {
 
     avail_ws_.reserve(options_.min_num_ws);
     while (avail_ws_.size() < options_.min_num_ws) {
-      ws_.emplace_back(options_.max_batch_size);
-      avail_ws_.emplace_back(&ws_.back());
+      char* ptr;
+      CUDA_CHECK(cudaMalloc(&ptr, ws_buffer_size_));
+      ws_.push_back(ptr);
+      avail_ws_.push_back(ptr);
     }
+    CUDA_CHECK(cudaDeviceSynchronize());
 
     CudaCheckError();
   }
@@ -282,8 +292,8 @@ class HashTable {
       }
 
       Workspace<2> ws(this, stream);
-      vector_type** d_dst = ws[0]->vec;
-      int* d_src_offset = ws[1]->i32;
+      vector_type** d_dst = reinterpret_cast<vector_type**>(ws[0]);
+      int* d_src_offset = reinterpret_cast<int*>(ws[1]);
 
       for (size_t i = 0; i < num_items; i += options_.max_batch_size) {
         const size_t n = std::min(num_items - i, options_.max_batch_size);
@@ -402,9 +412,9 @@ class HashTable {
     }
 
     Workspace<3> ws(this, stream);
-    vector_type** dst = ws[0]->vec;
-    int* src_offset = ws[1]->i32;
-    bool* founds = ws[2]->b8;
+    vector_type** dst = reinterpret_cast<vector_type**>(ws[0]);
+    int* src_offset = reinterpret_cast<int*>(ws[1]);
+    bool* founds = reinterpret_cast<bool*>(ws[2]);
 
     for (size_t i = 0; i < num_items; i += options_.max_batch_size) {
       const size_t n = std::min(num_items - i, options_.max_batch_size);
@@ -513,8 +523,8 @@ class HashTable {
               table_->bucket_max_size, table_->buckets_num, N);
     } else {
       Workspace<2> ws(this, stream);
-      vector_type** src = ws[0]->vec;
-      int* dst_offset = ws[1]->i32;
+      vector_type** src = reinterpret_cast<vector_type**>(ws[0]);
+      int* dst_offset = reinterpret_cast<int*>(ws[1]);
 
       for (size_t i = 0; i < num_keys; i += options_.max_batch_size) {
         const size_t n = std::min(num_keys - i, options_.max_batch_size);
@@ -585,7 +595,7 @@ class HashTable {
     }
 
     Workspace<1> ws(this, stream);
-    size_t* d_count = ws[0]->size;
+    size_t* d_count = reinterpret_cast<size_type*>(ws[0]);
 
     for (size_t i = 0; i < num_keys; i += options_.max_batch_size) {
       const size_t n = std::min(num_keys - i, options_.max_batch_size);
@@ -646,7 +656,7 @@ class HashTable {
     }
 
     Workspace<1> ws(this, stream);
-    size_t* d_count = ws[0]->size;
+    size_type* d_count = reinterpret_cast<size_type*>(ws[0]);
 
     CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_t), stream));
 
@@ -740,20 +750,21 @@ class HashTable {
 
     // Fetch temporary workspace.
     Workspace<1> ws(this, stream);
-    size_type* d_n = ws[0]->size;
+    size_type* d_count = reinterpret_cast<size_type*>(ws[0]);
 
     // Reset counter and dump kernel.
-    CUDA_CHECK(cudaMemsetAsync(d_n, 0, sizeof(size_type), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
 
     dump_kernel<key_type, vector_type, meta_type, DIM>
         <<<grid_size, block_size, shared_size, stream>>>(
             table_, keys, reinterpret_cast<vector_type*>(values), metas, offset,
-            n, d_n);
+            n, d_count);
 
     // Move result counter to host.
-    CUDA_CHECK(cudaMemcpyAsync(&n, d_n, sizeof(size_type),
+    size_type count;
+    CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
                                cudaMemcpyDeviceToHost, stream));
-    return n;
+    return count;
   }
 
  public:
@@ -872,10 +883,11 @@ class HashTable {
    */
   size_type save(KVFile<K, V, M, DIM>* file, cudaStream_t stream = 0) const {
     // Precalc some constants.
-    const size_type max_n =
+    const size_type N =
         ws_buffer_size_ /
-        std::max(std::max(sizeof(key_type), sizeof(vector_type)), sizeof(meta_type));
-    assert(max_n > 0);
+        std::max(std::max(sizeof(key_type), sizeof(vector_type)),
+                 sizeof(meta_type));
+    assert(N > 0);
 
     const size_t kvm_size =
         sizeof(key_type) + sizeof(vector_type) + sizeof(meta_type);
@@ -884,7 +896,7 @@ class HashTable {
         block_size > 0,
         "[merlin-kv] block_size <= 0, the K-V-M size may be too large!");
     const size_t shared_size = kvm_size * block_size;
-    const size_t grid_size = SAFE_GET_GRID_SIZE(max_n, block_size);
+    const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
     // Unless we reached capacity, reallocation could happen.
     std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
@@ -895,47 +907,47 @@ class HashTable {
 
     // Fetch temporary workspace.
     Workspace<4> ws(this, stream);
-    size_type* d_n = ws[0]->size;
-    key_type* d_keys = reinterpret_cast<key_type*>(ws[1]->ptr);
-    vector_type* d_vectors = reinterpret_cast<vector_type*>(ws[2]->ptr);
-    meta_type* d_metas = reinterpret_cast<meta_type*>(ws[3]->ptr);
+    size_type* d_count = reinterpret_cast<size_type*>(ws[0]);
+    key_type* d_keys = reinterpret_cast<key_type*>(ws[1]);
+    vector_type* d_vectors = reinterpret_cast<vector_type*>(ws[2]);
+    meta_type* d_metas = reinterpret_cast<meta_type*>(ws[3]);
 
     // Grab enough host memory to hold batch data.
-    auto h_keys = nv::merlin::make_unique_host<key_type>(max_n);
-    auto h_values =
-        nv::merlin::make_unique_host<V>(DIM * max_n);
-    auto h_metas = nv::merlin::make_unique_host<meta_type>(max_n);
+    auto h_keys = nv::merlin::make_unique_host<key_type>(N);
+    auto h_values = nv::merlin::make_unique_host<V>(DIM * N);
+    auto h_metas = nv::merlin::make_unique_host<meta_type>(N);
 
     // Step through table, dumping contents in batches.
-    size_type n_written = 0;
-    for (size_type offset = 0; offset < total_size;
-         offset += max_n) {
+    size_type total_count = 0;
+    for (size_type offset = 0; offset < total_size; offset += N) {
       // Dump the next batch to workspace.
-      CUDA_CHECK(cudaMemsetAsync(d_n, 0, sizeof(size_type), stream));
+      CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
 
       dump_kernel<key_type, vector_type, meta_type, DIM>
           <<<grid_size, block_size, shared_size, stream>>>(
-              table_, d_keys, d_vectors, d_metas, offset, max_n, d_n);
+              table_, d_keys, d_vectors, d_metas, offset, N, d_count);
 
-      size_type n;
-      CUDA_CHECK(cudaMemcpyAsync(&n, d_n, sizeof(size_type),
+      size_type count;
+      CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
                                  cudaMemcpyDeviceToHost, stream));
 
       // Move workspace to host memory.
-      CUDA_CHECK(cudaMemcpyAsync(h_keys.get(), d_keys, sizeof(key_type) * n,
+      CUDA_CHECK(cudaMemcpyAsync(h_keys.get(), d_keys, sizeof(key_type) * count,
                                  cudaMemcpyDeviceToHost, stream));
-      CUDA_CHECK(cudaMemcpyAsync(h_values.get(), d_vectors, sizeof(vector_type) * n,
+      CUDA_CHECK(cudaMemcpyAsync(h_values.get(), d_vectors,
+                                 sizeof(vector_type) * count,
                                  cudaMemcpyDeviceToHost, stream));
-      CUDA_CHECK(cudaMemcpyAsync(h_metas.get(), d_metas, sizeof(meta_type) * n,
+      CUDA_CHECK(cudaMemcpyAsync(h_metas.get(), d_metas,
+                                 sizeof(meta_type) * count,
                                  cudaMemcpyDeviceToHost, stream));
       CUDA_CHECK(cudaStreamSynchronize(stream));
 
       // Store permanently.
-      file->Write(n, h_keys.get(), h_values.get(), h_metas.get());
-      n_written += n;
+      file->Write(count, h_keys.get(), h_values.get(), h_metas.get());
+      total_count += count;
     }
 
-    return n_written;
+    return total_count;
   }
 
   /**
@@ -950,43 +962,45 @@ class HashTable {
     // Precalc some constants.
     const size_type max_n =
         ws_buffer_size_ /
-        std::max(std::max(sizeof(key_type), sizeof(vector_type)), sizeof(meta_type));
+        std::max(std::max(sizeof(key_type), sizeof(vector_type)),
+                 sizeof(meta_type));
     assert(max_n > 0);
-    
+
     // Fetch temporary workspace.
-    Workspace<4> ws(this, stream);
-    size_type* d_n = ws[0]->size;
-    key_type* d_keys = reinterpret_cast<key_type*>(ws[1]->ptr);
-    V* d_values = reinterpret_cast<V*>(ws[2]->ptr);
-    meta_type* d_metas = reinterpret_cast<meta_type*>(ws[3]->ptr);
+    Workspace<3> ws(this, stream);
+    key_type* d_keys = reinterpret_cast<key_type*>(ws[0]);
+    V* d_values = reinterpret_cast<V*>(ws[1]);
+    meta_type* d_metas = reinterpret_cast<meta_type*>(ws[2]);
 
     // Grab enough host memory to hold batch data.
     auto h_keys = nv::merlin::make_unique_host<key_type>(max_n);
-    auto h_values =
-        nv::merlin::make_unique_host<V>(DIM * max_n);
+    auto h_values = nv::merlin::make_unique_host<V>(DIM * max_n);
     auto h_metas = nv::merlin::make_unique_host<meta_type>(max_n);
 
-    size_type n_read = 0;
+    size_type total_count = 0;
     while (true) {
       // Read next batch.
-      const size_type n = file->Read(max_n, h_keys.get(), h_values.get(), h_metas.get());
-      if (n <= 0) {
+      const size_type count =
+          file->Read(max_n, h_keys.get(), h_values.get(), h_metas.get());
+      if (count <= 0) {
         break;
       }
 
       // Move read data to device.
-      CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys.get(), sizeof(key_type) * n,
+      CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys.get(), sizeof(key_type) * count,
                                  cudaMemcpyHostToDevice, stream));
-      CUDA_CHECK(cudaMemcpyAsync(d_values, h_values.get(), sizeof(vector_type) * n,
+      CUDA_CHECK(cudaMemcpyAsync(d_values, h_values.get(),
+                                 sizeof(vector_type) * count,
                                  cudaMemcpyHostToDevice, stream));
-      CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas.get(), sizeof(meta_type) * n,
+      CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas.get(),
+                                 sizeof(meta_type) * count,
                                  cudaMemcpyHostToDevice, stream));
 
-      insert_or_assign(n, d_keys, d_values, d_metas, stream);
-      n_read += n;
+      insert_or_assign(count, d_keys, d_values, d_metas, stream);
+      total_count += count;
     }
-    
-    return n_read;
+
+    return total_count;
   }
 
  private:
@@ -1051,34 +1065,6 @@ class HashTable {
   mutable std::shared_timed_mutex table_mutex_;
 
   // Workspace management.
-  struct WorkspaceBuffer final {
-    union {
-      void* ptr;
-      vector_type** vec;
-      size_t* size;
-      bool* b8;
-      int* i32;
-    };
-
-    explicit WorkspaceBuffer(size_t size) {
-      constexpr size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
-      CUDA_CHECK(cudaMalloc(&ptr, item_size * size));
-    }
-
-    explicit WorkspaceBuffer(size_t size, cudaStream_t stream) {
-      constexpr size_t item_size = std::max(sizeof(void*), sizeof(uint64_t));
-      CUDA_CHECK(cudaMallocAsync(&vec, item_size * size, stream));
-    }
-
-    WorkspaceBuffer(const WorkspaceBuffer&) = delete;
-    WorkspaceBuffer(WorkspaceBuffer&&) = delete;
-    WorkspaceBuffer& operator=(const WorkspaceBuffer&) = delete;
-    WorkspaceBuffer& operator=(WorkspaceBuffer&&) = delete;
-
-    ~WorkspaceBuffer() { CUDA_CHECK(cudaFree(ptr)); }
-  };
-  static_assert(sizeof(WorkspaceBuffer) == sizeof(void*));
-
   template <size_t SIZE>
   class Workspace final {
    public:
@@ -1095,10 +1081,10 @@ class HashTable {
     ~Workspace() {
       CUDA_CHECK(cudaStreamSynchronize(stream_));
       CudaCheckError();
-      parent_->release_ws_(this, stream_);
+      parent_->release_ws_(buffers_, stream_);
     }
 
-    constexpr WorkspaceBuffer* operator[](size_t i) {
+    constexpr char* operator[](size_t i) {
       assert(i < SIZE);
       return buffers_[i];
     }
@@ -1106,17 +1092,17 @@ class HashTable {
    private:
     const this_type* const parent_;
     cudaStream_t const stream_;
-    WorkspaceBuffer* buffers_[SIZE];
+    char* buffers_[SIZE];
   };
 
   size_t ws_buffer_size_;
   mutable std::mutex ws_mutex_;
-  mutable std::list<WorkspaceBuffer> ws_;
-  mutable std::vector<WorkspaceBuffer*> avail_ws_;
+  mutable std::list<char*> ws_;
+  mutable std::vector<char*> avail_ws_;
   mutable std::condition_variable ws_returned_;
 
   template <size_t SIZE>
-  void claim_ws_(WorkspaceBuffer* (&buffers)[SIZE], cudaStream_t stream) const {
+  void claim_ws_(char* (&buffers)[SIZE], cudaStream_t stream) const {
     std::unique_lock<std::mutex> lock(ws_mutex_);
 
     // If have a prellocated workspace available.
@@ -1129,8 +1115,10 @@ class HashTable {
     // If workspace creation quota not yet reached.
     else if (ws_.size() + SIZE <= options_.max_num_ws) {
       for (size_t i = 0; i < SIZE; ++i) {
-        ws_.emplace_back(options_.max_batch_size, stream);
-        buffers[i] = &ws_.back();
+        char* ptr;
+        CUDA_CHECK(cudaMallocAsync(&ptr, ws_buffer_size_, stream));
+        ws_.push_back(ptr);
+        buffers[i] = ptr;
       }
     }
     // Creation quota reached. Wait for another thread to return a
@@ -1152,23 +1140,23 @@ class HashTable {
   }
 
   template <size_t SIZE>
-  void release_ws_(Workspace<SIZE>* ws, cudaStream_t stream) const {
+  void release_ws_(char* (&buffers)[SIZE], cudaStream_t stream) const {
     std::lock_guard<std::mutex> lock(ws_mutex_);
     size_t i = 0;
 
     // Fill up available buffers until reach reserve capacity.
     bool has_returned_ws = false;
     for (; i < SIZE && avail_ws_.size() < options_.min_num_ws; ++i) {
-      avail_ws_.emplace_back((*ws)[i]);
+      avail_ws_.emplace_back(buffers[i]);
       has_returned_ws = true;
     }
 
-    // Discard remaining buffers.
+    // Discard overflow buffers.
     for (; i < SIZE; ++i) {
+      char* ptr = buffers[i];
       for (auto it = ws_.begin(); it != ws_.end(); ++it) {
-        if (&(*it) == (*ws)[i]) {
-          // TODO(M_LANGER): Use stream to avoid stalling.
-          ws_.erase(it);
+        if (*it == ptr) {
+          CUDA_CHECK(cudaFreeAsync(ptr, stream));
         }
       }
     }
