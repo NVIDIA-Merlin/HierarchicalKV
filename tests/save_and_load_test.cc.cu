@@ -60,19 +60,19 @@ void test_save_to_file(std::string& prefix) {
                              cudaMemcpyHostToDevice, stream));
   printf("Create buffers.\n");
 
+  TableOptions options0;
   TableOptions options1;
-  TableOptions options2;
-  options1.init_capacity = capacity;
-  options1.max_capacity = capacity;
-  options1.evict_strategy = nv::merlin::EvictStrategy::kLru;
+  options0.init_capacity = capacity;
+  options0.max_capacity = capacity;
+  options0.evict_strategy = nv::merlin::EvictStrategy::kLru;
 
-  options2 = options1;
-  options2.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+  options1 = options0;
+  options1.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   std::unique_ptr<Table> table_0 = std::make_unique<Table>();
   std::unique_ptr<Table> table_1 = std::make_unique<Table>();
-  table_0->init(options1);
-  table_1->init(options2);
+  table_0->init(options0);
+  table_1->init(options1);
   printf("Init tables.\n");
 
   table_0->insert_or_assign(keynum, d_keys, d_vectors, /*metas=*/nullptr,
@@ -81,13 +81,13 @@ void test_save_to_file(std::string& prefix) {
   nv::merlin::LocalKVFile<K, V, M, DIM> file;
   std::string keyfile = prefix + ".keys";
   std::string valuefile = prefix + ".values";
-  file.Open(keyfile, valuefile, "wb");
+  file.open(keyfile, valuefile, "wb");
   table_0->save(&file, buffer_size, stream);
-  file.Close();
+  file.close();
   printf("table_0 saves.\n");
-  file.Open(keyfile, valuefile, "rb");
+  file.open(keyfile, valuefile, "rb");
   table_1->load(&file, buffer_size, stream);
-  file.Close();
+  file.close();
   printf("table_1 loads.\n");
   MERLIN_EXPECT_TRUE(
       test_util::tables_equal(table_0.get(), table_1.get(), stream),

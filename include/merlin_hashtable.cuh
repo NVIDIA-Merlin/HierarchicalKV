@@ -832,7 +832,7 @@ class HashTable {
   /**
    * @brief Save table to an abstract file.
    *
-   * @param file An BaseKVFile object defined the file format within filesystem.
+   * @param file A BaseKVFile object defined the file format within filesystem.
    * @param buffer_size The size of buffer used for saving in bytes.
    * @param stream The CUDA stream used to execute the operation.
    *
@@ -891,7 +891,7 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(d_next_nkeys, 0, sizeof(size_type), stream));
       export_batch(batch_pairs_num, offset, d_next_nkeys, d_keys, d_vectors,
                    d_metas, stream);
-      file->Write(nkeys, h_keys, h_vectors, h_metas);
+      file->write(nkeys, h_keys, h_vectors, h_metas);
       CUDA_CHECK(cudaMemcpyAsync(&nkeys, d_next_nkeys, sizeof(size_type),
                                  cudaMemcpyDeviceToHost, stream));
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -913,7 +913,7 @@ class HashTable {
       CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(M) * nkeys,
                                  cudaMemcpyDeviceToHost, stream));
       CUDA_CHECK(cudaStreamSynchronize(stream));
-      file->Write(nkeys, h_keys, h_vectors, h_metas);
+      file->write(nkeys, h_keys, h_vectors, h_metas);
     }
 
     CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, d_next_nkeys, h_keys,
@@ -945,7 +945,7 @@ class HashTable {
     CUDA_CHECK(cudaMallocHost(&h_keys, sizeof(K) * batch_pairs_num));
     CUDA_CHECK(cudaMallocHost(&h_vectors, sizeof(V) * batch_pairs_num * DIM));
     CUDA_CHECK(cudaMallocHost(&h_metas, sizeof(M) * batch_pairs_num));
-    size_type nkeys = file->Read(batch_pairs_num, h_keys, h_vectors, h_metas);
+    size_type nkeys = file->read(batch_pairs_num, h_keys, h_vectors, h_metas);
     size_type counts = nkeys;
     if (nkeys == 0) {
       CUDA_FREE_POINTERS(stream, h_keys, h_vectors, h_metas);
@@ -965,7 +965,7 @@ class HashTable {
       CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas, sizeof(M) * nkeys,
                                  cudaMemcpyHostToDevice, stream));
       insert_or_assign(nkeys, d_keys, d_vectors, d_metas, stream);
-      nkeys = file->Read(batch_pairs_num, h_keys, h_vectors, h_metas);
+      nkeys = file->read(batch_pairs_num, h_keys, h_vectors, h_metas);
       counts += nkeys;
       CUDA_CHECK(cudaStreamSynchronize(stream));
     } while (nkeys > 0);
