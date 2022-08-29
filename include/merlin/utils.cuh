@@ -19,6 +19,7 @@
 #include <cooperative_groups.h>
 #include <stdarg.h>
 #include <exception>
+#include <memory>
 #include <string>
 #include "cuda_fp16.h"
 #include "cuda_runtime_api.h"
@@ -406,16 +407,23 @@ inline void free_pointers(cudaStream_t stream, int n, ...) {
   nv::merlin::free_pointers(            \
       stream, (sizeof((void*[]){__VA_ARGS__}) / sizeof(void*)), __VA_ARGS__);
 
-template<class T>
+template <class T>
 struct HostDeleter {
   void operator()(T* ptr) { CUDA_CHECK(cudaFreeHost(ptr)); }
 };
 
 template <class T>
-inline std::unique_ptr<T, HostDeleter<T>> make_unique_host(size_t n = 1) {
+inline std::unique_ptr<T, HostDeleter<T>> make_unique_host(size_t n) {
   T* ptr;
   CUDA_CHECK(cudaMallocHost(&ptr, sizeof(T) * n));
   return std::unique_ptr<T, HostDeleter<T>>(ptr);
+}
+
+template <>
+inline std::unique_ptr<void, HostDeleter<void>> make_unique_host(size_t n) {
+  void* ptr;
+  CUDA_CHECK(cudaMallocHost(&ptr, sizeof(char) * n));
+  return std::unique_ptr<void, HostDeleter<void>>(ptr);
 }
 
 }  // namespace merlin
