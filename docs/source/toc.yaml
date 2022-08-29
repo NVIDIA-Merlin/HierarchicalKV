@@ -1,0 +1,18 @@
+root: index
+subtrees:
+  - caption: Contents
+    entries:
+      - file: README.md
+        title: Introduction
+      - file: api/index.rst
+        title: API Documentation
+      - file: CONTRIBUTING.md
+        title: Contributing to Merlin-KV
+
+
+# The multi-modal data example uses several notebooks to demonstrate how to use of multi-modal data (text and images)
+# to provide movie recommendations based on the MovieLens 25M dataset.
+
+# .. toctree::
+#    :maxdepth: 1
+

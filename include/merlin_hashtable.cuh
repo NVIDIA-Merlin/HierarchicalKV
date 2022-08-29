@@ -23,27 +23,46 @@
 #include <condition_variable>
 #include <list>
 #include <mutex>
+#include <shared_mutex>
 #include <type_traits>
 #include <vector>
 #include "merlin/core_kernels.cuh"
-#include "merlin/initializers.cuh"
+#include "merlin/types.cuh"
 #include "merlin/utils.cuh"
 
 namespace nv {
 namespace merlin {
 
 /**
+ * @brief Enumeration of the eviction strategies.
+ *
+ * @note The `meta` is introduced to define the importance of each key, the
+ * larger, the more important, the less likely they will be evicted. On `kLru`
+ * mode, the `metas` parameter of the APIs should keep `nullptr`, the meta for
+ * each key is assigned internally in LRU(Least Recently Used) policy. On
+ * `kCustomized` mode, the `metas` should be provided by caller.
+ *
+ * @note Eviction occurs automatically when a bucket is full. The keys with the
+ * minimum `meta` value are evicted first.
+ *
+ */
+enum class EvictStrategy {
+  kLru = 0,        ///< LRU mode.
+  kCustomized = 1  ///< Customized mode.
+};
+
+/**
  * @brief The options struct of Merlin-KV.
  */
 struct HashTableOptions {
-  size_t init_capacity = 0;        ///< The initial capacity.
-  size_t max_capacity = 0;         ///< The maximum capacity.
-  size_t max_hbm_for_vectors = 0;  ///< Max HBM allocated for vectors, by bytes.
-  size_t max_bucket_size = 128;    ///< The length of each buckets.
-  float max_load_factor = 0.75f;   ///< The max load factor before rehashing.
-  int block_size = 1024;           ///< default block size for CUDA kernels.
-  int device_id = 0;               ///< the id of device.
-  bool primary = true;             ///< no used, reserved for future.
+  size_t init_capacity = 0;        ///< The initial capacity of the hash table.
+  size_t max_capacity = 0;         ///< The maximum capacity of the hash table.
+  size_t max_hbm_for_vectors = 0;  ///< The maximum HBM for vectors, in bytes.
+  size_t max_bucket_size = 128;    ///< The length of each bucket.
+  float max_load_factor = 0.5f;    ///< The max load factor before rehashing.
+  int block_size = 1024;           ///< The default block size for CUDA kernels.
+  int device_id = 0;               ///< The ID of device.
+  EvictStrategy evict_strategy = EvictStrategy::kLru;  ///< The evict strategy.
   size_t max_batch_size =
       64 * 1024 * 1024;   ///< Maximum batch size, for batched operations (also
                           ///< the size of a workspace).
@@ -52,11 +71,11 @@ struct HashTableOptions {
 };
 
 /**
- * @brief A function template is used as `erase_if` first input, which help
- * end-users implements customized and flexible erase(or evict) strategies.
+ * @brief A customizable template function indicates which keys should be
+ * erased from the hash table by returning `true`.
  *
- * The erase_if will traverse all of the items by this function, the items which
- * return `true` will be removed.
+ * @note The `erase_if` API traverses all of the items by this function and the
+ * items that return `true` are removed.
  *
  *  Example:
  *
@@ -72,41 +91,41 @@ struct HashTableOptions {
  *    ```
  */
 template <class K, class M>
-using EraseIfPredict = bool (*)(const K& key,       ///< traversed key in table
-                                const M& meta,      ///< traversed meta in table
-                                const K& pattern,   ///< input key from caller
-                                const M& threshold  ///< input meta from caller
+using EraseIfPredict = bool (*)(
+    const K& key,       ///< The traversed key in a hash table.
+    const M& meta,      ///< The traversed meta in a hash table.
+    const K& pattern,   ///< The key pattern to compare with the `key` argument.
+    const M& threshold  ///< The threshold to compare with the `meta` argument.
 );
 
 /**
- * Merlin HashTable is a concurrent and hierarchical HashTable powered by GPUs
- * which can use both HBM, Host MEM and SSD(WIP) as storage for Key-Values.
+ * A Merlin-KV hash table is a concurrent and hierarchical hash table that is
+ * powered by GPUs and can use HBM and host memory as storage for key-value
+ * pairs. Support for SSD storage is a future consideration.
  *
- * @note Supports concurrent insert_or_assign, but not concurrent
- * insert_or_assign and find now. The insert_or_assign means insert or update if
- * already exists.
+ * The `meta` is introduced to define the importance of each key, the
+ * larger, the more important, the less likely they will be evicted. Eviction
+ * occurs automatically when a bucket is full. The keys with the minimum `meta`
+ * value are evicted first. In a customized eviction strategy, we recommend
+ * using the timestamp or frequency of the key occurrence as the `meta` value
+ * for each key. You can also assign a special value to the `meta` to
+ * perform a customized eviction strategy.
  *
+ * @note By default configuration, this class is thread-safe.
  *
- * @note The eviction will happen automatically when table is almost full. We
- * introduce the `meta` concept to help implement it. The keys with minimum meta
- * will be evicted first. We recommend using the timestamp or times
- * of the key occurrence as the meta value for each keys. The user can also
- * customize the meaning of the meta value that is equivalent to customize an
- * eviction strategy.
- *
- * @tparam K type of the key
- * @tparam V type of the Vector's item type, which should be basic types of
- * C++/CUDA.
- * @tparam M type of the meta and must be uint64_t in this release.
- * @tparam D dimension of the vectors
- *
+ * @tparam K The data type of the key.
+ * @tparam V The data type of the vector's item type.
+ *         The item data type should be a basic data type of C++/CUDA.
+ * @tparam M The data type for `meta`.
+ *           The currently supported data type is only `uint64_t`.
+ * @tparam D The dimension of the vectors.
  *
  */
 template <class K, class V, class M, size_t D>
 class HashTable {
  public:
   /**
-   * @brief value type of Merlin-KV.
+   * @brief The value type of a Merlin-KV hash table.
    */
   struct Vector {
     using value_type = V;
@@ -128,23 +147,15 @@ class HashTable {
   using TableCore = nv::merlin::Table<key_type, vector_type, meta_type, DIM>;
   static constexpr unsigned int TILE_SIZE = 8;
 
-  /**
-   * @brief Enumeration of the eviction strategies.
-   */
-  enum class EvictStrategy {
-    kUndefined = 0,  ///< undefined.
-    kLru = 1,        ///< kLru mode.
-    kCustomized = 2  ///< Customized mode.
-  };
-
  public:
   /**
-   * @brief Default Construct a table object.
+   * @brief Default constructor for the hash table class.
    */
   HashTable(){};
 
   /**
-   * @brief Frees the resources of the table and destroys the table object.
+   * @brief Frees the resources used by the hash table and destroys the hash
+   * table object.
    */
   ~HashTable() {
     if (initialized_) {
@@ -166,6 +177,9 @@ class HashTable {
    */
  public:
   void init(const HashTableOptions options) {
+    if (initialized_) {
+      return;
+    }
     options_ = options;
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaSetDevice(options_.device_id));
@@ -173,10 +187,9 @@ class HashTable {
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
     create_table<key_type, vector_type, meta_type, DIM>(
         &table_, options_.init_capacity, options_.max_capacity,
-        options_.max_hbm_for_vectors, options_.max_bucket_size,
-        options_.primary);
+        options_.max_hbm_for_vectors, options_.max_bucket_size);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
-    reach_max_capacity_ = false;
+    reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
     initialized_ = true;
 
     // Preallocate workspaces.
@@ -193,27 +206,30 @@ class HashTable {
   }
 
   /**
-   * @brief Insert new key-value-meta tuples into the table,
-   * if key already exists, the values and metas will be assigned.
+   * @brief Insert new key-value-meta tuples into the hash table.
+   * If the key already exists, the values and metas are assigned new values.
    *
-   * @note If the target bucket is full, the keys with minimum meta will be
-   * overwritten. If the meta of the new key is even less than minimum meta of
-   * the target bucket, it will not be inserted.
+   * If the target bucket is full, the keys with minimum meta will be
+   * overwritten by new key unless the meta of the new key is even less than
+   * minimum meta of the target bucket.
    *
-   * @param num_items Number of Key-Value-Meta tuples to be inserted or
-   * assigned.
-   * @param keys The keys to be inserted on GPU accessible memory with shape
-   * (num_items).
-   * @param values The values to be inserted on GPU accessible memory with
-   * shape (num_items, DIM).
-   * @param metas The metas to be inserted on GPU accessible memory with shape
-   * (num_items).
+   * @param n Number of key-value-meta tuples to inserted or assign.
+   * @param keys The keys to insert on GPU-accessible memory with shape
+   * (n).
+   * @param values The values to insert on GPU-accessible memory with
+   * shape (n, DIM).
+   * @param metas The metas to insert on GPU-accessible memory with shape
+   * (n).
+   * @parblock
+   * The metas should be a `uint64_t` value. You can specify a value that
+   * such as the timestamp of the key insertion, number of the key
+   * occurrences, or another value to perform a custom eviction strategy.
    *
-   * @notice: The metas must be uint64_t value which could stand for the
-   * timestamp of the key inserted or the number of the key occurrences. if
-   * @p metas is nullptr, the LRU strategy will be applied.
+   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * applied.
+   * @endparblock
    *
-   * @param stream The CUDA stream used to execute the operation.
+   * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void insert_or_assign(size_type num_items,
@@ -225,16 +241,22 @@ class HashTable {
       return;
     }
 
-    if (!reach_max_capacity_ && load_factor() > options_.max_load_factor) {
+    if (!reach_max_capacity_ && fast_load_factor() > options_.max_load_factor) {
       reserve(capacity() * 2);
     }
 
-    evict_strategy_check(metas);
+    check_evict_strategy(metas);
 
     if (is_fast_mode()) {
       const size_t block_size = 128;
       const size_t N = num_items * TILE_SIZE;
       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+
+      std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+      if (!reach_max_capacity_) {
+        lock.lock();
+      }
+
       if (metas == nullptr) {
         upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
@@ -249,6 +271,11 @@ class HashTable {
                 table_->bucket_max_size, table_->buckets_num, N);
       }
     } else {
+      std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+      if (!reach_max_capacity_) {
+        lock.lock();
+      }
+
       Workspace<2> ws(this, stream);
       vector_type** d_dst = ws[0]->vec;
       int* d_src_offset = ws[1]->i32;
@@ -313,31 +340,38 @@ class HashTable {
   }
 
   /**
-   * Searches for each key in @p keys in the table.
-   * If the key is found and corresponding value in @p accum_or_assigns is true,
-   * the @p vectors_or_deltas will be treated as delta against to the old
-   * value, and the delta will be add to the old value of the key.
+   * Searches for each key in @p keys in the hash table.
+   * If the key is found and the corresponding value in @p accum_or_assigns is
+   * `true`, the @p vectors_or_deltas is treated as a delta to the old
+   * value, and the delta is added to the old value of the key.
    *
-   * If the key is not found and corresponding value in @p accum_or_assigns is
-   * false, the @p vectors_or_deltas will be treated as a new value and the
-   * key-value pair will be updated into the table directly.
+   * If the key is not found and the corresponding value in @p accum_or_assigns
+   * is `false`, the @p vectors_or_deltas is treated as a new value and the
+   * key-value pair is updated in the table directly.
    *
-   * @note Specially when the key is found and value of @p accum_or_assigns is
-   * false, or the key is not found and value of @p accum_or_assigns is true,
-   * nothing will be changed and this operation will be ignored, for we assume
-   * these situations occur while the key was modified or removed by other
-   * processes just now.
+   * @note When the key is found and the value of @p accum_or_assigns is
+   * `false`, or when the key is not found and the value of @p accum_or_assigns
+   * is `true`, nothing is changed and this operation is ignored.
+   * The algorithm assumes these situations occur while the key was modified or
+   * removed by other processes just now.
    *
-   * @param num_items Number of key_type-Value pairs to be processed.
-   * @param keys The keys to be inserted on GPU accessible memory with shape
-   * (num_items).
-   * @param value_or_deltas The values or deltas to be inserted on GPU
-   * accessible memory with shape (num_items, DIM).
-   * @param accum_or_assigns Indicate the operation type with shape (num_items),
-   * true means accum, false means assign.
-   * @param metas The metas to be inserted on GPU accessible memory with shape
-   * (num_items).
-   * @param stream The CUDA stream used to execute the operation
+   * @param n The number of key-value-meta tuples to process.
+   * @param keys The keys to insert on GPU-accessible memory with shape (n).
+   * @param value_or_deltas The values or deltas to insert on GPU-accessible
+   * memory with shape (n, DIM).
+   * @param accum_or_assigns The operation type with shape (n). A value of
+   * `true` indicates to accum and `false` indicates to assign.
+   * @param metas The metas to insert on GPU-accessible memory with shape (n).
+   * @parblock
+   * The metas should be a `uint64_t` value. You can specify a value that
+   * such as the timestamp of the key insertion, number of the key
+   * occurrences, or another value to perform a custom eviction strategy.
+   *
+   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * applied.
+   * @endparblock
+   *
+   * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void accum_or_assign(size_type num_items,
@@ -350,7 +384,16 @@ class HashTable {
       return;
     }
 
-    evict_strategy_check(metas);
+    if (!reach_max_capacity_ && fast_load_factor() > options_.max_load_factor) {
+      reserve(capacity() * 2);
+    }
+
+    check_evict_strategy(metas);
+
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
 
     Workspace<3> ws(this, stream);
     vector_type** dst = ws[0]->vec;
@@ -417,34 +460,39 @@ class HashTable {
   }
 
   /**
-   * @brief Searches the table for the specified keys.
+   * @brief Searches the hash table for the specified keys.
    *
-   * @note When a key is missing, the value in @p values will not changed.
+   * @note When a key is missing, the value in @p values is not changed.
    *
-   * @param num_keys Number of Key-Value-Meta tuples to be searched.
-   * @param keys The keys to be searched on GPU accessible memory with shape
-   * (num_keys).
-   * @param values The values to be searched on GPU accessible memory with
-   * shape (num_keys, DIM).
-   * @param founds The status indicates if the keys are found on GPU accessible
-   * memory with shape (num_keys).
-   * @param metas The metas to be searched on GPU accessible memory with shape
-   * (num_keys).
-   * @param stream The CUDA stream used to execute the operation.
+   * @param n The number of key-value-meta tuples to search.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param values The values to search on GPU-accessible memory with
+   * shape (n, DIM).
+   * @param founds The status that indicates if the keys are found on
+   * GPU-accessible memory with shape (n).
+   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * @endparblock
+   * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void find(size_type num_keys,
-            const key_type* keys,        // (num_keys)
-            value_type* values,          // (num_keys, DIM)
-            bool* founds,                // (num_keys)
-            meta_type* metas = nullptr,  // (num_keys)
+            const key_type* keys,        // (n)
+            value_type* values,          // (n, DIM)
+            bool* founds,                // (n)
+            meta_type* metas = nullptr,  // (n)
             cudaStream_t stream = 0) const {
     if (num_keys == 0) {
       return;
     }
 
-    // Clear found flags.
-    CUDA_CHECK(cudaMemsetAsync(founds, 0, num_keys * sizeof(bool), stream));
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+
+    CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
 
     if (is_fast_mode()) {
       const size_t block_size = 128;
@@ -513,17 +561,20 @@ class HashTable {
   }
 
   /**
-   * @brief Removes specified elements from the table.
+   * @brief Removes specified elements from the hash table.
    *
-   * @param num_keys Number of Key to be removed.
-   * @param keys The keys to be removed on GPU accessible memory (num_keys).
-   * @param stream The CUDA stream used to execute the operation.
+   * @param n The number of keys to remove.
+   * @param keys The keys to remove on GPU-accessible memory.
+   * @param stream The CUDA stream that is used to execute the operation.
    *
-   * @return Number of elements removed.
+   * @return The number of elements removed.
    */
-  size_t erase(size_type num_keys,
-               const key_type* keys,  // (num_keys)
-               cudaStream_t stream = 0) {
+  size_t erase(size_type num_keys, const key_type* keys, cudaStream_t stream = 0) {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+
     Workspace<1> ws(this, stream);
     size_t* d_count = ws[0]->size;
 
@@ -551,15 +602,10 @@ class HashTable {
 
   /**
    * @brief Erases all elements that satisfy the predicate @p pred from the
-   * table.
+   * hash table.
    *
-   * @param pred predicate that returns true if the element should be erased.
-   * @param pattern the 3rd user-defined argument to @p pred with key_type type.
-   * @param threshold the 4th user-defined argument to @p pred with meta_type
-   * type.
-   * @param stream The CUDA stream used to execute the operation.
-   *
-   * @notice: pred should be a function defined like the Example:
+   * The value for @p pred should be a function with type `Pred` defined like
+   * the following example:
    *
    *    ```
    *    template <class K, class M>
@@ -571,11 +617,24 @@ class HashTable {
    *    }
    *    ```
    *
-   * @return Number of elements removed.
+   * @param pred The predicate function with type Pred that returns `true` if
+   * the element should be erased.
+   * @param pattern The third user-defined argument to @p pred with key_type
+   * type.
+   * @param threshold The fourth user-defined argument to @p pred with meta_type
+   * type.
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   * @return The number of elements removed.
    *
    */
   size_t erase_if(Pred& pred, const key_type& pattern,
                   const meta_type& threshold, cudaStream_t stream = 0) {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+
     Workspace<1> ws(this, stream);
     size_t* d_count = ws[0]->size;
 
@@ -599,17 +658,24 @@ class HashTable {
     size_t h_count = 0;
     CUDA_CHECK(cudaMemcpyAsync(&h_count, d_count, sizeof(size_t),
                                cudaMemcpyDeviceToHost, stream));
-
     CudaCheckError();
     return h_count;
   }
 
   /**
-   * @brief Remove all of the elements in the table with no release object.
+   * @brief Removes all of the elements in the hash table with no release
+   * object.
    */
   void clear(cudaStream_t stream = 0) {
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+
     const size_t N = table_->buckets_num * table_->bucket_max_size;
     const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
+
     clear_kernel<key_type, vector_type, meta_type, DIM>
         <<<grid_size, options_.block_size, 0, stream>>>(table_, N);
 
@@ -618,26 +684,31 @@ class HashTable {
 
  public:
   /**
-   * @brief Export a certain number of the key-value-meta tuples from the table.
+   * @brief Exports a certain number of the key-value-meta tuples from the
+   * hash table.
    *
-   * @param n Maximum number of exported pairs.
-   * @param offset Number of Key to be removed.
-   * @param keys The keys to be dumped on GPU accessible memory with shape (n).
-   * @param values The values to be dumped on GPU accessible memory with shape
+   * @param n The maximum number of exported pairs.
+   * @param offset The position of the key to remove.
+   * @param keys The keys to dump from GPU-accessible memory with shape (n).
+   * @param values The values to dump from GPU-accessible memory with shape
    * (n, DIM).
-   * @param metas The metas to be searched on GPU accessible memory with shape
-   * (n).
-   * @param stream The CUDA stream used to execute the operation.
+   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * @endparblock
    *
-   * @return the number of items dumped.
+   * @param stream The CUDA stream that is used to execute the operation.
    *
-   * @throw CudaException If the K-V size is too large for GPU shared memory.
-   * Reducing the @ p max_num is needed at this time.
+   * @return The number of elements dumped.
+   *
+   * @throw CudaException If the key-value size is too large for GPU shared
+   * memory. Reducing the value for @p n is currently required if this exception
+   * occurs.
    */
   size_type export_batch(size_type num_items, size_type offset,
-                         key_type* keys,              // (num_items)
-                         value_type* values,          // (num_items, DIM)
-                         meta_type* metas = nullptr,  // (num_items)
+                         key_type* keys,              // (n)
+                         value_type* values,          // (n, DIM)
+                         meta_type* metas = nullptr,  // (n)
                          cudaStream_t stream = 0) const {
     const size_type meta_size = (metas == nullptr ? 0 : sizeof(meta_type));
     const size_t block_size =
@@ -645,13 +716,18 @@ class HashTable {
                      (sizeof(key_type) + sizeof(vector_type) + meta_size),
                  1024UL);
 
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+
     Workspace<2> ws(this, stream);
     size_type* d_counter = ws[0]->size;
 
+    CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+
     for (size_t i = 0; i < num_items; i += options_.max_batch_size) {
       const size_t n = std::min(num_items - i, options_.max_batch_size);
-
-      CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
 
       MERLIN_CHECK(
           (block_size > 0),
@@ -676,21 +752,28 @@ class HashTable {
 
  public:
   /**
-   * @brief Checks if the table has no elements.
+   * @brief Indicates if the hash table has no elements.
    *
-   * @param stream The CUDA stream used to execute the operation.
-   * @return true if the table is empty, false otherwise
+   * @param stream The CUDA stream that is used to execute the operation.
+   * @return `true` if the table is empty and `false` otherwise.
    */
   bool empty(cudaStream_t stream = 0) const { return size(stream) == 0; }
 
   /**
-   * @brief Get the table size.
+   * @brief Returns the hash table size.
    *
-   * @param stream The CUDA stream used to execute the operation.
-   * @return The table size
+   * @param stream The CUDA stream that is used to execute the operation.
+   * @return The table size.
    */
   size_type size(cudaStream_t stream = 0) const {
-    const size_type N = table_->buckets_num;
+
+    size_t h_size = 0;
+    size_type N = table_->buckets_num;
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
 #if THRUST_VERSION >= 101600
@@ -706,81 +789,266 @@ class HashTable {
   }
 
   /**
-   * @brief Get the table capacity.
+   * @brief Returns the hash table capacity.
    *
-   * @note The capacity is requested by the caller and the value may be
-   * less than the actual capacity of the table because the table keeps
-   * the capacity to be the power of 2 for performance consideration in this
-   * release.
+   * @note The value that is returned might be less than the actual capacity of
+   * the hash table because the hash table currently keeps the capacity to be
+   * a power of 2 for performance considerations.
    *
-   * @return The table capacity
+   * @return The table capacity.
    */
   size_type capacity() const { return table_->capacity; }
 
   /**
-   * @brief Sets the number of buckets to the number needed to accomodate at
-   * least count elements without exceeding maximum load factor and rehashes the
-   * table, i.e. puts the elements into appropriate buckets considering that
-   * total number of buckets has changed.
+   * @brief Sets the number of buckets to the number that is needed to
+   * accommodate at least @p new_capacity elements without exceeding the maximum
+   * load factor. This method rehashes the hash table. Rehashing puts the
+   * elements into the appropriate buckets considering that total number of
+   * buckets has changed.
    *
-   * @note If the count or double of the count is greater or equal than
-   * options_.max_capacity, the reserve will not happen.
+   * @note If the value of @p new_capacity or double of @p new_capacity is
+   * greater or equal than `options_.max_capacity`, the reserve does not perform
+   * any change to the hash table.
    *
-   * @param count new capacity of the table.
-   * @param stream The CUDA stream used to execute the operation.
+   * @param new_capacity The requested capacity for the hash table.
+   * @param stream The CUDA stream that is used to execute the operation.
    */
   void reserve(size_type new_capacity, cudaStream_t stream = 0) {
     if (reach_max_capacity_ || new_capacity > options_.max_capacity) {
       return;
     }
 
-    while (capacity() < new_capacity &&
-           capacity() * 2 <= options_.max_capacity) {
-      std::cout << "[merlin-kv] load_factor=" << load_factor()
-                << ", reserve is being executed, "
-                << "the capacity will increase from " << capacity() << " to "
-                << capacity() * 2 << "." << std::endl;
-      double_capacity(&table_);
+    {
+      CUDA_CHECK(cudaDeviceSynchronize());
+      std::unique_lock<std::shared_timed_mutex> lock(mutex_);
 
-      const size_t N = capacity() / 2;
-      const size_t grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
-      rehash_kernel<key_type, vector_type, meta_type, DIM>
-          <<<grid_size, options_.block_size, 0, stream>>>(table_, N);
+      while (capacity() < new_capacity &&
+             capacity() * 2 <= options_.max_capacity) {
+        double_capacity(&table_);
+
+        const size_t block_size = 128;
+        const size_t N = TILE_SIZE * table_->buckets_num / 2;
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+        rehash_kernel_for_fast_mode<key_type, vector_type, meta_type, DIM,
+                                    TILE_SIZE>
+            <<<grid_size, block_size, 0, stream>>>(
+                table_, table_->buckets, table_->buckets_size,
+                table_->bucket_max_size, table_->buckets_num, N);
+      }
+      CUDA_CHECK(cudaDeviceSynchronize());
     }
+
     reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
 
     CudaCheckError();
   }
 
   /**
-   * @brief Returns the maximum number of elements the table.
+   * @brief Returns the average number of elements per slot, that is, size()
+   * divided by capacity().
    *
-   * @param stream The CUDA stream used to execute the operation.
+   * @param stream The CUDA stream that is used to execute the operation.
    *
-   * @return The table max size
+   * @return The load factor
    */
   float load_factor(cudaStream_t stream = 0) const {
     return static_cast<float>((size(stream) * 1.0) / (capacity() * 1.0));
-  };
+  }
 
- private:
-  bool is_fast_mode() const noexcept { return table_->is_pure_hbm; }
+  /**
+   * @brief Save table to an abstract file.
+   *
+   * @param file An KVFile object defined the file format within filesystem.
+   * @param buffer_size The size of buffer used for saving in bytes.
+   * @param stream The CUDA stream used to execute the operation.
+   *
+   * @return Number of keys saved to file.
+   */
+  size_type save(KVFile<K, V, M, DIM>* file, size_type buffer_size = 1048576,
+                 cudaStream_t stream = 0) const {
+    K* d_keys = nullptr;
+    V* d_vectors = nullptr;
+    M* d_metas = nullptr;
+    K* h_keys = nullptr;
+    V* h_vectors = nullptr;
+    M* h_metas = nullptr;
+    size_type* d_next_nkeys = nullptr;
+    size_type nkeys = 0;
+    size_type total_size = capacity();
+    size_type pair_size = sizeof(K) + sizeof(M) + sizeof(V) * DIM;
+    size_type batch_pairs_num =
+        std::min((buffer_size + pair_size) / pair_size, total_size);
 
-  void evict_strategy_check(const meta_type* metas) {
-    if (evict_strategy_ == EvictStrategy::kUndefined) {
-      evict_strategy_ =
-          metas == nullptr ? EvictStrategy::kLru : EvictStrategy::kCustomized;
+    CUDA_CHECK(cudaMallocAsync(&d_next_nkeys, sizeof(size_type), stream));
+    CUDA_CHECK(cudaMallocAsync(&d_keys, sizeof(K) * batch_pairs_num, stream));
+    CUDA_CHECK(
+        cudaMallocAsync(&d_vectors, sizeof(V) * batch_pairs_num * DIM, stream));
+    CUDA_CHECK(cudaMallocAsync(&d_metas, sizeof(M) * batch_pairs_num, stream));
+    CUDA_CHECK(cudaMemsetAsync(d_next_nkeys, 0, sizeof(size_type), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_keys, 0, sizeof(K) * batch_pairs_num, stream));
+    CUDA_CHECK(cudaMemsetAsync(d_vectors, 0, sizeof(V) * batch_pairs_num * DIM,
+                               stream));
+    CUDA_CHECK(
+        cudaMemsetAsync(d_metas, 0, sizeof(M) * batch_pairs_num, stream));
+
+    CUDA_CHECK(cudaMallocHost(&h_keys, sizeof(K) * batch_pairs_num));
+    CUDA_CHECK(cudaMallocHost(&h_vectors, sizeof(V) * batch_pairs_num * DIM));
+    CUDA_CHECK(cudaMallocHost(&h_metas, sizeof(M) * batch_pairs_num));
+
+    export_batch(batch_pairs_num, 0, d_next_nkeys, d_keys, d_vectors, d_metas,
+                 stream);
+    CUDA_CHECK(cudaMemcpyAsync(&nkeys, d_next_nkeys, sizeof(size_type),
+                               cudaMemcpyDeviceToHost, stream));
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, sizeof(K) * nkeys,
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(h_vectors, d_vectors, sizeof(V) * nkeys * DIM,
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(M) * nkeys,
+                               cudaMemcpyDeviceToHost, stream));
+
+    size_type counter = nkeys;
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    for (size_type offset = batch_pairs_num; offset < total_size;
+         offset += batch_pairs_num) {
+      CUDA_CHECK(cudaMemsetAsync(d_next_nkeys, 0, sizeof(size_type), stream));
+      export_batch(batch_pairs_num, offset, d_next_nkeys, d_keys, d_vectors,
+                   d_metas, stream);
+      file->Write(nkeys, h_keys, h_vectors, h_metas);
+      CUDA_CHECK(cudaMemcpyAsync(&nkeys, d_next_nkeys, sizeof(size_type),
+                                 cudaMemcpyDeviceToHost, stream));
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, sizeof(K) * nkeys,
+                                 cudaMemcpyDeviceToHost, stream));
+      CUDA_CHECK(cudaMemcpyAsync(h_vectors, d_vectors, sizeof(V) * nkeys * DIM,
+                                 cudaMemcpyDeviceToHost, stream));
+      CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(M) * nkeys,
+                                 cudaMemcpyDeviceToHost, stream));
+      counter += nkeys;
+      CUDA_CHECK(cudaStreamSynchronize(stream));
     }
 
-    if (evict_strategy_ == EvictStrategy::kLru) {
+    if (nkeys > 0) {
+      CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, sizeof(K) * nkeys,
+                                 cudaMemcpyDeviceToHost, stream));
+      CUDA_CHECK(cudaMemcpyAsync(h_vectors, d_vectors, sizeof(V) * nkeys * DIM,
+                                 cudaMemcpyDeviceToHost, stream));
+      CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(M) * nkeys,
+                                 cudaMemcpyDeviceToHost, stream));
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      file->Write(nkeys, h_keys, h_vectors, h_metas);
+    }
+
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, d_next_nkeys, h_keys,
+                       h_vectors, h_metas);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    return counter;
+  }
+
+  /**
+   * @brief Load file and restore table.
+   *
+   * @param file An KVFile object defined the file format within filesystem.
+   * @param buffer_size The size of buffer used for loading in bytes.
+   * @param stream The CUDA stream used to execute the operation.
+   *
+   * @return Number of keys loaded from file.
+   */
+  size_type load(KVFile<K, V, M, DIM>* file, size_type buffer_size = 1048576,
+                 cudaStream_t stream = 0) {
+    K* d_keys = nullptr;
+    V* d_vectors = nullptr;
+    M* d_metas = nullptr;
+    K* h_keys = nullptr;
+    V* h_vectors = nullptr;
+    M* h_metas = nullptr;
+    size_type pair_size = sizeof(K) + sizeof(M) + sizeof(V) * DIM;
+    size_type batch_pairs_num = (buffer_size + pair_size) / pair_size;
+
+    CUDA_CHECK(cudaMallocHost(&h_keys, sizeof(K) * batch_pairs_num));
+    CUDA_CHECK(cudaMallocHost(&h_vectors, sizeof(V) * batch_pairs_num * DIM));
+    CUDA_CHECK(cudaMallocHost(&h_metas, sizeof(M) * batch_pairs_num));
+    size_type nkeys = file->Read(batch_pairs_num, h_keys, h_vectors, h_metas);
+    size_type counts = nkeys;
+    if (nkeys == 0) {
+      CUDA_FREE_POINTERS(stream, h_keys, h_vectors, h_metas);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      return 0;
+    }
+    CUDA_CHECK(cudaMallocAsync(&d_keys, sizeof(K) * batch_pairs_num, stream));
+    CUDA_CHECK(
+        cudaMallocAsync(&d_vectors, sizeof(V) * batch_pairs_num * DIM, stream));
+    CUDA_CHECK(cudaMallocAsync(&d_metas, sizeof(M) * batch_pairs_num, stream));
+
+    do {
+      CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys, sizeof(K) * nkeys,
+                                 cudaMemcpyHostToDevice, stream));
+      CUDA_CHECK(cudaMemcpyAsync(d_vectors, h_vectors, sizeof(V) * nkeys * DIM,
+                                 cudaMemcpyHostToDevice, stream));
+      CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas, sizeof(M) * nkeys,
+                                 cudaMemcpyHostToDevice, stream));
+      insert_or_assign(nkeys, d_keys, d_vectors, d_metas, stream);
+      nkeys = file->Read(batch_pairs_num, h_keys, h_vectors, h_metas);
+      counts += nkeys;
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+    } while (nkeys > 0);
+
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, h_keys, h_vectors,
+                       h_metas);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    return counts;
+  }
+
+ private:
+  inline bool is_fast_mode() const noexcept { return table_->is_pure_hbm; }
+
+  /**
+   * @brief Returns the load factor by sampling up to 1024 buckets.
+   *
+   * @note For performance consideration, the returned load factor is
+   * inaccurate but within an error in 1% empirically which is enough for
+   * capacity control. But it's not suitable for end-users.
+   *
+   * @param stream The CUDA stream used to execute the operation.
+   *
+   * @return The evaluated load factor
+   */
+  inline float fast_load_factor(cudaStream_t stream = 0) const {
+    size_t h_size = 0;
+
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+    size_type N = std::min(table_->buckets_num, 1024UL);
+
+    thrust::device_ptr<int> size_ptr(table_->buckets_size);
+
+#if THRUST_VERSION >= 101600
+    auto policy = thrust::cuda::par_nosync.on(stream);
+#else
+    auto policy = thrust::cuda::par.on(stream);
+#endif
+    h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+                            thrust::plus<int>());
+
+    CudaCheckError();
+    return static_cast<float>((h_size * 1.0) /
+                              (options_.max_bucket_size * N * 1.0));
+  }
+
+  inline void check_evict_strategy(const meta_type* metas) {
+    if (options_.evict_strategy == EvictStrategy::kLru) {
       MERLIN_CHECK((metas == nullptr),
-                   "the metas should not be specified when already running on "
+                   "the metas should not be specified when running on "
                    "LRU mode.");
     }
 
-    if (evict_strategy_ == EvictStrategy::kCustomized) {
+    if (options_.evict_strategy == EvictStrategy::kCustomized) {
       MERLIN_CHECK((metas != nullptr),
-                   "the metas should be specified when already running on "
+                   "the metas should be specified when running on "
                    "customized mode.")
     }
   }
@@ -791,7 +1059,7 @@ class HashTable {
   size_t shared_mem_size_ = 0;
   bool reach_max_capacity_ = false;
   bool initialized_ = false;
-  EvictStrategy evict_strategy_ = EvictStrategy::kUndefined;
+  mutable std::shared_timed_mutex mutex_;
 
   // Workspace management.
   struct WorkspaceBuffer final {

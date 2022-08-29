@@ -34,7 +34,7 @@ jobs:
       
     # This job only runs for pull request comments
     if: |
-         contains( 'EmmaQiaoCh,rhdong,', format('{0},', github.actor)) && 
+         contains( 'EmmaQiaoCh,rhdong,Ranjeet-Nvidia,', format('{0},', github.actor)) && 
          github.event.comment.body == '/blossom-ci'  
     steps:
       - name: Check if comment is issued by authorized person
@@ -57,7 +57,7 @@ jobs:
           lfs: 'true'
          
       - name: Run blossom action
-        uses: Ranjeet-Nvidia/blossom-action@main
+        uses: NVIDIA/blossom-action@main
         env:
           REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO_KEY_DATA: ${{ secrets.BLOSSOM_KEY }}

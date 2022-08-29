@@ -26,8 +26,6 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include "merlin/initializers.cuh"
-#include "merlin/optimizers.cuh"
 #include "merlin_hashtable.cuh"
 
 using std::cerr;
@@ -37,6 +35,8 @@ using std::fixed;
 using std::setfill;
 using std::setprecision;
 using std::setw;
+
+using namespace nv::merlin;
 
 uint64_t getTimestamp() {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -105,6 +105,7 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
   options.init_capacity = init_capacity;
   options.max_capacity = init_capacity;
   options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
+  options.evict_strategy = EvictStrategy::kCustomized;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
@@ -176,6 +177,7 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
 
     cur_load_factor = table->load_factor(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
+
     start += key_num_per_op;
   }
 
@@ -238,6 +240,7 @@ void print_title() {
 }
 
 int main() {
+  size_t key_num_per_op = 1 * 1024 * 1024UL;
   cudaDeviceProp props;
   CUDA_CHECK(cudaGetDeviceProperties(&props, 0));
   cout << endl
@@ -246,46 +249,47 @@ int main() {
        << "* GPU: 1 x " << props.name << ": " << props.major << "."
        << props.minor << endl
        << "* Key Type = uint64_t" << endl
-       << "* Value Type = float32 * dim" << endl
-       << "* Key-Values per OP = 1,048,576" << endl
+       << "* Value Type = float32 * {dim}" << endl
+       << "* Key-Values per OP = " << key_num_per_op << endl
        << "* ***Throughput Unit: Billion-KV/second***" << endl
        << endl
        << "### On pure HBM mode: " << endl;
   print_title();
   try {
-    test_main<4>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.50);
-    test_main<4>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.75);
-    test_main<4>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 1.00);
-    test_main<16>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.50);
-    test_main<16>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.75);
-    test_main<16>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 1.00);
+    test_main<4>(64 * 1024 * 1024UL, key_num_per_op, 32, 0.50);
+    test_main<4>(64 * 1024 * 1024UL, key_num_per_op, 32, 0.75);
+    test_main<4>(64 * 1024 * 1024UL, key_num_per_op, 32, 1.00);
 
-    test_main<64>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.50);
-    test_main<64>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.75);
-    test_main<64>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 1.00);
+    test_main<16>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
+    test_main<16>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
+    test_main<16>(64 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
 
-    test_main<128>(128 * 1024 * 1024UL, 1024 * 1024UL, 64, 0.50);
-    test_main<128>(128 * 1024 * 1024UL, 1024 * 1024UL, 64, 0.75);
-    test_main<128>(128 * 1024 * 1024UL, 1024 * 1024UL, 64, 1.00);
+    test_main<64>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
+    test_main<64>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
+    test_main<64>(64 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
+
+    test_main<128>(128 * 1024 * 1024UL, key_num_per_op, 64, 0.50);
+    test_main<128>(128 * 1024 * 1024UL, key_num_per_op, 64, 0.75);
+    test_main<128>(128 * 1024 * 1024UL, key_num_per_op, 64, 1.00);
     cout << endl;
 
     cout << "### On HBM+HMEM hybrid mode: " << endl;
     print_title();
-    test_main<64>(128 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.50);
-    test_main<64>(128 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.75);
-    test_main<64>(128 * 1024 * 1024UL, 1024 * 1024UL, 16, 1.00);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
 
-    test_main<64>(1024 * 1024 * 1024UL, 1024 * 1024UL, 56, 0.50);
-    test_main<64>(1024 * 1024 * 1024UL, 1024 * 1024UL, 56, 0.75);
-    test_main<64>(1024 * 1024 * 1024UL, 1024 * 1024UL, 56, 1.00);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 0.50);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 0.75);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 1.00);
 
-    test_main<128>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.50);
-    test_main<128>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 0.75);
-    test_main<128>(64 * 1024 * 1024UL, 1024 * 1024UL, 16, 1.00);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
 
-    test_main<128>(512 * 1024 * 1024UL, 1024 * 1024UL, 56, 0.50);
-    test_main<128>(512 * 1024 * 1024UL, 1024 * 1024UL, 56, 0.75);
-    test_main<128>(512 * 1024 * 1024UL, 1024 * 1024UL, 56, 1.00);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 0.50);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 0.75);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 1.00);
     cout << endl;
 
     CUDA_CHECK(cudaDeviceSynchronize());

@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cooperative_groups.h>
+#include <stdarg.h>
 #include <exception>
 #include <string>
 #include "cuda_fp16.h"
@@ -378,6 +379,32 @@ __forceinline__ __device__ void unlock(
     }
   }
 }
+
+inline void free_pointers(cudaStream_t stream, int n, ...) {
+  va_list args;
+  va_start(args, n);
+  void* ptr = nullptr;
+  for (int i = 0; i < n; i++) {
+    ptr = va_arg(args, void*);
+    if (ptr) {
+      cudaPointerAttributes attr;
+      memset(&attr, 0, sizeof(cudaPointerAttributes));
+      CUDA_CHECK(cudaPointerGetAttributes(&attr, ptr));
+      if (attr.devicePointer && (!attr.hostPointer)) {
+        CUDA_CHECK(cudaFreeAsync(ptr, stream));
+      } else if (attr.devicePointer && attr.hostPointer) {
+        CUDA_CHECK(cudaFreeHost(ptr));
+      } else {
+        free(ptr);
+      }
+    }
+  }
+  va_end(args);
+}
+
+#define CUDA_FREE_POINTERS(stream, ...) \
+  nv::merlin::free_pointers(            \
+      stream, (sizeof((void*[]){__VA_ARGS__}) / sizeof(void*)), __VA_ARGS__);
 
 }  // namespace merlin
 }  // namespace nv
