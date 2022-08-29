@@ -29,7 +29,6 @@ using TableOptions = nv::merlin::HashTableOptions;
 void test_save_to_file(std::string& prefix) {
   size_t keynum = 1 * 1024 * 1024;
   size_t capacity = 2 * 1024 * 1024;
-  size_t buffer_size = 1024 * 1024;
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
@@ -75,11 +74,11 @@ void test_save_to_file(std::string& prefix) {
   std::string keyfile = prefix + ".keys";
   std::string valuefile = prefix + ".values";
   file.Open(keyfile, valuefile, "wb");
-  table_0->save(&file, buffer_size, stream);
+  table_0->save(&file, stream);
   file.Close();
   printf("table_0 saves.\n");
   file.Open(keyfile, valuefile, "rb");
-  table_1->load(&file, buffer_size, stream);
+  table_1->load(&file, stream);
   file.Close();
   printf("table_1 loads.\n");
   MERLIN_EXPECT_TRUE(

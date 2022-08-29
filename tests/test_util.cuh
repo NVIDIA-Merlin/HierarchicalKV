@@ -171,7 +171,6 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
     return false;
   }
 
-  size_t* d_size = nullptr;
   K* d_keys = nullptr;
   V* d_vectors = nullptr;
   M* d_metas = nullptr;
@@ -179,7 +178,6 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
   V* d_vectors_in_b = nullptr;
   M* d_metas_in_b = nullptr;
 
-  getBufferOnDevice(&d_size, sizeof(size_t), stream);
   getBufferOnDevice(&d_keys, sizeof(K) * size, stream);
   getBufferOnDevice(&d_vectors, sizeof(V) * size * DIM, stream);
   getBufferOnDevice(&d_metas, sizeof(M) * size, stream);
@@ -187,15 +185,15 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
   getBufferOnDevice(&d_vectors_in_b, sizeof(V) * size * DIM, stream);
   getBufferOnDevice(&d_metas_in_b, sizeof(M) * size, stream);
 
-  a->export_batch(a->capacity(), 0, d_size, d_keys, d_vectors, d_metas, stream);
+  a->export_batch(a->capacity(), 0, d_keys, d_vectors, d_metas, stream);
   b->find(size, d_keys, d_vectors_in_b, d_founds_in_b, d_metas_in_b, stream);
   if (!allTrueGpu(d_founds_in_b, size, stream)) {
-    CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_metas,
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas,
                        d_founds_in_b, d_vectors_in_b, d_metas_in_b);
     return false;
   }
   if (!allEqualGpu(d_vectors, d_vectors_in_b, size * DIM, stream)) {
-    CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_metas,
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas,
                        d_founds_in_b, d_vectors_in_b, d_metas_in_b);
     return false;
   }

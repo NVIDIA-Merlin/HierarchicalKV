@@ -406,5 +406,17 @@ inline void free_pointers(cudaStream_t stream, int n, ...) {
   nv::merlin::free_pointers(            \
       stream, (sizeof((void*[]){__VA_ARGS__}) / sizeof(void*)), __VA_ARGS__);
 
+template<class T>
+struct HostDeleter {
+  void operator()(T* ptr) { CUDA_CHECK(cudaFreeHost(ptr)); }
+};
+
+template <class T>
+inline std::unique_ptr<T, HostDeleter<T>> make_unique_host(size_t n = 1) {
+  T* ptr;
+  CUDA_CHECK(cudaMallocHost(&ptr, sizeof(T) * n));
+  return std::unique_ptr<T, HostDeleter<T>>(ptr);
+}
+
 }  // namespace merlin
 }  // namespace nv
