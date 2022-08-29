@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+#include <gtest/gtest.h>
 #include <stdio.h>
 #include "merlin/types.cuh"
 #include "merlin_hashtable.cuh"
@@ -27,7 +28,8 @@ using V = float;
 using Table = nv::merlin::HashTable<K, V, M, DIM>;
 using TableOptions = nv::merlin::HashTableOptions;
 
-void test_save_to_file(std::string& prefix) {
+void test_save_to_file() {
+  std::string prefix = "checkpoint";
   size_t keynum = 1 * 1024 * 1024;
   size_t capacity = 2 * 1024 * 1024;
   size_t buffer_size = 1024 * 1024;
@@ -60,45 +62,37 @@ void test_save_to_file(std::string& prefix) {
                              cudaMemcpyHostToDevice, stream));
   printf("Create buffers.\n");
 
-  TableOptions options1;
-  TableOptions options2;
-  options1.init_capacity = capacity;
-  options1.max_capacity = capacity;
-  options1.evict_strategy = nv::merlin::EvictStrategy::kLru;
-
-  options2 = options1;
-  options2.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+  TableOptions options;
+  options.init_capacity = capacity;
+  options.max_capacity = capacity;
+  options.evict_strategy = nv::merlin::EvictStrategy::kLru;
 
   std::unique_ptr<Table> table_0 = std::make_unique<Table>();
   std::unique_ptr<Table> table_1 = std::make_unique<Table>();
-  table_0->init(options1);
-  table_1->init(options2);
+  table_0->init(options);
+  table_1->init(options);
   printf("Init tables.\n");
 
   table_0->insert_or_assign(keynum, d_keys, d_vectors, /*metas=*/nullptr,
                             stream);
   printf("Fill table_0.\n");
   nv::merlin::LocalKVFile<K, V, M, DIM> file;
-  std::string keyfile = prefix + ".keys";
-  std::string valuefile = prefix + ".values";
-  file.Open(keyfile, valuefile, "wb");
+  std::string keys_path = prefix + ".keys";
+  std::string values_path = prefix + ".values";
+  std::string metas_path = prefix + ".metas";
+  file.open(keys_path, values_path, metas_path, "wb");
   table_0->save(&file, buffer_size, stream);
-  file.Close();
+  file.close();
   printf("table_0 saves.\n");
-  file.Open(keyfile, valuefile, "rb");
+  file.open(keys_path, values_path, metas_path, "rb");
   table_1->load(&file, buffer_size, stream);
-  file.Close();
+  file.close();
   printf("table_1 loads.\n");
-  MERLIN_EXPECT_TRUE(
-      test_util::tables_equal(table_0.get(), table_1.get(), stream),
-      "Tables not equal");
+  ASSERT_TRUE(test_util::tables_equal(table_0.get(), table_1.get(), stream));
   printf("table_0 and table_1 are equal.\n");
   CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, h_keys, h_vectors,
                      h_metas);
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
-int main() {
-  std::string prefix = "checkpoint";
-  test_save_to_file(prefix);
-}
+TEST(MerlinHashTableTest, test_save_and_load) { test_save_to_file(); }

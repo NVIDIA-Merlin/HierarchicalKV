@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string>
 #include "merlin/types.cuh"
@@ -24,10 +25,15 @@ namespace nv {
 namespace merlin {
 
 /**
- * The KV file on local file system.
+ * The KV file on local file system. It only save/load keys and vectors
+ * between table and file. `metas` are ignored in it since absolute
+ * values of metas are commonly time-variant, while the time interval
+ * between save/load calling is not deterministic, in default case. If
+ * other specified rules are required, the BaseKVFile could be inherited
+ * to implement customized read/write rules.
  *
  * @tparam K The data type of the key.
- * @tparam V The data type of the vector's item type.
+ * @tparam V The data type of the vector's elements.
  *         The item data type should be a basic data type of C++/CUDA.
  * @tparam M The data type for `meta`.
  *           The currently supported data type is only `uint64_t`.
@@ -37,75 +43,76 @@ namespace merlin {
 template <class K, class V, class M, size_t D>
 class LocalKVFile : public BaseKVFile<K, V, M, D> {
  public:
-  /**
-   * @brief Default constructor for the LocalKVFile class.
-   */
-  LocalKVFile() : keys_file_path_(nullptr), values_file_path_(nullptr) {}
+  LocalKVFile() : keys_fp_(nullptr), values_fp_(nullptr), metas_fp_(nullptr) {}
 
-  /**
-   * @brief Destructor of LocalKVFile frees the resources.
-   */
-  ~LocalKVFile() { Close(); }
+  ~LocalKVFile() { close(); }
 
-  /**
-   * @brief Open file.
-   */
-  int Open(std::string& keyfile, std::string& valuefile, const char* mode) {
-    keys_file_path_ = fopen(keyfile.c_str(), mode);
-    if (!keys_file_path_) {
-      return -1;
+  bool open(const std::string& keys_path, const std::string& values_path,
+            const std::string& metas_path, const char* mode) {
+    close();
+    keys_fp_ = fopen(keys_path.c_str(), mode);
+    if (!keys_fp_) {
+      return false;
     }
-    values_file_path_ = fopen(valuefile.c_str(), mode);
-    if (!values_file_path_) {
-      fclose(keys_file_path_);
-      keys_file_path_ = nullptr;
-      return -1;
+    values_fp_ = fopen(values_path.c_str(), mode);
+    if (!values_fp_) {
+      close();
+      return false;
     }
-    return 0;
+    metas_fp_ = fopen(metas_path.c_str(), mode);
+    if (!metas_fp_) {
+      close();
+      return false;
+    }
+    return true;
   }
 
-  /**
-   * @brief Close file.
-   */
-  int Close() {
-    if (keys_file_path_) {
-      fclose(keys_file_path_);
-      keys_file_path_ = nullptr;
+  void close() noexcept {
+    if (keys_fp_) {
+      fclose(keys_fp_);
+      keys_fp_ = nullptr;
     }
-    if (values_file_path_) {
-      fclose(values_file_path_);
-      values_file_path_ = nullptr;
+    if (values_fp_) {
+      fclose(values_fp_);
+      values_fp_ = nullptr;
     }
-    return 0;
+    if (metas_fp_) {
+      fclose(metas_fp_);
+      metas_fp_ = nullptr;
+    }
   }
 
-  /**
-   * @brief Read data from the opened file.
-   */
-  ssize_t Read(size_t n, K* keys, V* vectors, M* metas) {
-    size_t nread_keys = fread(keys, sizeof(K), n, keys_file_path_);
-    size_t nread_vevs = fread(vectors, sizeof(V) * D, n, values_file_path_);
-    if (nread_keys != nread_vevs) {
-      return -1;
+  size_t read(size_t n, K* keys, V* vectors, M* metas) override {
+    size_t nread_keys =
+        fread(keys, sizeof(K), static_cast<size_t>(n), keys_fp_);
+    size_t nread_vecs =
+        fread(vectors, sizeof(V) * D, static_cast<size_t>(n), values_fp_);
+    size_t nread_metas =
+        fread(metas, sizeof(M), static_cast<size_t>(n), metas_fp_);
+    if (nread_keys != nread_vecs || nread_keys != nread_metas) {
+      return 0;
     }
-    return static_cast<ssize_t>(nread_keys);
+    return nread_keys;
   }
 
-  /**
-   * @brief Write data to the opened file.
-   */
-  ssize_t Write(size_t n, const K* keys, const V* vectors, const M* metas) {
-    size_t nwritten_keys = fwrite(keys, sizeof(K), n, keys_file_path_);
-    size_t nwritten_vecs = fwrite(vectors, sizeof(V) * D, n, values_file_path_);
-    if (nwritten_keys != nwritten_vecs) {
-      return -1;
+  size_t write(size_t n, const K* keys, const V* vectors,
+               const M* metas) override {
+    size_t nwritten_keys =
+        fwrite(keys, sizeof(K), static_cast<size_t>(n), keys_fp_);
+    size_t nwritten_vecs =
+        fwrite(vectors, sizeof(V) * D, static_cast<size_t>(n), values_fp_);
+    size_t nwritten_metas =
+        fwrite(metas, sizeof(M), static_cast<size_t>(n), metas_fp_);
+    if (nwritten_keys != nwritten_vecs || nwritten_keys != nwritten_metas) {
+      return 0;
     }
-    return static_cast<ssize_t>(nwritten_keys);
+    return nwritten_keys;
   }
 
  private:
-  FILE* keys_file_path_;
-  FILE* values_file_path_;
+  FILE* keys_fp_;
+  FILE* values_fp_;
+  FILE* metas_fp_;
 };
 
 }  // namespace merlin

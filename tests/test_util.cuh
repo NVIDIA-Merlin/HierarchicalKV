@@ -42,7 +42,7 @@ __global__ void all_true(const bool* conds, size_t n, int* nfalse) {
   const size_t stripe =
       (n + gridDim.x - 1) /
       gridDim.x;  // number of elements assigned to each block.
-  size_t start = blockIdx.x * stripe;
+  size_t start = blockIdx.x * stripe + threadIdx.x;
   size_t end = min(start + stripe, n);
 
   __shared__ int local_nfalse;
@@ -67,7 +67,7 @@ __global__ void all_equal(T* a, T* b, size_t n, int* ndiff) {
   const size_t stripe =
       (n + gridDim.x - 1) /
       gridDim.x;  // number of elements assigned to each block.
-  size_t start = blockIdx.x * stripe;
+  size_t start = blockIdx.x * stripe + threadIdx.x;
   size_t end = min(start + stripe, n);
 
   __shared__ int local_ndiff;
