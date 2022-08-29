@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <cuda/std/semaphore>
 
 namespace nv {
@@ -83,10 +84,12 @@ using EraseIfPredictInternal =
     );
 
 /**
- * The abstract class of KV file.
+ * An abstract class provides interface between the nv::merlin::HashTable
+ * and a file, which enables the table to save to the file or load from
+ * the file, by overriding the `read` and `write` method.
  *
  * @tparam K The data type of the key.
- * @tparam V The data type of the vector's item type.
+ * @tparam V The data type of the vector's elements.
  *         The item data type should be a basic data type of C++/CUDA.
  * @tparam M The data type for `meta`.
  *           The currently supported data type is only `uint64_t`.
@@ -97,9 +100,38 @@ template <class K, class V, class M, size_t D>
 class BaseKVFile {
  public:
   virtual ~BaseKVFile() {}
-  virtual ssize_t Read(size_t n, K* keys, V* vectors, M* metas) = 0;
-  virtual ssize_t Write(size_t n, const K* keys, const V* vectors,
-                        const M* metas) = 0;
+
+  /**
+   * Read from file and fill into the keys, values, and metas buffer.
+   * When calling save/load method from table, it can assume that the
+   * received buffer of keys, vectors, and metas are automatically
+   * pre-allocated.
+   *
+   * @param n The number of KV pairs expect to read. `int64_t` was used
+   *          here to adapt to various filesytem and formats.
+   * @param keys The pointer to received buffer for keys.
+   * @param vectors The pointer to received buffer for vectors.
+   * @param metas The pointer to received buffer for metas.
+   *
+   * @return Number of KV pairs have been successfully read.
+   */
+  virtual size_t read(size_t n, K* keys, V* vectors, M* metas) = 0;
+
+  /**
+   * Write keys, values, metas from table to the file. It defines
+   * an abstract method to get batch of KV pairs and write them into
+   * file.
+   *
+   * @param n The number of KV pairs to be written. `int64_t` was used
+   *          here to adapt to various filesytem and formats.
+   * @param keys The keys will be written to file.
+   * @param vectors The vectors of values will be written to file.
+   * @param metas The metas will be written to file.
+   *
+   * @return Number of KV pairs have been successfully written.
+   */
+  virtual size_t write(size_t n, const K* keys, const V* vectors,
+                       const M* metas) = 0;
 };
 
 }  // namespace merlin

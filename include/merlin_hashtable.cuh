@@ -210,12 +210,18 @@ class HashTable {
    *
    * @param stream The CUDA stream that is used to execute the operation.
    *
+   * @param ignore_evict_strategy A boolean option indicating whether if
+   * the insert_or_assign ignores the evict strategy of table with current
+   * metas anyway. If true, it does not check whether the metas confroms to
+   * the evict strategy. If false, it requires the metas follow the evict
+   * strategy of table.
    */
   void insert_or_assign(size_type n,
                         const key_type* keys,              // (n)
                         const value_type* values,          // (n, DIM)
                         const meta_type* metas = nullptr,  // (n)
-                        cudaStream_t stream = 0) {
+                        cudaStream_t stream = 0,
+                        bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
     }
@@ -224,7 +230,9 @@ class HashTable {
       reserve(capacity() * 2);
     }
 
-    check_evict_strategy(metas);
+    if (!ignore_evict_strategy) {
+      check_evict_strategy(metas);
+    }
 
     if (is_fast_mode()) {
       const size_t block_size = 128;
@@ -351,13 +359,20 @@ class HashTable {
    *
    * @param stream The CUDA stream that is used to execute the operation.
    *
+   * @param ignore_evict_strategy A boolean option indicating whether if
+   * the accum_or_assign ignores the evict strategy of table with current
+   * metas anyway. If true, it does not check whether the metas confroms to
+   * the evict strategy. If false, it requires the metas follow the evict
+   * strategy of table.
+   *
    */
   void accum_or_assign(size_type n,
                        const key_type* keys,               // (n)
                        const value_type* value_or_deltas,  // (n, DIM)
                        const bool* accum_or_assigns,       // (n)
                        const meta_type* metas = nullptr,   // (n)
-                       cudaStream_t stream = 0) {
+                       cudaStream_t stream = 0,
+                       bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
     }
@@ -366,7 +381,9 @@ class HashTable {
       reserve(capacity() * 2);
     }
 
-    check_evict_strategy(metas);
+    if (!ignore_evict_strategy) {
+      check_evict_strategy(metas);
+    }
 
     vector_type** dst;
     int* src_offset;
@@ -723,6 +740,7 @@ class HashTable {
     export_batch(n, offset, d_counter, keys, values, metas, stream);
     CUDA_CHECK(cudaMemcpyAsync(&h_counter, d_counter, sizeof(size_type),
                                cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaFreeAsync(d_counter, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
     return h_counter;
   }
@@ -830,17 +848,18 @@ class HashTable {
   }
 
   /**
-   * @brief Save table to an abstract file.
+   * @brief Save keys, vectors, metas in table to file or files.
    *
-   * @param file An BaseKVFile object defined the file format within filesystem.
+   * @param file A BaseKVFile object defined the file format on host filesystem.
    * @param buffer_size The size of buffer used for saving in bytes.
    * @param stream The CUDA stream used to execute the operation.
    *
-   * @return Number of keys saved to file.
+   * @return Number of KV pairs saved to file.
    */
   size_type save(BaseKVFile<K, V, M, DIM>* file,
                  size_type buffer_size = 1048576,
                  cudaStream_t stream = 0) const {
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
     M* d_metas = nullptr;
@@ -883,7 +902,7 @@ class HashTable {
     CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(M) * nkeys,
                                cudaMemcpyDeviceToHost, stream));
 
-    size_type counter = nkeys;
+    size_type counter = 0;
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     for (size_type offset = batch_pairs_num; offset < total_size;
@@ -891,7 +910,7 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(d_next_nkeys, 0, sizeof(size_type), stream));
       export_batch(batch_pairs_num, offset, d_next_nkeys, d_keys, d_vectors,
                    d_metas, stream);
-      file->Write(nkeys, h_keys, h_vectors, h_metas);
+      counter += file->write(nkeys, h_keys, h_vectors, h_metas);
       CUDA_CHECK(cudaMemcpyAsync(&nkeys, d_next_nkeys, sizeof(size_type),
                                  cudaMemcpyDeviceToHost, stream));
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -901,7 +920,6 @@ class HashTable {
                                  cudaMemcpyDeviceToHost, stream));
       CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(M) * nkeys,
                                  cudaMemcpyDeviceToHost, stream));
-      counter += nkeys;
       CUDA_CHECK(cudaStreamSynchronize(stream));
     }
 
@@ -913,19 +931,19 @@ class HashTable {
       CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(M) * nkeys,
                                  cudaMemcpyDeviceToHost, stream));
       CUDA_CHECK(cudaStreamSynchronize(stream));
-      file->Write(nkeys, h_keys, h_vectors, h_metas);
+      counter += file->write(nkeys, h_keys, h_vectors, h_metas);
     }
 
-    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, d_next_nkeys, h_keys,
-                       h_vectors, h_metas);
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, d_next_nkeys);
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_FREE_POINTERS(stream, h_keys, h_vectors, h_metas);
     return counter;
   }
 
   /**
-   * @brief Load file and restore table.
+   * @brief Load keys, vectors, metas from file to table.
    *
-   * @param file An BaseKVFile object defined the file format within filesystem.
+   * @param file An BaseKVFile defined the file format within filesystem.
    * @param buffer_size The size of buffer used for loading in bytes.
    * @param stream The CUDA stream used to execute the operation.
    *
@@ -933,6 +951,7 @@ class HashTable {
    */
   size_type load(BaseKVFile<K, V, M, DIM>* file,
                  size_type buffer_size = 1048576, cudaStream_t stream = 0) {
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
     M* d_metas = nullptr;
@@ -945,8 +964,8 @@ class HashTable {
     CUDA_CHECK(cudaMallocHost(&h_keys, sizeof(K) * batch_pairs_num));
     CUDA_CHECK(cudaMallocHost(&h_vectors, sizeof(V) * batch_pairs_num * DIM));
     CUDA_CHECK(cudaMallocHost(&h_metas, sizeof(M) * batch_pairs_num));
-    size_type nkeys = file->Read(batch_pairs_num, h_keys, h_vectors, h_metas);
-    size_type counts = nkeys;
+    size_type nkeys = file->read(batch_pairs_num, h_keys, h_vectors, h_metas);
+    size_type counter = nkeys;
     if (nkeys == 0) {
       CUDA_FREE_POINTERS(stream, h_keys, h_vectors, h_metas);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -964,16 +983,16 @@ class HashTable {
                                  cudaMemcpyHostToDevice, stream));
       CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas, sizeof(M) * nkeys,
                                  cudaMemcpyHostToDevice, stream));
-      insert_or_assign(nkeys, d_keys, d_vectors, d_metas, stream);
-      nkeys = file->Read(batch_pairs_num, h_keys, h_vectors, h_metas);
-      counts += nkeys;
+      insert_or_assign(nkeys, d_keys, d_vectors, d_metas, stream, true);
+      nkeys = file->read(batch_pairs_num, h_keys, h_vectors, h_metas);
+      counter += nkeys;
       CUDA_CHECK(cudaStreamSynchronize(stream));
     } while (nkeys > 0);
 
-    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, h_keys, h_vectors,
-                       h_metas);
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    return counts;
+    CUDA_FREE_POINTERS(stream, h_keys, h_vectors, h_metas);
+    return counter;
   }
 
  private:
