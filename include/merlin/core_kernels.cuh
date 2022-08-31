@@ -1342,11 +1342,5 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
   }
 }
 
-static inline size_t GB(size_t n) { return n << 30; }
-
-static inline size_t MB(size_t n) { return n << 20; }
-
-static inline size_t KB(size_t n) { return n << 10; }
-
 }  // namespace merlin
 }  // namespace nv
