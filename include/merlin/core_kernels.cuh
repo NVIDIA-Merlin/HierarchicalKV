@@ -1174,9 +1174,9 @@ __global__ void clear_kernel(Table<K, V, M, DIM>* __restrict table, size_t N) {
     int bkt_idx = t / bucket_max_size;
     Bucket<K, V, M, DIM>* bucket = &(table->buckets[bkt_idx]);
 
-    atomicExch((K*)&(bucket->keys[key_idx]), EMPTY_KEY);
+    bucket->keys[key_idx] = EMPTY_KEY;
     if (key_idx == 0) {
-      atomicExch(&(table->buckets_size[bkt_idx]), 0);
+      table->buckets_size[bkt_idx] = 0;
     }
   }
 }
