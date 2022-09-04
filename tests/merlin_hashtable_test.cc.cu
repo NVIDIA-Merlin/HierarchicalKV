@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-#include <assert.h>
+#include <gtest/gtest.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,7 +134,7 @@ __forceinline__ __device__ bool erase_if_pred(const K& key, const M& meta,
 template <class K, class M>
 __device__ Table::Pred pred = erase_if_pred<K, M>;
 
-int test_basic() {
+void test_basic() {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -195,19 +195,15 @@ int test_basic() {
     table->init(options);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(total_size == 0);
+    ASSERT_TRUE(total_size == 0);
 
-    std::cout << "before insert_or_assign: total_size = " << total_size
-              << std::endl;
     table->insert_or_assign(
         KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_metas, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << "after 1st insert_or_assign: total_size = " << total_size
-              << std::endl;
-    assert(total_size == KEY_NUM);
+    ASSERT_TRUE(total_size == KEY_NUM);
 
     CUDA_CHECK(cudaMemset(d_vectors, 2, KEY_NUM * sizeof(Vector)));
     table->insert_or_assign(
@@ -216,9 +212,7 @@ int test_basic() {
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << "after 2nd insert_or_assign: total_size = " << total_size
-              << std::endl;
-    assert(total_size == KEY_NUM);
+    ASSERT_TRUE(total_size == KEY_NUM);
 
     table->find(KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_found,
                 nullptr, stream);
@@ -230,8 +224,7 @@ int test_basic() {
     for (int i = 0; i < KEY_NUM; i++) {
       if (h_found[i]) found_num++;
     }
-    std::cout << "after find, found_num = " << found_num << std::endl;
-    assert(found_num == KEY_NUM);
+    ASSERT_TRUE(found_num == KEY_NUM);
 
     table->accum_or_assign(KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors),
                            d_found, d_metas, stream);
@@ -239,21 +232,17 @@ int test_basic() {
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << "after accum: total_size = " << total_size << std::endl;
-    assert(total_size == KEY_NUM);
+    ASSERT_TRUE(total_size == KEY_NUM);
 
     size_t erase_num = table->erase(KEY_NUM >> 1, d_keys, stream);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << "after erase_if: total_size = " << total_size
-              << ", erase_num = " << erase_num << std::endl;
-    assert(erase_num == total_size);
+    ASSERT_TRUE(erase_num == total_size);
 
     table->clear(stream);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << "after clear: total_size = " << total_size << std::endl;
-    assert(total_size == 0);
+    ASSERT_TRUE(total_size == 0);
 
     table->insert_or_assign(
         KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_metas, stream);
@@ -262,9 +251,7 @@ int test_basic() {
                                        reinterpret_cast<float*>(d_vectors),
                                        d_metas, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << "after export_batch: dump_counter = " << dump_counter
-              << std::endl;
-    assert(dump_counter == KEY_NUM);
+    ASSERT_TRUE(dump_counter == KEY_NUM);
   }
   CUDA_CHECK(cudaStreamDestroy(stream));
 
@@ -284,11 +271,9 @@ int test_basic() {
   CUDA_CHECK(cudaDeviceSynchronize());
 
   CudaCheckError();
-
-  return 0;
 }
 
-int test_erase_if_pred() {
+void test_erase_if_pred() {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 128UL;
@@ -343,7 +328,7 @@ int test_erase_if_pred() {
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(total_size == 0);
+    ASSERT_TRUE(total_size == 0);
 
     table->insert_or_assign(
         KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_metas, stream);
@@ -351,14 +336,14 @@ int test_erase_if_pred() {
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(total_size == BUCKET_MAX_SIZE);
+    ASSERT_TRUE(total_size == BUCKET_MAX_SIZE);
 
     K pattern = 100;
     M threshold = 0;
     size_t erase_num = table->erase_if(pred<K, M>, pattern, threshold, stream);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert((erase_num + total_size) == BUCKET_MAX_SIZE);
+    ASSERT_TRUE((erase_num + total_size) == BUCKET_MAX_SIZE);
 
     table->find(KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_found,
                 d_metas, stream);
@@ -377,19 +362,19 @@ int test_erase_if_pred() {
     for (int i = 0; i < KEY_NUM; i++) {
       if (h_found[i]) {
         found_num++;
-        assert(h_metas[i] == h_keys[i]);
+        ASSERT_TRUE(h_metas[i] == h_keys[i]);
         for (int j = 0; j < DIM; j++) {
-          assert(h_vectors[i].value[j] ==
-                 static_cast<float>(h_keys[i] * 0.00001));
+          ASSERT_TRUE(h_vectors[i].value[j] ==
+                      static_cast<float>(h_keys[i] * 0.00001));
         }
       }
     }
-    assert(found_num == (BUCKET_MAX_SIZE - erase_num));
+    ASSERT_TRUE(found_num == (BUCKET_MAX_SIZE - erase_num));
 
     table->clear(stream);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(total_size == 0);
+    ASSERT_TRUE(total_size == 0);
   }
   CUDA_CHECK(cudaStreamDestroy(stream));
 
@@ -407,11 +392,9 @@ int test_erase_if_pred() {
   CUDA_CHECK(cudaDeviceSynchronize());
 
   CudaCheckError();
-
-  return 0;
 }
 
-int test_rehash() {
+void test_rehash() {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = BUCKET_MAX_SIZE;
   constexpr uint64_t MAX_CAPACITY = 2 * INIT_CAPACITY;
@@ -466,7 +449,7 @@ int test_rehash() {
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(total_size == 0);
+    ASSERT_TRUE(total_size == 0);
 
     table->insert_or_assign(
         KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_metas, stream);
@@ -474,21 +457,21 @@ int test_rehash() {
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaDeviceSynchronize());
-    assert(total_size == BUCKET_MAX_SIZE);
+    ASSERT_TRUE(total_size == BUCKET_MAX_SIZE);
 
     dump_counter = table->export_batch(table->capacity(), 0, d_keys,
                                        reinterpret_cast<float*>(d_vectors),
                                        d_metas, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(dump_counter == BUCKET_MAX_SIZE);
+    ASSERT_TRUE(dump_counter == BUCKET_MAX_SIZE);
 
     table->reserve(MAX_CAPACITY, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(table->capacity() == MAX_CAPACITY);
+    ASSERT_TRUE(table->capacity() == MAX_CAPACITY);
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(total_size == BUCKET_MAX_SIZE);
+    ASSERT_TRUE(total_size == BUCKET_MAX_SIZE);
 
     table->find(BUCKET_MAX_SIZE, d_keys, reinterpret_cast<float*>(d_vectors),
                 d_found, d_metas, stream);
@@ -509,19 +492,19 @@ int test_rehash() {
     for (int i = 0; i < BUCKET_MAX_SIZE; i++) {
       if (h_found[i]) {
         found_num++;
-        assert(h_metas[i] == h_keys[i]);
+        ASSERT_TRUE(h_metas[i] == h_keys[i]);
         for (int j = 0; j < DIM; j++) {
-          assert(h_vectors[i].value[j] ==
-                 static_cast<float>(h_keys[i] * 0.00001));
+          ASSERT_TRUE(h_vectors[i].value[j] ==
+                      static_cast<float>(h_keys[i] * 0.00001));
         }
       }
     }
-    assert(found_num == BUCKET_MAX_SIZE);
+    ASSERT_TRUE(found_num == BUCKET_MAX_SIZE);
 
     table->clear(stream);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    assert(total_size == 0);
+    ASSERT_TRUE(total_size == 0);
   }
   CUDA_CHECK(cudaStreamDestroy(stream));
 
@@ -539,11 +522,9 @@ int test_rehash() {
   CUDA_CHECK(cudaDeviceSynchronize());
 
   CudaCheckError();
-
-  return 0;
 }
 
-int test_dynamic_rehash_on_multi_threads() {
+void test_dynamic_rehash_on_multi_threads() {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = 1 * 1024;
   constexpr uint64_t MAX_CAPACITY = 128 * 1024 * INIT_CAPACITY;
@@ -618,8 +599,8 @@ int test_dynamic_rehash_on_multi_threads() {
         if (h_found[i]) {
           found_num++;
           for (int j = 0; j < DIM; j++) {
-            assert(h_vectors[i].value[j] ==
-                   static_cast<float>(h_keys[i] * 0.00001));
+            ASSERT_TRUE(h_vectors[i].value[j] ==
+                        static_cast<float>(h_keys[i] * 0.00001));
           }
         }
       }
@@ -653,22 +634,12 @@ int test_dynamic_rehash_on_multi_threads() {
   for (auto& th : threads) {
     th.join();
   }
-  assert(table->capacity() == MAX_CAPACITY);
-
-  return 0;
+  ASSERT_TRUE(table->capacity() == MAX_CAPACITY);
 }
 
-int main() {
-  try {
-    test_basic();
-    test_erase_if_pred();
-    test_rehash();
-    test_dynamic_rehash_on_multi_threads();
-    CUDA_CHECK(cudaDeviceSynchronize());
-    std::cout << "All test cases passed!" << std::endl;
-  } catch (const nv::merlin::CudaException& e) {
-    std::cerr << e.what() << std::endl;
-  }
-  CUDA_CHECK(cudaDeviceSynchronize());
-  return 0;
+TEST(MerlinHashTableTest, test_basic) { test_basic(); }
+TEST(MerlinHashTableTest, test_erase_if_pred) { test_erase_if_pred(); }
+TEST(MerlinHashTableTest, test_rehash) { test_rehash(); }
+TEST(MerlinHashTableTest, test_dynamic_rehash_on_multi_threads) {
+  test_dynamic_rehash_on_multi_threads();
 }
