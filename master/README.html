@@ -137,7 +137,7 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="section" id="how-to-build">
 <h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
 <p>Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone https://github.com/NVIDIA-Merlin/merlin-kv.git
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone --recursive https://github.com/NVIDIA-Merlin/merlin-kv.git
 <span class="nb">cd</span> merlin-kv <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
 cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
 
