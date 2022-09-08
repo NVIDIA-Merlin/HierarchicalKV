@@ -78,7 +78,7 @@ struct Table {
 template <class K, class M>
 using EraseIfPredictInternal =
     bool (*)(const K& key,       ///< iterated key in table
-             const M& meta,      ///< iterated meta in table
+             M& meta,            ///< iterated meta in table
              const K& pattern,   ///< input key from caller
              const M& threshold  ///< input meta from caller
     );

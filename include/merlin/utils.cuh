@@ -324,40 +324,6 @@ void realloc_managed(P* ptr, size_t old_size, size_t new_size) {
   return;
 }
 
-template <class K>
-__forceinline__ __device__ constexpr bool key_compare(const K* k1,
-                                                      const K* k2) {
-  auto __lhs_c = reinterpret_cast<unsigned char const*>(k1);
-  auto __rhs_c = reinterpret_cast<unsigned char const*>(k2);
-
-#pragma unroll
-  for (int i = 0; i < sizeof(K); i++) {
-    auto const __lhs_v = *__lhs_c++;
-    auto const __rhs_v = *__rhs_c++;
-    if (__lhs_v != __rhs_v) {
-      return false;
-    }
-  }
-  return true;
-}
-
-template <class K>
-__forceinline__ __device__ constexpr bool key_empty(const K* k) {
-  constexpr K empty_key = EMPTY_KEY;
-  auto __lhs_c = reinterpret_cast<unsigned char const*>(k);
-  auto __rhs_c = reinterpret_cast<unsigned char const*>(&empty_key);
-
-#pragma unroll
-  for (int i = 0; i < sizeof(K); i++) {
-    auto const __lhs_v = *__lhs_c++;
-    auto const __rhs_v = *__rhs_c++;
-    if (__lhs_v != __rhs_v) {
-      return false;
-    }
-  }
-  return true;
-}
-
 template <typename mutex, uint32_t TILE_SIZE, bool THREAD_SAFE = true>
 __forceinline__ __device__ void lock(
     const cg::thread_block_tile<TILE_SIZE>& tile, mutex& set_mutex) {

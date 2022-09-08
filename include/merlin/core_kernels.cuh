@@ -1342,5 +1342,68 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
   }
 }
 
+/* Dump with meta. */
+template <class K, class V, class M, size_t DIM>
+__global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
+                            const EraseIfPredictInternal<K, M> pred,
+                            const K pattern, const M threshold, K* d_key,
+                            V* __restrict d_val, M* __restrict d_meta,
+                            const size_t offset, const size_t search_length,
+                            size_t* d_dump_counter) {
+  extern __shared__ unsigned char s[];
+  K* smem = (K*)s;
+  K* block_result_key = smem;
+  V* block_result_val = (V*)&(smem[blockDim.x]);
+  M* block_result_meta = (M*)&(block_result_val[blockDim.x]);
+  __shared__ size_t block_acc;
+  __shared__ size_t global_acc;
+  const size_t bucket_max_size = table->bucket_max_size;
+
+  const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (threadIdx.x == 0) {
+    block_acc = 0;
+  }
+  __syncthreads();
+
+  if (tid < search_length) {
+    int bkt_idx = (tid + offset) / bucket_max_size;
+    int key_idx = (tid + offset) % bucket_max_size;
+    Bucket<K, V, M, DIM>* bucket = &(table->buckets[bkt_idx]);
+
+    K key = bucket->keys[key_idx];
+    M meta = bucket->metas[key_idx].val;
+
+    if (key != EMPTY_KEY && pred(key, meta, pattern, threshold)) {
+      size_t local_index = atomicAdd(&block_acc, 1);
+      block_result_key[local_index] = bucket->keys[key_idx];
+      for (int i = 0; i < DIM; i++) {
+        atomicExch(&(block_result_val[local_index].values[i]),
+                   bucket->vectors[key_idx].values[i]);
+      }
+      if (d_meta != nullptr) {
+        block_result_meta[local_index] = bucket->metas[key_idx].val;
+      }
+    }
+  }
+  __syncthreads();
+
+  if (threadIdx.x == 0) {
+    global_acc = atomicAdd(d_dump_counter, block_acc);
+  }
+  __syncthreads();
+
+  if (threadIdx.x < block_acc) {
+    d_key[global_acc + threadIdx.x] = block_result_key[threadIdx.x];
+    for (int i = 0; i < DIM; i++) {
+      d_val[global_acc + threadIdx.x].values[i] =
+          block_result_val[threadIdx.x].values[i];
+    }
+    if (d_meta != nullptr) {
+      d_meta[global_acc + threadIdx.x] = block_result_meta[threadIdx.x];
+    }
+  }
+}
+
 }  // namespace merlin
 }  // namespace nv
