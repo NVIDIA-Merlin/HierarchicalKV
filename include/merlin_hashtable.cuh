@@ -65,26 +65,37 @@ struct HashTableOptions {
  * @brief A customizable template function indicates which keys should be
  * erased from the hash table by returning `true`.
  *
- * @note The `erase_if` API traverses all of the items by this function and the
- * items that return `true` are removed.
+ * @note The `erase_if` or `export_batch_if` API traverses all of the items by
+ * this function and the items that return `true` are removed or exported.
  *
- *  Example:
+ *  Example for erase_if:
  *
  *    ```
  *    template <class K, class M>
  *    __forceinline__ __device__ bool erase_if_pred(const K& key,
- *                                                  const M& meta,
+ *                                                  M& meta,
  *                                                  const K& pattern,
  *                                                  const M& threshold) {
  *      return ((key & 0xFFFF000000000000 == pattern) &&
  *              (meta < threshold));
  *    }
  *    ```
+ *
+ *  Example for export_batch_if:
+ *    ```
+ *    template <class K, class M>
+ *    __forceinline__ __device__ bool export_if_pred(const K& key,
+ *                                                   M& meta,
+ *                                                   const K& pattern,
+ *                                                   const M& threshold) {
+ *      return meta >= threshold;
+ *    }
+ *    ```
  */
 template <class K, class M>
 using EraseIfPredict = bool (*)(
     const K& key,       ///< The traversed key in a hash table.
-    const M& meta,      ///< The traversed meta in a hash table.
+    M& meta,            ///< The traversed meta in a hash table.
     const K& pattern,   ///< The key pattern to compare with the `key` argument.
     const M& threshold  ///< The threshold to compare with the `meta` argument.
 );
@@ -676,6 +687,7 @@ class HashTable {
    *
    * @param n The maximum number of exported pairs.
    * @param offset The position of the key to remove.
+   * @param counter The position of the key to remove.
    * @param keys The keys to dump from GPU-accessible memory with shape (n).
    * @param values The values to dump from GPU-accessible memory with shape
    * (n, DIM).
@@ -692,13 +704,13 @@ class HashTable {
    * memory. Reducing the value for @p n is currently required if this exception
    * occurs.
    */
-  void export_batch(size_type n, size_type offset, size_type* d_counter,
+  void export_batch(size_type n, size_type offset, size_type* counter,
                     key_type* keys,              // (n)
                     value_type* values,          // (n, DIM)
                     meta_type* metas = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
     if (offset >= table_->capacity) {
-      CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+      CUDA_CHECK(cudaMemsetAsync(counter, 0, sizeof(size_type), stream));
       return;
     }
     n = std::min(table_->capacity - offset, n);
@@ -724,7 +736,7 @@ class HashTable {
     dump_kernel<key_type, vector_type, meta_type, DIM>
         <<<grid_size, block_size, shared_size, stream>>>(
             table_, keys, reinterpret_cast<vector_type*>(values), metas, offset,
-            n, d_counter);
+            n, counter);
     CudaCheckError();
   }
 
@@ -743,6 +755,92 @@ class HashTable {
     CUDA_CHECK(cudaFreeAsync(d_counter, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
     return h_counter;
+  }
+
+  /**
+   * @brief Exports a certain number of the key-value-meta tuples which match
+   * specified condition from the hash table.
+   *
+   * @param n The maximum number of exported pairs.
+   * The value for @p pred should be a function with type `Pred` defined like
+   * the following example:
+   *
+   *    ```
+   *    template <class K, class M>
+   *    __forceinline__ __device__ bool export_if_pred(const K& key,
+   *                                                   M& meta,
+   *                                                   const K& pattern,
+   *                                                   const M& threshold) {
+   *
+   *      return meta > threshold;
+   *    }
+   *    ```
+   *
+   * @param pred The predicate function with type Pred that returns `true` if
+   * the element should be exported.
+   * @param pattern The third user-defined argument to @p pred with key_type
+   * type.
+   * @param threshold The fourth user-defined argument to @p pred with meta_type
+   * type.
+   * @param offset The position of the key to remove.
+   * @param keys The keys to dump from GPU-accessible memory with shape (n).
+   * @param values The values to dump from GPU-accessible memory with shape
+   * (n, DIM).
+   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * @endparblock
+   *
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   * @return The number of elements dumped.
+   *
+   * @throw CudaException If the key-value size is too large for GPU shared
+   * memory. Reducing the value for @p n is currently required if this exception
+   * occurs.
+   */
+  void export_batch_if(Pred& pred, const key_type& pattern,
+                       const meta_type& threshold, size_type n,
+                       size_type offset, size_type* d_counter,
+                       key_type* keys,              // (n)
+                       value_type* values,          // (n, DIM)
+                       meta_type* metas = nullptr,  // (n)
+                       cudaStream_t stream = 0) const {
+    if (offset >= table_->capacity) {
+      CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+      return;
+    }
+
+    Pred h_pred;
+
+    n = std::min(table_->capacity - offset, n);
+    size_type meta_size = (metas == nullptr ? 0 : sizeof(meta_type));
+
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+    const size_t block_size =
+        std::min(shared_mem_size_ / 2 /
+                     (sizeof(key_type) + sizeof(vector_type) + meta_size),
+                 1024UL);
+
+    MERLIN_CHECK(
+        (block_size > 0),
+        "[merlin-kv] block_size <= 0, the K-V-M size may be too large!");
+    const size_t shared_size =
+        (sizeof(key_type) + sizeof(vector_type) + meta_size) * block_size;
+    const int grid_size = (n - 1) / (block_size) + 1;
+
+    CUDA_CHECK(cudaMemcpyFromSymbolAsync(&h_pred, pred, sizeof(Pred), 0,
+                                         cudaMemcpyDeviceToHost, stream));
+
+    dump_kernel<key_type, vector_type, meta_type, DIM>
+        <<<grid_size, block_size, shared_size, stream>>>(
+            table_, h_pred, pattern, threshold, keys,
+            reinterpret_cast<vector_type*>(values), metas, offset, n,
+            d_counter);
+    CudaCheckError();
   }
 
  public:
