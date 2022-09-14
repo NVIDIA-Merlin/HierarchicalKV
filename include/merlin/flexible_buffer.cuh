@@ -16,29 +16,29 @@
 
 #pragma once
 
+#include "utils.cuh"
+
 namespace nv {
 namespace merlin {
 
 template <class T>
-class FlexMemory {
+class FlexPinnedBuffer {
  public:
-  FlexMemory(size_t size = 1) : ptr_(nullptr) {
+  FlexPinnedBuffer(size_t size = 1) : ptr_(nullptr) {
     if (!ptr_) {
       size_ = size;
-      assert(size_ > 0);
-      cudaMalloc(&ptr_, sizeof(T) * size_);
+      CUDA_CHECK(cudaMallocHost(&ptr_, sizeof(T) * size_));
     }
   }
-  ~FlexMemory() {
-    if (!ptr_) cudaFree(ptr_);
+  ~FlexPinnedBuffer() {
+    if (!ptr_) CUDA_CHECK(cudaFreeHost(ptr_));
   }
 
   __inline__ T* alloc_or_reuse(size_t size = 0) {
     if (size > size_) {
-      cudaFree(ptr_);
+      CUDA_CHECK(cudaFreeHost(ptr_));
       size_ = size;
-      assert(size_ > 0);
-      cudaMalloc(&ptr_, sizeof(T) * size_);
+      CUDA_CHECK(cudaMallocHost(&ptr_, sizeof(T) * size_));
     }
     return ptr_;
   }
