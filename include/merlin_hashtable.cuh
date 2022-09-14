@@ -23,6 +23,7 @@
 #include <shared_mutex>
 #include <type_traits>
 #include "merlin/core_kernels.cuh"
+#include "merlin/flexible_buffer.cuh"
 #include "merlin/types.cuh"
 #include "merlin/utils.cuh"
 
@@ -58,6 +59,7 @@ struct HashTableOptions {
   float max_load_factor = 0.5f;    ///< The max load factor before rehashing.
   int block_size = 1024;           ///< The default block size for CUDA kernels.
   int device_id = 0;               ///< The ID of device.
+  bool io_by_cpu = false;  ///< The flag indicating if the CPU handles IO.
   EvictStrategy evict_strategy = EvictStrategy::kLru;  ///< The evict strategy.
 };
 
@@ -191,6 +193,9 @@ class HashTable {
         options_.max_hbm_for_vectors, options_.max_bucket_size);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
+    MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
+                 "[merlin-kv] `io_by_cpu` should not be true when "
+                 "`max_hbm_for_vectors` is not 0!");
     initialized_ = true;
     CudaCheckError();
   }
@@ -320,7 +325,24 @@ class HashTable {
                             thrust::less<uint64_t>());
       }
 
-      {
+      if (options_.io_by_cpu) {
+        static thread_local FlexPinnedBuffer<vector_type*> h_dst;
+        static thread_local FlexPinnedBuffer<vector_type> h_values;
+        static thread_local FlexPinnedBuffer<int> h_src_offset;
+
+        vector_type** l_dst = h_dst.alloc_or_reuse(n);
+        vector_type* l_values = h_values.alloc_or_reuse(n);
+        int* l_src_offset = h_src_offset.alloc_or_reuse(n);
+
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        CUDA_CHECK(cudaMemcpy(l_dst, d_dst, n * sizeof(vector_type*),
+                              cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(l_values, values, n * sizeof(vector_type),
+                              cudaMemcpyDeviceToHost));
+        CUDA_CHECK(cudaMemcpy(l_src_offset, d_src_offset, n * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+        write_by_cpu<vector_type>(l_dst, l_values, l_src_offset, n);
+      } else {
         const size_t N = n * DIM;
         const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
         write_kernel<key_type, vector_type, meta_type, DIM>
