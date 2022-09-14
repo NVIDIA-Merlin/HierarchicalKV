@@ -80,7 +80,8 @@ struct ValueArray {
 template <size_t DIM>
 void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
                size_t key_num_per_op = 1 * 1024 * 1024UL,
-               size_t hbm4values = 16, float load_factor = 1.0) {
+               size_t hbm4values = 16, float load_factor = 1.0,
+               bool io_by_cpu = false) {
   using K = uint64_t;
   using M = uint64_t;
   using Vector = ValueArray<float, DIM>;
@@ -105,6 +106,7 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
   options.init_capacity = init_capacity;
   options.max_capacity = init_capacity;
   options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
+  options.io_by_cpu = io_by_cpu;
   options.evict_strategy = EvictStrategy::kCustomized;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
@@ -275,21 +277,21 @@ int main() {
 
     cout << "### On HBM+HMEM hybrid mode: " << endl;
     print_title();
-    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
-    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
-    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
 
-    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 0.50);
-    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 0.75);
-    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 1.00);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
 
-    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
-    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
-    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
 
-    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 0.50);
-    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 0.75);
-    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 1.00);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
     cout << endl;
 
     CUDA_CHECK(cudaDeviceSynchronize());

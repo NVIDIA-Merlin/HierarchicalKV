@@ -18,6 +18,8 @@
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include <thread>
+#include <vector>
 #include "types.cuh"
 #include "utils.cuh"
 
@@ -285,6 +287,44 @@ __forceinline__ __device__ void copy_vector(cg::thread_block_tile<TILE_SIZE> g,
                                             const V* src, V* dst) {
   for (auto i = g.thread_rank(); i < DIM; i += g.size()) {
     dst->values[i] = src->values[i];
+  }
+}
+
+/* Write the N data from src to each address in *dst by using CPU threads,
+ * usually called by upsert kernel.
+ *
+ * @note: In some machines with AMD CPUs, the `write_kernel` has low performance
+ * thru PCI-E, so we try to use the `memcpy` on CPU threads for writing work to
+ * reach better performance.
+ */
+template <class V>
+void write_by_cpu(V** __restrict dst, const V* __restrict src,
+                  const int* __restrict offset, int N, int n_worker = 16) {
+  std::vector<std::thread> thds;
+  if (n_worker < 1) n_worker = 1;
+
+  auto functor = [](V** __restrict dst, const V* __restrict src,
+                    const int* __restrict offset, int handled_size,
+                    int trunk_size) -> void {
+    for (int i = handled_size; i < handled_size + trunk_size; i++) {
+      memcpy(dst[i], src + offset[i], sizeof(V));
+    }
+  };
+
+  size_t trunk_size = N / n_worker;
+  size_t handled_size = 0;
+  for (int i = 0; i < n_worker - 1; i++) {
+    thds.push_back(
+        std::thread(functor, dst, src, offset, handled_size, trunk_size));
+    handled_size += trunk_size;
+  }
+
+  size_t remaining = N - handled_size;
+  thds.push_back(
+      std::thread(functor, dst, src, offset, handled_size, remaining));
+
+  for (int i = 0; i < n_worker; i++) {
+    thds[i].join();
   }
 }
 
