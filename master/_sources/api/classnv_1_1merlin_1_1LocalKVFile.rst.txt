@@ -1,0 +1,26 @@
+.. _exhale_class_classnv_1_1merlin_1_1LocalKVFile:
+
+Template Class LocalKVFile
+==========================
+
+- Defined in :ref:`file_merlin_localfile.h`
+
+
+Inheritance Relationships
+-------------------------
+
+Base Type
+*********
+
+- ``public BaseKVFile< K, V, M, D >``
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nv::merlin::LocalKVFile
+   :project: Merlin-KV
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -53,7 +53,7 @@ Includes
 
 - ``stdarg.h``
 
-- ``stdio.h``
+- ``stddef.h``
 
 - ``string``
 
