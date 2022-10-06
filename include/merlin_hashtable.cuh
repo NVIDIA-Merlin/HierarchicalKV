@@ -249,21 +249,28 @@ class HashTable {
    *
    * @param stream The CUDA stream that is used to execute the operation.
    *
+   * @param ignore_evict_strategy A boolean option indicating whether if
+   * the insert_or_assign ignores the evict strategy of table with current
+   * metas anyway. If true, it does not check whether the metas confroms to
+   * the evict strategy. If false, it requires the metas follow the evict
+   * strategy of table.
    */
   void insert_or_assign(size_type n,
                         const key_type* keys,              // (n)
                         const value_type* values,          // (n, DIM)
                         const meta_type* metas = nullptr,  // (n)
-                        cudaStream_t stream = 0) {
+                        cudaStream_t stream = 0,
+                        bool ignore_evict_strategy = false) {
     insert_or_assign(n, keys, reinterpret_cast<const vector_type*>(values),
-                     metas, stream);
+                     metas, stream, ignore_evict_strategy);
   }
 
   void insert_or_assign(size_type n,
                         const key_type* keys,              // (n)
                         const vector_type* values,         // (n, DIM)
                         const meta_type* metas = nullptr,  // (n)
-                        cudaStream_t stream = 0) {
+                        cudaStream_t stream = 0,
+                        bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
     }
@@ -272,7 +279,9 @@ class HashTable {
       reserve(capacity() * 2);
     }
 
-    check_evict_strategy(metas);
+    if (!ignore_evict_strategy) {
+      check_evict_strategy(metas);
+    }
 
     // Unless we reached capacity, reallocation could happen.
     std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
@@ -398,16 +407,23 @@ class HashTable {
    *
    * @param stream The CUDA stream that is used to execute the operation.
    *
+   * @param ignore_evict_strategy A boolean option indicating whether if
+   * the accum_or_assign ignores the evict strategy of table with current
+   * metas anyway. If true, it does not check whether the metas confroms to
+   * the evict strategy. If false, it requires the metas follow the evict
+   * strategy of table.
+   *
    */
   void accum_or_assign(size_type n,
                        const key_type* keys,               // (n)
                        const value_type* value_or_deltas,  // (n, DIM)
                        const bool* accum_or_assigns,       // (n)
                        const meta_type* metas = nullptr,   // (n)
-                       cudaStream_t stream = 0) {
+                       cudaStream_t stream = 0,
+                       bool ignore_evict_strategy = false) {
     accum_or_assign(n, keys,
                     reinterpret_cast<const vector_type*>(value_or_deltas),
-                    accum_or_assigns, metas, stream);
+                    accum_or_assigns, metas, stream, ignore_evict_strategy);
   }
 
   void accum_or_assign(size_type n,
@@ -415,7 +431,8 @@ class HashTable {
                        const vector_type* value_or_deltas,  // (n, DIM)
                        const bool* accum_or_assigns,        // (n)
                        const meta_type* metas = nullptr,    // (n)
-                       cudaStream_t stream = 0) {
+                       cudaStream_t stream = 0,
+                       bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
     }
@@ -424,7 +441,9 @@ class HashTable {
       reserve(capacity() * 2);
     }
 
-    check_evict_strategy(metas);
+    if (!ignore_evict_strategy) {
+      check_evict_strategy(metas);
+    }
 
     // Unless we reached capacity, reallocation could happen.
     std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
@@ -906,14 +925,16 @@ class HashTable {
   }
 
   /**
-   * @brief Save table to an abstract file.
+   * @brief Save keys, vectors, metas in table to file or files.
    *
-   * @param file An KVFile object defined the file format within filesystem.
+   * @param file A BaseKVFile object defined the file format on host filesystem.
+   * @param buffer_size The size of buffer used for saving in bytes.
    * @param stream The CUDA stream used to execute the operation.
    *
-   * @return Number of keys saved to file.
+   * @return Number of KV pairs saved to file.
    */
-  size_type save(KVFile<K, V, M, DIM>* file, cudaStream_t stream = 0) const {
+  size_type save(BaseKVFile<K, V, M, DIM>* file,
+                 cudaStream_t stream = 0) const {
     // Precalc some constants.
     const size_type N =
         ws_buffer_size_ /
@@ -962,6 +983,7 @@ class HashTable {
       size_type h_count;
       CUDA_CHECK(cudaMemcpyAsync(&h_count, d_count, sizeof(size_type),
                                  cudaMemcpyDeviceToHost, stream));
+      CUDA_CHECK(cudaStreamSynchronize(stream));
 
       // Move workspace to host memory.
       CUDA_CHECK(cudaMemcpyAsync(h_keys.get(), d_keys,
@@ -976,7 +998,7 @@ class HashTable {
       CUDA_CHECK(cudaStreamSynchronize(stream));
 
       // Store permanently.
-      file->Write(h_count, h_keys.get(), h_values.get(), h_metas.get());
+      file->write(h_count, h_keys.get(), h_values.get(), h_metas.get());
       total_count += h_count;
     }
 
@@ -984,14 +1006,15 @@ class HashTable {
   }
 
   /**
-   * @brief Load file and restore table.
+   * @brief Load keys, vectors, metas from file to table.
    *
-   * @param file An KVFile object defined the file format within filesystem.
+   * @param file An BaseKVFile defined the file format within filesystem.
+   * @param buffer_size The size of buffer used for loading in bytes.
    * @param stream The CUDA stream used to execute the operation.
    *
    * @return Number of keys loaded from file.
    */
-  size_type load(KVFile<K, V, M, DIM>* file, cudaStream_t stream = 0) {
+  size_type load(BaseKVFile<K, V, M, DIM>* file, cudaStream_t stream = 0) {
     // Precalc some constants.
     const size_type max_count =
         ws_buffer_size_ /
@@ -1014,7 +1037,7 @@ class HashTable {
     while (true) {
       // Read next batch.
       const size_type count =
-          file->Read(max_count, h_keys.get(), h_values.get(), h_metas.get());
+          file->read(max_count, h_keys.get(), h_values.get(), h_metas.get());
       if (count <= 0) {
         break;
       }
@@ -1031,6 +1054,8 @@ class HashTable {
 
       insert_or_assign(count, d_keys, d_values, d_metas, stream);
       total_count += count;
+
+      CUDA_CHECK(cudaStreamSynchronize(stream));
     }
 
     return total_count;

@@ -42,7 +42,7 @@ __global__ void all_true(const bool* conds, size_t n, int* nfalse) {
   const size_t stripe =
       (n + gridDim.x - 1) /
       gridDim.x;  // number of elements assigned to each block.
-  size_t start = blockIdx.x * stripe;
+  size_t start = blockIdx.x * stripe + threadIdx.x;
   size_t end = min(start + stripe, n);
 
   __shared__ int local_nfalse;
@@ -67,7 +67,7 @@ __global__ void all_equal(T* a, T* b, size_t n, int* ndiff) {
   const size_t stripe =
       (n + gridDim.x - 1) /
       gridDim.x;  // number of elements assigned to each block.
-  size_t start = blockIdx.x * stripe;
+  size_t start = blockIdx.x * stripe + threadIdx.x;
   size_t end = min(start + stripe, n);
 
   __shared__ int local_ndiff;
@@ -188,13 +188,13 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
   a->export_batch(a->capacity(), 0, d_keys, d_vectors, d_metas, stream);
   b->find(size, d_keys, d_vectors_in_b, d_founds_in_b, d_metas_in_b, stream);
   if (!allTrueGpu(d_founds_in_b, size, stream)) {
-    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas,
-                       d_founds_in_b, d_vectors_in_b, d_metas_in_b);
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, d_founds_in_b,
+                       d_vectors_in_b, d_metas_in_b);
     return false;
   }
   if (!allEqualGpu(d_vectors, d_vectors_in_b, size * DIM, stream)) {
-    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas,
-                       d_founds_in_b, d_vectors_in_b, d_metas_in_b);
+    CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, d_founds_in_b,
+                       d_vectors_in_b, d_metas_in_b);
     return false;
   }
   return true;
