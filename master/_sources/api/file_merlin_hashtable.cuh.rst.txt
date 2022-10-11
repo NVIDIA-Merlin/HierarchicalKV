@@ -43,6 +43,8 @@ Includes
 
 - ``merlin/core_kernels.cuh``
 
+- ``merlin/flexible_buffer.cuh``
+
 - ``merlin/types.cuh``
 
 - ``merlin/utils.cuh``
@@ -57,6 +59,8 @@ Includes
 
 - ``string``
 
+- ``thread``
+
 - ``thrust/device_vector.h``
 
 - ``thrust/execution_policy.h``
@@ -64,6 +68,8 @@ Includes
 - ``thrust/sort.h``
 
 - ``type_traits``
+
+- ``vector``
 
 
 
@@ -101,5 +107,5 @@ Typedefs
 --------
 
 
-- :ref:`exhale_typedef_merlin__hashtable_8cuh_1a75860344e3d48da549d33c7941686e7e`
+- :ref:`exhale_typedef_merlin__hashtable_8cuh_1a20afe66b4f5d4690391f7ef8845223e5`
 
