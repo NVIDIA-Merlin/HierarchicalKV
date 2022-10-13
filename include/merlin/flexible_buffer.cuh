@@ -16,7 +16,11 @@
 
 #pragma once
 
+#include <iostream>
 #include "utils.cuh"
+
+using std::cerr;
+using std::endl;
 
 namespace nv {
 namespace merlin {
@@ -31,7 +35,11 @@ class FlexPinnedBuffer {
     }
   }
   ~FlexPinnedBuffer() {
-    if (!ptr_) CUDA_CHECK(cudaFreeHost(ptr_));
+    try {
+      if (!ptr_) CUDA_CHECK(cudaFreeHost(ptr_));
+    } catch (const nv::merlin::CudaException& e) {
+      cerr << "[merlin-kv] Failed to free FlexPinnedBuffer!" << endl;
+    }
   }
 
   __inline__ T* alloc_or_reuse(size_t size = 0) {

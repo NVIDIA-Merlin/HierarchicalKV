@@ -355,13 +355,18 @@ inline void free_pointers(cudaStream_t stream, int n, ...) {
     if (ptr) {
       cudaPointerAttributes attr;
       memset(&attr, 0, sizeof(cudaPointerAttributes));
-      CUDA_CHECK(cudaPointerGetAttributes(&attr, ptr));
-      if (attr.devicePointer && (!attr.hostPointer)) {
-        CUDA_CHECK(cudaFreeAsync(ptr, stream));
-      } else if (attr.devicePointer && attr.hostPointer) {
-        CUDA_CHECK(cudaFreeHost(ptr));
-      } else {
-        free(ptr);
+      try {
+        CUDA_CHECK(cudaPointerGetAttributes(&attr, ptr));
+        if (attr.devicePointer && (!attr.hostPointer)) {
+          CUDA_CHECK(cudaFreeAsync(ptr, stream));
+        } else if (attr.devicePointer && attr.hostPointer) {
+          CUDA_CHECK(cudaFreeHost(ptr));
+        } else {
+          free(ptr);
+        }
+      } catch (const nv::merlin::CudaException& e) {
+        va_end(args);
+        throw e;
       }
     }
   }
