@@ -1,18 +1,18 @@
-# [NVIDIA Merlin-KV](https://github.com/NVIDIA-Merlin/merlin-kv)
+# [NVIDIA EmbedKV](https://github.com/NVIDIA-Merlin/embed-kv)
 
-[![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/merlin-kv?color=orange)](https://github.com/NVIDIA-Merlin/merlin-kv/releases)
-[![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/merlin-kv)](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/LICENSE)
-[![Documentation](https://img.shields.io/badge/documentation-blue.svg)](https://nvidia-merlin.github.io/merlin-kv/master/README.html)
+[![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/embed-kv?color=orange)](https://github.com/NVIDIA-Merlin/embed-kv/releases)
+[![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/embed-kv)](https://github.com/NVIDIA-Merlin/embed-kv/blob/master/LICENSE)
+[![Documentation](https://img.shields.io/badge/documentation-blue.svg)](https://nvidia-merlin.github.io/embed-kv/master/README.html)
 
-## About Merlin-KV
+## About EmbedKV
 
-Merlin-KV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
+EmbedKV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.
 
-The key capability of Merlin-KV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.
+The key capability of EmbedKV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.
 
 You can also use the library for generic key-value storage.
 
-## Benefits of Merlin-KV
+## Benefits of EmbedKV
 
 When building large recommender systems, machine learning (ML) engineers face the following challenges:
 
@@ -21,7 +21,7 @@ When building large recommender systems, machine learning (ML) engineers face th
 - It is difficult to efficiently control consumption growth of limited HBM with customized strategies.
 - Most generic key-value libraries provide low HBM and host memory utilization.
 
-Merlin-KV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:
+EmbedKV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:
 
 - Supports training large RecSys models on **HBM and host memory** at the same time.
 - Provides better performance by **full bypassing CPUs** and reducing the communication workload.
@@ -29,19 +29,19 @@ Merlin-KV alleviates these challenges and helps the machine learning engineers i
   The strategies are implemented by CUDA kernels.
 - Operates at a high working-status load factor that is close to 1.0.
 
-Merlin-KV makes NVIDIA GPUs more suitable for training large and super-large models of ***search, recommendations, and advertising***.
+EmbedKV makes NVIDIA GPUs more suitable for training large and super-large models of ***search, recommendations, and advertising***.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.
 
 ## API Documentation
 
 The main classes and structs are below, and it's recommended to read the comments in the source code directly:
 
-- [`class HashTable`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L101)
-- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106)
-- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L34)
-- [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/merlin-kv/blob/master/include/merlin_hashtable.cuh#L106)
+- [`class HashTable`](https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L101)
+- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L106)
+- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L34)
+- [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L106)
 
-For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/merlin-kv/master/api/index.html)
+For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/embed-kv/master/api/index.html)
 
 ## Usage restrictions
 
@@ -49,16 +49,16 @@ For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/
 
 ## Contributors
 
-Merlin-KV is co-maintianed by [NVIDIA Merlin Team](https://github.com/NVIDIA-Merlin) and NVIDIA product end-users,
+EmbedKV is co-maintianed by [NVIDIA Merlin Team](https://github.com/NVIDIA-Merlin) and NVIDIA product end-users,
 and also open for public contributions, bug fixes, and documentation. [[Contribute](CONTRIBUTING.md)]
 
 ## How to build
 
-Basically, Merlin-KV is a headers only library, the commands below only create binaries for benchmark and unit testing.
+Basically, EmbedKV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
 ```shell
-git clone --recursive https://github.com/NVIDIA-Merlin/merlin-kv.git
-cd merlin-kv && mkdir -p build && cd build
+git clone --recursive https://github.com/NVIDIA-Merlin/embed-kv.git
+cd embed-kv && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -Dsm=80 .. && make -j
 
 // for Benchmark
@@ -117,7 +117,7 @@ Your environment must meet the following requirements:
 
 ### Support and Feedback:
 
-If you encounter any issues or have questions, go to [https://github.com/NVIDIA-Merlin/merlin-kv/issues](https://github.com/NVIDIA-Merlin/merlin-kv/issues) and submit an issue so that we can provide you with the necessary resolutions and answers.
+If you encounter any issues or have questions, go to [https://github.com/NVIDIA-Merlin/embed-kv/issues](https://github.com/NVIDIA-Merlin/embed-kv/issues) and submit an issue so that we can provide you with the necessary resolutions and answers.
 
 ### Acknowledgment
 We are very grateful to external initial contributors [@Zhangyafei](https://github.com/zhangyafeikimi) and [@Lifan](https://github.com/Lifann) for their design, coding, and review work.
