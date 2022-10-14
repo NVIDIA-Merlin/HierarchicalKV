@@ -49,7 +49,7 @@ enum class EvictStrategy {
 };
 
 /**
- * @brief The options struct of Merlin-KV.
+ * @brief The options struct of EmbedKV.
  */
 struct HashTableOptions {
   size_t init_capacity = 0;        ///< The initial capacity of the hash table.
@@ -103,7 +103,7 @@ using EraseIfPredict = bool (*)(
 );
 
 /**
- * A Merlin-KV hash table is a concurrent and hierarchical hash table that is
+ * A EmbedKV hash table is a concurrent and hierarchical hash table that is
  * powered by GPUs and can use HBM and host memory as storage for key-value
  * pairs. Support for SSD storage is a future consideration.
  *
@@ -129,7 +129,7 @@ template <class K, class V, class M, size_t D>
 class HashTable {
  public:
   /**
-   * @brief The value type of a Merlin-KV hash table.
+   * @brief The value type of a EmbedKV hash table.
    */
   struct Vector {
     using value_type = V;
@@ -194,7 +194,7 @@ class HashTable {
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
     MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
-                 "[merlin-kv] `io_by_cpu` should not be true when "
+                 "[embed-kv] `io_by_cpu` should not be true when "
                  "`max_hbm_for_vectors` is not 0!");
     initialized_ = true;
     CudaCheckError();
@@ -308,7 +308,7 @@ class HashTable {
 
       {
         static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[merlin-kv] illegal conversation. value_type pointer "
+                      "[embed-kv] illegal conversation. value_type pointer "
                       "should be 64 bit!");
 
         const size_t N = n;
@@ -455,7 +455,7 @@ class HashTable {
 
     if (!is_fast_mode()) {
       static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                    "[merlin-kv] illegal conversation. value_type pointer must "
+                    "[embed-kv] illegal conversation. value_type pointer must "
                     "be 64 bit!");
 
       const size_t N = n;
@@ -552,7 +552,7 @@ class HashTable {
 
       {
         static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[merlin-kv] illegal conversation. value_type pointer "
+                      "[embed-kv] illegal conversation. value_type pointer "
                       "must be 64 bit!");
 
         const size_t N = n;
@@ -750,7 +750,7 @@ class HashTable {
 
     MERLIN_CHECK(
         (block_size > 0),
-        "[merlin-kv] block_size <= 0, the K-V-M size may be too large!");
+        "[embed-kv] block_size <= 0, the K-V-M size may be too large!");
     const size_t shared_size =
         (sizeof(key_type) + sizeof(vector_type) + meta_size) * block_size;
     const int grid_size = (n - 1) / (block_size) + 1;
@@ -849,7 +849,7 @@ class HashTable {
 
     MERLIN_CHECK(
         (block_size > 0),
-        "[merlin-kv] block_size <= 0, the K-V-M size may be too large!");
+        "[embed-kv] block_size <= 0, the K-V-M size may be too large!");
     const size_t shared_size =
         (sizeof(key_type) + sizeof(vector_type) + meta_size) * block_size;
     const int grid_size = (n - 1) / (block_size) + 1;

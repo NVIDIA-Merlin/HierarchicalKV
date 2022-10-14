@@ -133,16 +133,16 @@ html_css_files = [ "css/custom.css" ]
 source_suffix = [".rst", ".md"]
 
 breathe_projects = {
-    "Merlin-KV": "/tmp/doxygen/xml"
+    "EmbedKV": "/tmp/doxygen/xml"
 }
-breathe_default_project = "Merlin-KV"
+breathe_default_project = "EmbedKV"
 
 exhale_args = {
     "containmentFolder": "./api",
     "rootFileName": "index.rst",
     "doxygenStripFromPath": "../../include",
-    "rootFileTitle": "Merlin-KV C++ API Documentation",
-    "fullApiSubSectionTitle": "Complete Merlin-KV API",
+    "rootFileTitle": "EmbedKV C++ API Documentation",
+    "fullApiSubSectionTitle": "Complete EmbedKV API",
     "createTreeView": False,
     "exhaleExecutesDoxygen": True,
     "exhaleDoxygenStdin": """

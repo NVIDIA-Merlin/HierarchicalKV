@@ -9,7 +9,7 @@ Related Resources
 -----------------
 
 Merlin Key-Value Storage GitHub Repository
-  `<https://github.com/NVIDIA-Merlin/merlin-kv>`_
+  `<https://github.com/NVIDIA-Merlin/embed-kv>`_
 
 About Merlin
   Merlin is the overarching project that brings together the Merlin projects.

@@ -1,7 +1,7 @@
 #### C++
 C++ code should conform to [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
 
-Merlin-KV uses [clang-format](https://clang.llvm.org/docs/ClangFormat.html)
+EmbedKV uses [clang-format](https://clang.llvm.org/docs/ClangFormat.html)
 to check your C/C++ changes. Sometimes you have some manually formatted
 code that you don’t want clang-format to touch.
 You can disable formatting like this:
