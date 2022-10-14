@@ -242,7 +242,8 @@ class HashTable {
       return;
     }
 
-    if (!reach_max_capacity_ && fast_load_factor() > options_.max_load_factor) {
+    while (!reach_max_capacity_ &&
+           fast_load_factor(n) > options_.max_load_factor) {
       reserve(capacity() * 2);
     }
 
@@ -410,7 +411,8 @@ class HashTable {
       return;
     }
 
-    if (!reach_max_capacity_ && fast_load_factor() > options_.max_load_factor) {
+    while (!reach_max_capacity_ &&
+           fast_load_factor(n) > options_.max_load_factor) {
       reserve(capacity() * 2);
     }
 
@@ -1125,11 +1127,13 @@ class HashTable {
    * inaccurate but within an error in 1% empirically which is enough for
    * capacity control. But it's not suitable for end-users.
    *
+   * @param delta A hypothetical upcoming change on table size.
    * @param stream The CUDA stream used to execute the operation.
    *
    * @return The evaluated load factor
    */
-  inline float fast_load_factor(cudaStream_t stream = 0) const {
+  inline float fast_load_factor(size_type delta = 0,
+                                cudaStream_t stream = 0) const {
     size_t h_size = 0;
 
     std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
@@ -1149,8 +1153,9 @@ class HashTable {
                             thrust::plus<int>());
 
     CudaCheckError();
-    return static_cast<float>((h_size * 1.0) /
-                              (options_.max_bucket_size * N * 1.0));
+    return static_cast<float>((delta * 1.0) / (capacity() * 1.0) +
+                              (h_size * 1.0) /
+                                  (options_.max_bucket_size * N * 1.0));
   }
 
   inline void check_evict_strategy(const meta_type* metas) {
