@@ -41,6 +41,8 @@ Includes
 
 - ``exception``
 
+- ``iostream``
+
 - ``merlin/core_kernels.cuh``
 
 - ``merlin/flexible_buffer.cuh``
