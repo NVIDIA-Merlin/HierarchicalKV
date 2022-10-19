@@ -97,7 +97,7 @@
 <dl class="cpp class">
 <dt id="_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE">
 <span id="_CPPv3I000_6size_tEN2nv6merlin11LocalKVFileE"></span><span id="_CPPv2I000_6size_tEN2nv6merlin11LocalKVFileE"></span><span class="pre">template&lt;</span><span class="pre">class</span> <code class="sig-name descname"><span class="pre">K</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">V</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">M</span></code><span class="pre">,</span> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">D</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1LocalKVFile"></span><em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">LocalKVFile</span></code> <span class="pre">:</span> <em class="property"><span class="pre">public</span></em> <span class="pre">BaseKVFile</span><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::K"><span class="pre">K</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::V"><span class="pre">V</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::M"><span class="pre">M</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::D"><span class="pre">D</span></a><span class="pre">&gt;</span><a class="headerlink" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>The KV file on local file system. It only save/load keys and vectors between table and file. <code class="docutils literal notranslate"><span class="pre">metas</span></code> are ignored in it since absolute values of metas are commonly time-variant, while the time interval between save/load calling is not deterministic, in default case. If other specified rules are required, the BaseKVFile could be inherited to implement customized read/write rules.</p>
+<dd><p>The KV file on local file system. It only save/load keys and vectors between table and file. <code class="docutils literal notranslate"><span class="pre">metas</span></code> are ignored in it since absolute values of metas are commonly time-variant, while the time interval between save/load calling is not deterministic, in default case. If other specified rules are required, the BaseKVFile could be inherited to implement customized read/write rules. The <a class="reference internal" href="#classnv_1_1merlin_1_1LocalKVFile"><span class="std std-ref">LocalKVFile</span></a> uses compact, consecutive binary format, where keys, values, and metas are stored in seperated paths.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Template Parameters</dt>
 <dd class="field-odd"><ul class="simple">
@@ -123,22 +123,61 @@
 <dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc">
 <span id="_CPPv3N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc"></span><span id="_CPPv2N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc"></span><span id="nv::merlin::LocalKVFile::open__ssCR.ssCR.ssCR.cCP"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1a9d81ede48c898207ff5f0e8a9c5787be"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">bool</span> <code class="sig-name descname"><span class="pre">open</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <span class="pre">std</span><span class="pre">::</span><span class="pre">string</span> <span class="pre">&amp;</span><em><span class="pre">keys_path</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">std</span><span class="pre">::</span><span class="pre">string</span> <span class="pre">&amp;</span><em><span class="pre">values_path</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">std</span><span class="pre">::</span><span class="pre">string</span> <span class="pre">&amp;</span><em><span class="pre">metas_path</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">char</span> <span class="pre">*</span><em><span class="pre">mode</span></em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc" title="Permalink to this definition"></a><br /></dt>
-<dd></dd></dl>
+<dd><p>Open the file from local path. A <a class="reference internal" href="#classnv_1_1merlin_1_1LocalKVFile"><span class="std std-ref">LocalKVFile</span></a> can only be read or written when it stays opened. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>keys_path</strong> – Path to file to store keys. </p></li>
+<li><p><strong>values_path</strong> – Path to file to store values. </p></li>
+<li><p><strong>metas_path</strong> – Path to file to store metas. &#64;params mode The mode to the file. The mode follows glibc style and behavior like fopen. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin11LocalKVFile5closeEv">
 <span id="_CPPv3N2nv6merlin11LocalKVFile5closeEv"></span><span id="_CPPv2N2nv6merlin11LocalKVFile5closeEv"></span><span id="nv::merlin::LocalKVFile::close"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1a60848dd1a999c1571137d6eb3caec0e9"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">close</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">noexcept</span></em><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile5closeEv" title="Permalink to this definition"></a><br /></dt>
-<dd></dd></dl>
+<dd><p>Close the file from open status and release fd(s) on files of keys, values, and metas. </p>
+</dd></dl>
 
 <dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M">
 <span id="_CPPv3N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M"></span><span id="_CPPv2N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M"></span><span id="nv::merlin::LocalKVFile::read__s.KP.VP.MP"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1ae0cb682c1cdbfb3fcf8790d42add6ffa"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">read</span></code><span class="sig-paren">(</span><span class="pre">size_t</span> <em><span class="pre">n</span></em>, <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::K"><span class="pre">K</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::V"><span class="pre">V</span></a> <span class="pre">*</span><em><span class="pre">vectors</span></em>, <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::M"><span class="pre">M</span></a> <span class="pre">*</span><em><span class="pre">metas</span></em><span class="sig-paren">)</span> <em class="property"><span class="pre">override</span></em><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M" title="Permalink to this definition"></a><br /></dt>
-<dd></dd></dl>
+<dd><p>Read from file and fill into the keys, values, and metas buffer. When calling save/load method from table, it can assume that the received buffer of keys, vectors, and metas are automatically pre-allocated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of KV pairs expect to read. <code class="docutils literal notranslate"><span class="pre">int64_t</span></code> was used here to adapt to various filesytem and formats. </p></li>
+<li><p><strong>keys</strong> – The pointer to received buffer for keys. </p></li>
+<li><p><strong>vectors</strong> – The pointer to received buffer for vectors. </p></li>
+<li><p><strong>metas</strong> – The pointer to received buffer for metas.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Number of KV pairs have been successfully read. </p>
+</dd>
+</dl>
+</dd></dl>
 
 <dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M">
 <span id="_CPPv3N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M"></span><span id="_CPPv2N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M"></span><span id="nv::merlin::LocalKVFile::write__s.KCP.VCP.MCP"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1ace458b976015c24d0bced3d99c6d55f4"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">write</span></code><span class="sig-paren">(</span><span class="pre">size_t</span> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::K"><span class="pre">K</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::V"><span class="pre">V</span></a> <span class="pre">*</span><em><span class="pre">vectors</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::M"><span class="pre">M</span></a> <span class="pre">*</span><em><span class="pre">metas</span></em><span class="sig-paren">)</span> <em class="property"><span class="pre">override</span></em><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M" title="Permalink to this definition"></a><br /></dt>
-<dd></dd></dl>
+<dd><p>Write keys, values, metas from table to the file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of KV pairs to be written. <code class="docutils literal notranslate"><span class="pre">int64_t</span></code> was used here to adapt to various filesytem and formats. </p></li>
+<li><p><strong>keys</strong> – The keys will be written to file. </p></li>
+<li><p><strong>vectors</strong> – The vectors of values will be written to file. </p></li>
+<li><p><strong>metas</strong> – The metas will be written to file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Number of KV pairs have been successfully written. </p>
+</dd>
+</dl>
+</dd></dl>
 
 </div>
 </dd></dl>
