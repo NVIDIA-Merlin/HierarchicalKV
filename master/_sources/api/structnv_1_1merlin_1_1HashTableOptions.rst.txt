@@ -11,7 +11,7 @@ Struct Documentation
 
 
 .. doxygenstruct:: nv::merlin::HashTableOptions
-   :project: Merlin-KV
+   :project: EmbedKV
    :members:
    :protected-members:
    :undoc-members:

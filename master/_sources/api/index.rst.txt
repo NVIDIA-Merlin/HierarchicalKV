@@ -1,6 +1,6 @@
-===============================
-Merlin-KV C++ API Documentation
-===============================
+=============================
+EmbedKV C++ API Documentation
+=============================
 
 .. include:: class_view_hierarchy.rst.include
 

@@ -20,7 +20,7 @@ Class Documentation
 
 
 .. doxygenclass:: nv::merlin::LocalKVFile
-   :project: Merlin-KV
+   :project: EmbedKV
    :members:
    :protected-members:
    :undoc-members:

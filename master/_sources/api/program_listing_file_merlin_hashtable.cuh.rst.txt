@@ -121,7 +121,7 @@ Program Listing for File merlin_hashtable.cuh
        options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
        reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
        MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
-                    "[merlin-kv] `io_by_cpu` should not be true when "
+                    "[embed-kv] `io_by_cpu` should not be true when "
                     "`max_hbm_for_vectors` is not 0!");
        initialized_ = true;
        CudaCheckError();
@@ -137,7 +137,8 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
    
-       if (!reach_max_capacity_ && fast_load_factor() > options_.max_load_factor) {
+       while (!reach_max_capacity_ &&
+              fast_load_factor(n) > options_.max_load_factor) {
          reserve(capacity() * 2);
        }
    
@@ -203,7 +204,7 @@ Program Listing for File merlin_hashtable.cuh
    
          {
            static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                         "[merlin-kv] illegal conversation. value_type pointer "
+                         "[embed-kv] illegal conversation. value_type pointer "
                          "should be 64 bit!");
    
            const size_t N = n;
@@ -264,7 +265,8 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
    
-       if (!reach_max_capacity_ && fast_load_factor() > options_.max_load_factor) {
+       while (!reach_max_capacity_ &&
+              fast_load_factor(n) > options_.max_load_factor) {
          reserve(capacity() * 2);
        }
    
@@ -309,7 +311,7 @@ Program Listing for File merlin_hashtable.cuh
    
        if (!is_fast_mode()) {
          static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                       "[merlin-kv] illegal conversation. value_type pointer must "
+                       "[embed-kv] illegal conversation. value_type pointer must "
                        "be 64 bit!");
    
          const size_t N = n;
@@ -388,7 +390,7 @@ Program Listing for File merlin_hashtable.cuh
    
          {
            static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                         "[merlin-kv] illegal conversation. value_type pointer "
+                         "[embed-kv] illegal conversation. value_type pointer "
                          "must be 64 bit!");
    
            const size_t N = n;
@@ -522,7 +524,7 @@ Program Listing for File merlin_hashtable.cuh
    
        MERLIN_CHECK(
            (block_size > 0),
-           "[merlin-kv] block_size <= 0, the K-V-M size may be too large!");
+           "[embed-kv] block_size <= 0, the K-V-M size may be too large!");
        const size_t shared_size =
            (sizeof(key_type) + sizeof(vector_type) + meta_size) * block_size;
        const int grid_size = (n - 1) / (block_size) + 1;
@@ -579,7 +581,7 @@ Program Listing for File merlin_hashtable.cuh
    
        MERLIN_CHECK(
            (block_size > 0),
-           "[merlin-kv] block_size <= 0, the K-V-M size may be too large!");
+           "[embed-kv] block_size <= 0, the K-V-M size may be too large!");
        const size_t shared_size =
            (sizeof(key_type) + sizeof(vector_type) + meta_size) * block_size;
        const int grid_size = (n - 1) / (block_size) + 1;
@@ -787,7 +789,8 @@ Program Listing for File merlin_hashtable.cuh
     private:
      inline bool is_fast_mode() const noexcept { return table_->is_pure_hbm; }
    
-     inline float fast_load_factor(cudaStream_t stream = 0) const {
+     inline float fast_load_factor(size_type delta = 0,
+                                   cudaStream_t stream = 0) const {
        size_t h_size = 0;
    
        std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
@@ -807,8 +810,9 @@ Program Listing for File merlin_hashtable.cuh
                                thrust::plus<int>());
    
        CudaCheckError();
-       return static_cast<float>((h_size * 1.0) /
-                                 (options_.max_bucket_size * N * 1.0));
+       return static_cast<float>((delta * 1.0) / (capacity() * 1.0) +
+                                 (h_size * 1.0) /
+                                     (options_.max_bucket_size * N * 1.0));
      }
    
      inline void check_evict_strategy(const meta_type* metas) {
