@@ -133,16 +133,16 @@ html_css_files = [ "css/custom.css" ]
 source_suffix = [".rst", ".md"]
 
 breathe_projects = {
-    "EmbedKV": "/tmp/doxygen/xml"
+    "HierarchicalKV": "/tmp/doxygen/xml"
 }
-breathe_default_project = "EmbedKV"
+breathe_default_project = "HierarchicalKV"
 
 exhale_args = {
     "containmentFolder": "./api",
     "rootFileName": "index.rst",
     "doxygenStripFromPath": "../../include",
-    "rootFileTitle": "EmbedKV C++ API Documentation",
-    "fullApiSubSectionTitle": "Complete EmbedKV API",
+    "rootFileTitle": "HierarchicalKV C++ API Documentation",
+    "fullApiSubSectionTitle": "Complete HierarchicalKV API",
     "createTreeView": False,
     "exhaleExecutesDoxygen": True,
     "exhaleDoxygenStdin": """

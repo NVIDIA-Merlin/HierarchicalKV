@@ -38,7 +38,7 @@ class FlexPinnedBuffer {
     try {
       if (!ptr_) CUDA_CHECK(cudaFreeHost(ptr_));
     } catch (const nv::merlin::CudaException& e) {
-      cerr << "[embed-kv] Failed to free FlexPinnedBuffer!" << endl;
+      cerr << "[HierarchicalKV] Failed to free FlexPinnedBuffer!" << endl;
     }
   }
 

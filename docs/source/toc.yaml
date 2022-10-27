@@ -7,7 +7,7 @@ subtrees:
       - file: api/index.rst
         title: API Documentation
       - file: CONTRIBUTING.md
-        title: Contributing to EmbedKV
+        title: Contributing to HierarchicalKV
 
 
 # The multi-modal data example uses several notebooks to demonstrate how to use of multi-modal data (text and images)

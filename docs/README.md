@@ -1,7 +1,7 @@
 # Documentation
 
-This folder contains the scripts necessary to build the documentation for EmbedKV.
-You can view the generated [EmbedKV documentation](https://nvidia-merlin.github.io/embed-kv/master/README.html).
+This folder contains the scripts necessary to build the documentation for HierarchicalKV.
+You can view the generated [HierarchicalKV documentation](https://nvidia-merlin.github.io/HierarchicalKV/master/README.html).
 
 ## Contributing to Docs
 
@@ -20,7 +20,7 @@ pip install -r docs/requirements-doc.txt
 
 The preceding command runs Sphinx in your shell and outputs to build/html/index.html.
 
-The build process for EmbedKV is unique among the Merlin projects because it
+The build process for HierarchicalKV is unique among the Merlin projects because it
 uses Doxygen, Breathe, and Exhale to create API documentation from the C++ source.
 
 ## Preview the changes
@@ -45,7 +45,7 @@ for the `master` branch and the six most recent tags.  The job runs daily,
 but you can trigger it manually by going to the following URL and clicking
 the *Run workflow* button.
 
-<https://github.com/NVIDIA-Merlin/embed-kv/actions/workflows/docs-sched-rebuild.yaml>
+<https://github.com/NVIDIA-Merlin/HierarchicalKV/actions/workflows/docs-sched-rebuild.yaml>
 
 ### Source management: README and index files
 
@@ -82,7 +82,7 @@ You can use a relative path for the link.  For example--both the `README.md` fil
 directory, you could add a link to a heading in the `README.md` file like this:
 
 ```markdown
-To build EmbedKV from scratch, refer to
+To build HierarchicalKV from scratch, refer to
 [How to Build](./README.md#how-to-build) in the `README` file.
 ```
 
@@ -99,7 +99,7 @@ the repository:
 
 ```markdown
 ## Coding Style
-Refer to the [Style Guide](http://github.com/NVIDIA-Merlin/embed-kv/STYLE_GUIDE.md)
+Refer to the [Style Guide](http://github.com/NVIDIA-Merlin/HierarchicalKV/STYLE_GUIDE.md)
 in the GitHub repository for more details.
 ```
 
