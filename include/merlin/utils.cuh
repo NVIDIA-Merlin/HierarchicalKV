@@ -123,7 +123,7 @@ inline void merlin_check_(bool cond, const std::string& msg, const char* file,
                           int line) {
   if (!cond) {
     throw CudaException(std::string(file) + ":" + std::to_string(line) +
-                        ": EmbedKV error " + msg);
+                        ": HierarchicalKV error " + msg);
   }
 }
 

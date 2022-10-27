@@ -57,9 +57,9 @@ link_directories(
 file(GLOB_RECURSE merlin_hkvs_src RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} *.cpp *.cu)
 
 # TODO:
-# add_library(embed_kv STATIC ${embed_kv_src})
-# target_compile_features(embed_kv PUBLIC cxx_std_14)
-# target_link_libraries(embed_kv PUBLIC ...)
+# add_library(hierarchical_kv STATIC ${hierarchical_kv_src})
+# target_compile_features(hierarchical_kv PUBLIC cxx_std_14)
+# target_link_libraries(hierarchical_kv PUBLIC ...)
 
 
 add_executable(merlin_hashtable_benchmark benchmark/merlin_hashtable_benchmark.cc.cu)
