@@ -121,7 +121,7 @@ Program Listing for File merlin_hashtable.cuh
        options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
        reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
        MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
-                    "[embed-kv] `io_by_cpu` should not be true when "
+                    "[HierarchicalKV] `io_by_cpu` should not be true when "
                     "`max_hbm_for_vectors` is not 0!");
        initialized_ = true;
        CudaCheckError();
@@ -204,7 +204,7 @@ Program Listing for File merlin_hashtable.cuh
    
          {
            static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                         "[embed-kv] illegal conversation. value_type pointer "
+                         "[HierarchicalKV] illegal conversation. value_type pointer "
                          "should be 64 bit!");
    
            const size_t N = n;
@@ -311,7 +311,7 @@ Program Listing for File merlin_hashtable.cuh
    
        if (!is_fast_mode()) {
          static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                       "[embed-kv] illegal conversation. value_type pointer must "
+                       "[HierarchicalKV] illegal conversation. value_type pointer must "
                        "be 64 bit!");
    
          const size_t N = n;
@@ -390,7 +390,7 @@ Program Listing for File merlin_hashtable.cuh
    
          {
            static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                         "[embed-kv] illegal conversation. value_type pointer "
+                         "[HierarchicalKV] illegal conversation. value_type pointer "
                          "must be 64 bit!");
    
            const size_t N = n;
@@ -524,7 +524,7 @@ Program Listing for File merlin_hashtable.cuh
    
        MERLIN_CHECK(
            (block_size > 0),
-           "[embed-kv] block_size <= 0, the K-V-M size may be too large!");
+           "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
        const size_t shared_size =
            (sizeof(key_type) + sizeof(vector_type) + meta_size) * block_size;
        const int grid_size = (n - 1) / (block_size) + 1;
@@ -581,7 +581,7 @@ Program Listing for File merlin_hashtable.cuh
    
        MERLIN_CHECK(
            (block_size > 0),
-           "[embed-kv] block_size <= 0, the K-V-M size may be too large!");
+           "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
        const size_t shared_size =
            (sizeof(key_type) + sizeof(vector_type) + meta_size) * block_size;
        const int grid_size = (n - 1) / (block_size) + 1;

@@ -1,6 +1,6 @@
-=============================
-EmbedKV C++ API Documentation
-=============================
+====================================
+HierarchicalKV C++ API Documentation
+====================================
 
 .. include:: class_view_hierarchy.rst.include
 

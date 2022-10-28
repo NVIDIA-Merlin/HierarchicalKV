@@ -25,9 +25,9 @@ Includes
 --------
 
 
-- ``/home/runner/work/merlin-kv/merlin-kv/include/merlin/types.cuh``
+- ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/types.cuh``
 
-- ``/home/runner/work/merlin-kv/merlin-kv/include/merlin/utils.cuh``
+- ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/utils.cuh``
 
 - ``cooperative_groups.h``
 

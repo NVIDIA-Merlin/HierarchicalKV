@@ -21,7 +21,7 @@ Class Documentation
 
 
 .. doxygenclass:: nv::merlin::HashTable
-   :project: EmbedKV
+   :project: HierarchicalKV
    :members:
    :protected-members:
    :undoc-members:

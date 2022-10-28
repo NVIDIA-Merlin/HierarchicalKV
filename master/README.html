@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NVIDIA EmbedKV &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <title>NVIDIA HierarchicalKV &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/mystnb.css" type="text/css" />
       <link rel="stylesheet" href="_static/togglebutton.css" type="text/css" />
@@ -23,7 +23,7 @@
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="EmbedKV C++ API Documentation" href="api/index.html" />
+    <link rel="next" title="HierarchicalKV C++ API Documentation" href="api/index.html" />
     <link rel="prev" title="Merlin Key-Value Storage" href="index.html" /> 
 </head>
 
@@ -45,8 +45,8 @@
               <p class="caption"><span class="caption-text">Contents</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#about-embedkv">About EmbedKV</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#benefits-of-embedkv">Benefits of EmbedKV</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#about-hierarchicalkv">About HierarchicalKV</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benefits-of-hierarchicalkv">Benefits of HierarchicalKV</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#api-documentation">API Documentation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#usage-restrictions">Usage restrictions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#contributors">Contributors</a></li>
@@ -55,7 +55,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="api/index.html">API Documentation</a></li>
-<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to EmbedKV</a></li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
 </ul>
 
         </div>
@@ -72,7 +72,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home"></a> &raquo;</li>
-      <li>NVIDIA EmbedKV</li>
+      <li>NVIDIA HierarchicalKV</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -81,19 +81,19 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <div class="tex2jax_ignore mathjax_ignore section" id="nvidia-embedkv">
-<h1><a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv">NVIDIA EmbedKV</a><a class="headerlink" href="#nvidia-embedkv" title="Permalink to this headline"></a></h1>
-<p><a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv/releases"><img alt="Version" src="https://img.shields.io/github/v/release/NVIDIA-Merlin/embed-kv?color=orange" /></a>
-<a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/NVIDIA-Merlin/embed-kv" /></a>
-<a class="reference external" href="https://nvidia-merlin.github.io/embed-kv/master/README.html"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue.svg" /></a></p>
-<div class="section" id="about-embedkv">
-<h2>About EmbedKV<a class="headerlink" href="#about-embedkv" title="Permalink to this headline"></a></h2>
-<p>EmbedKV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.</p>
-<p>The key capability of EmbedKV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.</p>
+  <div class="tex2jax_ignore mathjax_ignore section" id="nvidia-hierarchicalkv">
+<h1><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV">NVIDIA HierarchicalKV</a><a class="headerlink" href="#nvidia-hierarchicalkv" title="Permalink to this headline"></a></h1>
+<p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/releases"><img alt="Version" src="https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange" /></a>
+<a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/NVIDIA-Merlin/HierarchicalKV" /></a>
+<a class="reference external" href="https://nvidia-merlin.github.io/HierarchicalKV/master/README.html"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue.svg" /></a></p>
+<div class="section" id="about-hierarchicalkv">
+<h2>About HierarchicalKV<a class="headerlink" href="#about-hierarchicalkv" title="Permalink to this headline"></a></h2>
+<p>HierarchicalKV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.</p>
+<p>The key capability of HierarchicalKV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.</p>
 <p>You can also use the library for generic key-value storage.</p>
 </div>
-<div class="section" id="benefits-of-embedkv">
-<h2>Benefits of EmbedKV<a class="headerlink" href="#benefits-of-embedkv" title="Permalink to this headline"></a></h2>
+<div class="section" id="benefits-of-hierarchicalkv">
+<h2>Benefits of HierarchicalKV<a class="headerlink" href="#benefits-of-hierarchicalkv" title="Permalink to this headline"></a></h2>
 <p>When building large recommender systems, machine learning (ML) engineers face the following challenges:</p>
 <ul class="simple">
 <li><p>GPUs are needed, but HBM on a single GPU is too small for the large DLRMs that scale to several terabytes.</p></li>
@@ -101,7 +101,7 @@
 <li><p>It is difficult to efficiently control consumption growth of limited HBM with customized strategies.</p></li>
 <li><p>Most generic key-value libraries provide low HBM and host memory utilization.</p></li>
 </ul>
-<p>EmbedKV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:</p>
+<p>HierarchicalKV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:</p>
 <ul class="simple">
 <li><p>Supports training large RecSys models on <strong>HBM and host memory</strong> at the same time.</p></li>
 <li><p>Provides better performance by <strong>full bypassing CPUs</strong> and reducing the communication workload.</p></li>
@@ -109,19 +109,19 @@
 The strategies are implemented by CUDA kernels.</p></li>
 <li><p>Operates at a high working-status load factor that is close to 1.0.</p></li>
 </ul>
-<p>EmbedKV makes NVIDIA GPUs more suitable for training large and super-large models of <em><strong>search, recommendations, and advertising</strong></em>.
+<p>HierarchicalKV makes NVIDIA GPUs more suitable for training large and super-large models of <em><strong>search, recommendations, and advertising</strong></em>.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.</p>
 </div>
 <div class="section" id="api-documentation">
 <h2>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline"></a></h2>
 <p>The main classes and structs are below, and it’s recommended to read the comments in the source code directly:</p>
 <ul class="simple">
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L101"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">HashTable</span></code></a></p></li>
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">EvictStrategy</span></code></a></p></li>
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L34"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a></p></li>
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">Struct</span> <span class="pre">HashTable::Vector</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L101"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">HashTable</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">EvictStrategy</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L34"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">Struct</span> <span class="pre">HashTable::Vector</span></code></a></p></li>
 </ul>
-<p>For regular API doc, please refer to <a class="reference external" href="https://nvidia-merlin.github.io/embed-kv/master/api/index.html">API Docs</a></p>
+<p>For regular API doc, please refer to <a class="reference external" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html">API Docs</a></p>
 </div>
 <div class="section" id="usage-restrictions">
 <h2>Usage restrictions<a class="headerlink" href="#usage-restrictions" title="Permalink to this headline"></a></h2>
@@ -131,14 +131,14 @@ The library simplifies the common challenges to building, evaluating, and servin
 </div>
 <div class="section" id="contributors">
 <h2>Contributors<a class="headerlink" href="#contributors" title="Permalink to this headline"></a></h2>
-<p>EmbedKV is co-maintianed by <a class="reference external" href="https://github.com/NVIDIA-Merlin">NVIDIA Merlin Team</a> and NVIDIA product end-users,
+<p>HierarchicalKV is co-maintianed by <a class="reference external" href="https://github.com/NVIDIA-Merlin">NVIDIA Merlin Team</a> and NVIDIA product end-users,
 and also open for public contributions, bug fixes, and documentation. [<a class="reference internal" href="CONTRIBUTING.html"><span class="doc std std-doc">Contribute</span></a>]</p>
 </div>
 <div class="section" id="how-to-build">
 <h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
-<p>Basically, EmbedKV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone --recursive https://github.com/NVIDIA-Merlin/embed-kv.git
-<span class="nb">cd</span> embed-kv <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
+<p>Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+<span class="nb">cd</span> HierarchicalKV <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
 cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
 
 // <span class="k">for</span> Benchmark
@@ -391,7 +391,7 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 </div>
 <div class="section" id="support-and-feedback">
 <h3>Support and Feedback:<a class="headerlink" href="#support-and-feedback" title="Permalink to this headline"></a></h3>
-<p>If you encounter any issues or have questions, go to <a class="reference external" href="https://github.com/NVIDIA-Merlin/embed-kv/issues">https://github.com/NVIDIA-Merlin/embed-kv/issues</a> and submit an issue so that we can provide you with the necessary resolutions and answers.</p>
+<p>If you encounter any issues or have questions, go to <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/issues">https://github.com/NVIDIA-Merlin/HierarchicalKV/issues</a> and submit an issue so that we can provide you with the necessary resolutions and answers.</p>
 </div>
 <div class="section" id="acknowledgment">
 <h3>Acknowledgment<a class="headerlink" href="#acknowledgment" title="Permalink to this headline"></a></h3>
@@ -409,7 +409,7 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="index.html" class="btn btn-neutral float-left" title="Merlin Key-Value Storage" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="api/index.html" class="btn btn-neutral float-right" title="EmbedKV C++ API Documentation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="api/index.html" class="btn btn-neutral float-right" title="HierarchicalKV C++ API Documentation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

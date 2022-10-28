@@ -1,8 +1,8 @@
 :orphan:
 
 
-Complete EmbedKV API
-====================
+Complete HierarchicalKV API
+===========================
 
 Files
 *****
