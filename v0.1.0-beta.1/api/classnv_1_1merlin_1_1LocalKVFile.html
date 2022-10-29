@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Template Class LocalKVFile &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="../_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Enum EvictStrategy" href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" />
+    <link rel="prev" title="Template Class HashTable" href="classnv_1_1merlin_1_1HashTable.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+            <a href="../index.html" class="icon icon-home"> Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Documentation</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#class-hierarchy">Class Hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#file-hierarchy">File Hierarchy</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#complete-hierarchicalkv-api">Complete HierarchicalKV API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home"></a> &raquo;</li>
+          <li><a href="index.html">HierarchicalKV C++ API Documentation</a> &raquo;</li>
+      <li>Template Class LocalKVFile</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="template-class-localkvfile">
+<span id="exhale-class-classnv-1-1merlin-1-1localkvfile"></span><h1>Template Class LocalKVFile<a class="headerlink" href="#template-class-localkvfile" title="Permalink to this headline"></a></h1>
+<ul class="simple">
+<li><p>Defined in <a class="reference internal" href="file_merlin_localfile.h.html#file-merlin-localfile-h"><span class="std std-ref">File merlin_localfile.h</span></a></p></li>
+</ul>
+<div class="section" id="inheritance-relationships">
+<h2>Inheritance Relationships<a class="headerlink" href="#inheritance-relationships" title="Permalink to this headline"></a></h2>
+<div class="section" id="base-type">
+<h3>Base Type<a class="headerlink" href="#base-type" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">public</span> <span class="pre">BaseKVFile&lt;</span> <span class="pre">K,</span> <span class="pre">V,</span> <span class="pre">M,</span> <span class="pre">D</span> <span class="pre">&gt;</span></code></p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="class-documentation">
+<h2>Class Documentation<a class="headerlink" href="#class-documentation" title="Permalink to this headline"></a></h2>
+<dl class="cpp class">
+<dt id="_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE">
+<span id="_CPPv3I000_6size_tEN2nv6merlin11LocalKVFileE"></span><span id="_CPPv2I000_6size_tEN2nv6merlin11LocalKVFileE"></span><span class="pre">template&lt;</span><span class="pre">class</span> <code class="sig-name descname"><span class="pre">K</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">V</span></code><span class="pre">,</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">M</span></code><span class="pre">,</span> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">D</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1LocalKVFile"></span><em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">LocalKVFile</span></code> <span class="pre">:</span> <em class="property"><span class="pre">public</span></em> <span class="pre">BaseKVFile</span><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::K"><span class="pre">K</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::V"><span class="pre">V</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::M"><span class="pre">M</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::D"><span class="pre">D</span></a><span class="pre">&gt;</span><a class="headerlink" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The KV file on local file system. It only save/load keys and vectors between table and file. <code class="docutils literal notranslate"><span class="pre">metas</span></code> are ignored in it since absolute values of metas are commonly time-variant, while the time interval between save/load calling is not deterministic, in default case. If other specified rules are required, the BaseKVFile could be inherited to implement customized read/write rules. The <a class="reference internal" href="#classnv_1_1merlin_1_1LocalKVFile"><span class="std std-ref">LocalKVFile</span></a> uses compact, consecutive binary format, where keys, values, and metas are stored in seperated paths.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>K</strong> – The data type of the key. </p></li>
+<li><p><strong>V</strong> – The data type of the vector’s elements. The item data type should be a basic data type of C++/CUDA. </p></li>
+<li><p><strong>M</strong> – The data type for <code class="docutils literal notranslate"><span class="pre">meta</span></code>. The currently supported data type is only <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>. </p></li>
+<li><p><strong>D</strong> – The dimension of the vectors. </p></li>
+</ul>
+</dd>
+</dl>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin11LocalKVFile11LocalKVFileEv">
+<span id="_CPPv3N2nv6merlin11LocalKVFile11LocalKVFileEv"></span><span id="_CPPv2N2nv6merlin11LocalKVFile11LocalKVFileEv"></span><span id="nv::merlin::LocalKVFile::LocalKVFile"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1a1beef7a301b93240971a2698257b5dd2"></span><em class="property"><span class="pre">inline</span></em> <code class="sig-name descname"><span class="pre">LocalKVFile</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile11LocalKVFileEv" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin11LocalKVFileD0Ev">
+<span id="_CPPv3N2nv6merlin11LocalKVFileD0Ev"></span><span id="_CPPv2N2nv6merlin11LocalKVFileD0Ev"></span><span id="nv::merlin::LocalKVFile::~LocalKVFile"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1aafedf9d32ea7d74cc6a10f2bba704788"></span><em class="property"><span class="pre">inline</span></em> <code class="sig-name descname"><span class="pre">~LocalKVFile</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFileD0Ev" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc">
+<span id="_CPPv3N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc"></span><span id="_CPPv2N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc"></span><span id="nv::merlin::LocalKVFile::open__ssCR.ssCR.ssCR.cCP"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1a9d81ede48c898207ff5f0e8a9c5787be"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">bool</span> <code class="sig-name descname"><span class="pre">open</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <span class="pre">std</span><span class="pre">::</span><span class="pre">string</span> <span class="pre">&amp;</span><em><span class="pre">keys_path</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">std</span><span class="pre">::</span><span class="pre">string</span> <span class="pre">&amp;</span><em><span class="pre">values_path</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">std</span><span class="pre">::</span><span class="pre">string</span> <span class="pre">&amp;</span><em><span class="pre">metas_path</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">char</span> <span class="pre">*</span><em><span class="pre">mode</span></em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile4openERKNSt6stringERKNSt6stringERKNSt6stringEPKc" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Open the file from local path. A <a class="reference internal" href="#classnv_1_1merlin_1_1LocalKVFile"><span class="std std-ref">LocalKVFile</span></a> can only be read or written when it stays opened. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>keys_path</strong> – Path to file to store keys. </p></li>
+<li><p><strong>values_path</strong> – Path to file to store values. </p></li>
+<li><p><strong>metas_path</strong> – Path to file to store metas. &#64;params mode The mode to the file. The mode follows glibc style and behavior like fopen. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin11LocalKVFile5closeEv">
+<span id="_CPPv3N2nv6merlin11LocalKVFile5closeEv"></span><span id="_CPPv2N2nv6merlin11LocalKVFile5closeEv"></span><span id="nv::merlin::LocalKVFile::close"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1a60848dd1a999c1571137d6eb3caec0e9"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">close</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">noexcept</span></em><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile5closeEv" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Close the file from open status and release fd(s) on files of keys, values, and metas. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M">
+<span id="_CPPv3N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M"></span><span id="_CPPv2N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M"></span><span id="nv::merlin::LocalKVFile::read__s.KP.VP.MP"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1ae0cb682c1cdbfb3fcf8790d42add6ffa"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">read</span></code><span class="sig-paren">(</span><span class="pre">size_t</span> <em><span class="pre">n</span></em>, <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::K"><span class="pre">K</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::V"><span class="pre">V</span></a> <span class="pre">*</span><em><span class="pre">vectors</span></em>, <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::M"><span class="pre">M</span></a> <span class="pre">*</span><em><span class="pre">metas</span></em><span class="sig-paren">)</span> <em class="property"><span class="pre">override</span></em><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile4readE6size_tP1KP1VP1M" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Read from file and fill into the keys, values, and metas buffer. When calling save/load method from table, it can assume that the received buffer of keys, vectors, and metas are automatically pre-allocated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of KV pairs expect to read. <code class="docutils literal notranslate"><span class="pre">int64_t</span></code> was used here to adapt to various filesytem and formats. </p></li>
+<li><p><strong>keys</strong> – The pointer to received buffer for keys. </p></li>
+<li><p><strong>vectors</strong> – The pointer to received buffer for vectors. </p></li>
+<li><p><strong>metas</strong> – The pointer to received buffer for metas.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Number of KV pairs have been successfully read. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M">
+<span id="_CPPv3N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M"></span><span id="_CPPv2N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M"></span><span id="nv::merlin::LocalKVFile::write__s.KCP.VCP.MCP"></span><span class="target" id="classnv_1_1merlin_1_1LocalKVFile_1ace458b976015c24d0bced3d99c6d55f4"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">write</span></code><span class="sig-paren">(</span><span class="pre">size_t</span> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::K"><span class="pre">K</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::V"><span class="pre">V</span></a> <span class="pre">*</span><em><span class="pre">vectors</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4I000_6size_tEN2nv6merlin11LocalKVFileE" title="nv::merlin::LocalKVFile::M"><span class="pre">M</span></a> <span class="pre">*</span><em><span class="pre">metas</span></em><span class="sig-paren">)</span> <em class="property"><span class="pre">override</span></em><a class="headerlink" href="#_CPPv4N2nv6merlin11LocalKVFile5writeE6size_tPK1KPK1VPK1M" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Write keys, values, metas from table to the file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of KV pairs to be written. <code class="docutils literal notranslate"><span class="pre">int64_t</span></code> was used here to adapt to various filesytem and formats. </p></li>
+<li><p><strong>keys</strong> – The keys will be written to file. </p></li>
+<li><p><strong>vectors</strong> – The vectors of values will be written to file. </p></li>
+<li><p><strong>metas</strong> – The metas will be written to file.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Number of KV pairs have been successfully written. </p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="classnv_1_1merlin_1_1HashTable.html" class="btn btn-neutral float-left" title="Template Class HashTable" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" class="btn btn-neutral float-right" title="Enum EvictStrategy" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book"> Other Versions</span>
+    v: v0.1.0-beta.1
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Tags</dt>
+      <dd><a href="classnv_1_1merlin_1_1LocalKVFile.html">v0.1.0-beta.1</a></dd>
+    </dl>
+    <dl>
+      <dt>Branches</dt>
+      <dd><a href="../../master/index.html">master</a></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
