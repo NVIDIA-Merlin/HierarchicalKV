@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include <stddef.h>
+#include <limits>
 #include <cuda/std/semaphore>
 
 namespace nv {
@@ -27,9 +27,9 @@ struct Meta {
   M val;
 };
 
-constexpr uint64_t EMPTY_KEY = 0xFFFFFFFFFFFFFFFF;
-constexpr uint64_t MAX_META = 0xFFFFFFFFFFFFFFFF;
-constexpr uint64_t EMPTY_META = 0lu;
+constexpr uint64_t EMPTY_KEY = UINT64_C(0xFFFFFFFFFFFFFFFF);
+constexpr uint64_t MAX_META = UINT64_C(0xFFFFFFFFFFFFFFFF);
+constexpr uint64_t EMPTY_META = UINT64_C(0);
 
 template <class K, class V, class M, size_t DIM>
 struct Bucket {
