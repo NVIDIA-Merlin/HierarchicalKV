@@ -956,7 +956,7 @@ class HashTable {
                 table_, table_->buckets, table_->buckets_size,
                 table_->bucket_max_size, table_->buckets_num, N);
       }
-      CUDA_CHECK(cudaDeviceSynchronize());
+      CUDA_CHECK(cudaStreamSynchronize(stream));
     }
 
     reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
