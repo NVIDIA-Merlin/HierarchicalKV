@@ -1,0 +1,55 @@
+
+.. _file_merlin_localfile.h:
+
+File merlin_localfile.h
+=======================
+
+.. contents:: Contents
+   :local:
+   :backlinks: none
+
+Definition (``merlin_localfile.h``)
+-----------------------------------
+
+
+.. toctree::
+   :maxdepth: 1
+
+   program_listing_file_merlin_localfile.h.rst
+
+
+
+
+
+Includes
+--------
+
+
+- ``merlin/types.cuh``
+
+- ``stddef.h``
+
+- ``stdio.h``
+
+- ``string``
+
+
+
+
+
+
+Namespaces
+----------
+
+
+- :ref:`namespace_nv`
+
+- :ref:`namespace_nv__merlin`
+
+
+Classes
+-------
+
+
+- :ref:`exhale_class_classnv_1_1merlin_1_1LocalKVFile`
+
