@@ -16,8 +16,8 @@
 
 #pragma once
 
-#include <limits>
 #include <cuda/std/semaphore>
+#include <limits>
 
 namespace nv {
 namespace merlin {

@@ -103,8 +103,8 @@ using EraseIfPredict = bool (*)(
 );
 
 /**
- * A HierarchicalKV hash table is a concurrent and hierarchical hash table that is
- * powered by GPUs and can use HBM and host memory as storage for key-value
+ * A HierarchicalKV hash table is a concurrent and hierarchical hash table that
+ * is powered by GPUs and can use HBM and host memory as storage for key-value
  * pairs. Support for SSD storage is a future consideration.
  *
  * The `meta` is introduced to define the importance of each key, the
@@ -149,6 +149,12 @@ class HashTable {
  private:
   using TableCore = nv::merlin::Table<key_type, vector_type, meta_type, DIM>;
   static constexpr unsigned int TILE_SIZE = 8;
+
+#if THRUST_VERSION >= 101600
+  static constexpr auto thrust_par = thrust::cuda::par_nosync;
+#else
+  static constexpr auto thrust_par = thrust::cuda::par;
+#endif
 
  public:
   /**
@@ -232,9 +238,19 @@ class HashTable {
    * the evict strategy. If false, it requires the metas follow the evict
    * strategy of table.
    */
+  inline void insert_or_assign(size_type n,
+                               const key_type* keys,              // (n)
+                               const value_type* values,          // (n, DIM)
+                               const meta_type* metas = nullptr,  // (n)
+                               cudaStream_t stream = 0,
+                               bool ignore_evict_strategy = false) {
+    insert_or_assign(n, keys, reinterpret_cast<const vector_type*>(values),
+                     metas, stream, ignore_evict_strategy);
+  }
+
   void insert_or_assign(size_type n,
-                        const key_type* keys,              // (n)
-                        const value_type* values,          // (n, DIM)
+                        const key_type* keys,       // (n)
+                        const vector_type* values,  // (n), each DIM-sized
                         const meta_type* metas = nullptr,  // (n)
                         cudaStream_t stream = 0,
                         bool ignore_evict_strategy = false) {
@@ -264,15 +280,14 @@ class HashTable {
       if (metas == nullptr) {
         upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<const vector_type*>(values),
-                table_->buckets, table_->buckets_size, table_->bucket_max_size,
-                table_->buckets_num, N);
+                table_, keys, values, table_->buckets, table_->buckets_size,
+                table_->bucket_max_size, table_->buckets_num, N);
       } else {
         upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<const vector_type*>(values),
-                metas, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, N);
+                table_, keys, values, metas, table_->buckets,
+                table_->buckets_size, table_->bucket_max_size,
+                table_->buckets_num, N);
       }
     } else {
       vector_type** d_dst = nullptr;
@@ -308,22 +323,18 @@ class HashTable {
       }
 
       {
-        static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[HierarchicalKV] illegal conversation. value_type pointer "
-                      "should be 64 bit!");
+        static_assert(
+            sizeof(value_type*) == sizeof(uint64_t),
+            "[HierarchicalKV] illegal conversation. value_type pointer "
+            "should be 64 bit!");
 
         const size_t N = n;
         thrust::device_ptr<uint64_t> d_dst_ptr(
             reinterpret_cast<uint64_t*>(d_dst));
         thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
 
-#if THRUST_VERSION >= 101600
-        auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-        auto policy = thrust::cuda::par.on(stream);
-#endif
-        thrust::sort_by_key(policy, d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
-                            thrust::less<uint64_t>());
+        thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + N,
+                            d_src_offset_ptr, thrust::less<uint64_t>());
       }
 
       if (options_.io_by_cpu) {
@@ -347,9 +358,8 @@ class HashTable {
         const size_t N = n * DIM;
         const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
         write_kernel<key_type, vector_type, meta_type, DIM>
-            <<<grid_size, options_.block_size, 0, stream>>>(
-                reinterpret_cast<const vector_type*>(values), d_dst,
-                d_src_offset, N);
+            <<<grid_size, options_.block_size, 0, stream>>>(values, d_dst,
+                                                            d_src_offset, N);
       }
 
       CUDA_CHECK(cudaFreeAsync(d_dst, stream));
@@ -400,13 +410,25 @@ class HashTable {
    * strategy of table.
    *
    */
-  void accum_or_assign(size_type n,
-                       const key_type* keys,               // (n)
-                       const value_type* value_or_deltas,  // (n, DIM)
-                       const bool* accum_or_assigns,       // (n)
-                       const meta_type* metas = nullptr,   // (n)
-                       cudaStream_t stream = 0,
-                       bool ignore_evict_strategy = false) {
+  inline void accum_or_assign(size_type n,
+                              const key_type* keys,               // (n)
+                              const value_type* value_or_deltas,  // (n, DIM)
+                              const bool* accum_or_assigns,       // (n)
+                              const meta_type* metas = nullptr,   // (n)
+                              cudaStream_t stream = 0,
+                              bool ignore_evict_strategy = false) {
+    accum_or_assign(n, keys,
+                    reinterpret_cast<const vector_type*>(value_or_deltas),
+                    accum_or_assigns, metas, stream, ignore_evict_strategy);
+  }
+
+  void accum_or_assign(
+      size_type n,
+      const key_type* keys,                // (n)
+      const vector_type* value_or_deltas,  // (n), each DIM-sized
+      const bool* accum_or_assigns,        // (n)
+      const meta_type* metas = nullptr,    // (n)
+      cudaStream_t stream = 0, bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
     }
@@ -456,21 +478,17 @@ class HashTable {
     }
 
     if (!is_fast_mode()) {
-      static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                    "[HierarchicalKV] illegal conversation. value_type pointer must "
-                    "be 64 bit!");
+      static_assert(
+          sizeof(value_type*) == sizeof(uint64_t),
+          "[HierarchicalKV] illegal conversation. value_type pointer must "
+          "be 64 bit!");
 
       const size_t N = n;
       thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t*>(dst));
       thrust::device_ptr<int> src_offset_ptr(src_offset);
 
-#if THRUST_VERSION >= 101600
-      auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-      auto policy = thrust::cuda::par.on(stream);
-#endif
-      thrust::sort_by_key(policy, dst_ptr, dst_ptr + N, src_offset_ptr,
-                          thrust::less<uint64_t>());
+      thrust::sort_by_key(thrust_par.on(stream), dst_ptr, dst_ptr + N,
+                          src_offset_ptr, thrust::less<uint64_t>());
     }
 
     {
@@ -478,8 +496,7 @@ class HashTable {
       const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
       write_with_accum_kernel<key_type, vector_type, meta_type, DIM>
           <<<grid_size, options_.block_size, 0, stream>>>(
-              reinterpret_cast<const vector_type*>(value_or_deltas), dst,
-              accum_or_assigns, founds, src_offset, N);
+              value_or_deltas, dst, accum_or_assigns, founds, src_offset, N);
     }
 
     CUDA_CHECK(cudaFreeAsync(dst, stream));
@@ -507,10 +524,20 @@ class HashTable {
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
-  void find(size_type n, const key_type* keys,  // (n)
-            value_type* values,                 // (n, DIM)
-            bool* founds,                       // (n)
-            meta_type* metas = nullptr,         // (n)
+  inline void find(size_type n, const key_type* keys,  // (n)
+                   value_type* values,                 // (n, DIM)
+                   bool* founds,                       // (n)
+                   meta_type* metas = nullptr,         // (n)
+                   cudaStream_t stream = 0) const {
+    find(n, keys, reinterpret_cast<vector_type*>(values), founds, metas,
+         stream);
+  }
+
+  void find(size_type n,
+            const key_type* keys,        // (n)
+            vector_type* values,         // (n), each DIM-sized
+            bool* founds,                // (n)
+            meta_type* metas = nullptr,  // (n)
             cudaStream_t stream = 0) const {
     if (n == 0) {
       return;
@@ -529,12 +556,12 @@ class HashTable {
 
       lookup_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, keys, reinterpret_cast<vector_type*>(values), metas,
-              founds, table_->buckets, table_->buckets_size,
-              table_->bucket_max_size, table_->buckets_num, N);
+              table_, keys, values, metas, founds, table_->buckets,
+              table_->buckets_size, table_->bucket_max_size,
+              table_->buckets_num, N);
     } else {
       vector_type** src;
-      int* dst_offset = nullptr;
+      int* dst_offset;
       CUDA_CHECK(cudaMallocAsync(&src, n * sizeof(vector_type*), stream));
       CUDA_CHECK(cudaMemsetAsync(src, 0, n * sizeof(vector_type*), stream));
       CUDA_CHECK(cudaMallocAsync(&dst_offset, n * sizeof(int), stream));
@@ -547,36 +574,31 @@ class HashTable {
 
         lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<vector_type**>(src), metas,
-                founds, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, dst_offset, N);
+                table_, keys, src, metas, founds, table_->buckets,
+                table_->buckets_size, table_->bucket_max_size,
+                table_->buckets_num, dst_offset, N);
       }
 
       {
-        static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[HierarchicalKV] illegal conversation. value_type pointer "
-                      "must be 64 bit!");
+        static_assert(
+            sizeof(value_type*) == sizeof(uint64_t),
+            "[HierarchicalKV] illegal conversation. value_type pointer "
+            "must be 64 bit!");
 
         const size_t N = n;
         thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t*>(src));
         thrust::device_ptr<int> dst_offset_ptr(dst_offset);
 
-#if THRUST_VERSION >= 101600
-        auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-        auto policy = thrust::cuda::par.on(stream);
-#endif
-        thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
-                            thrust::less<uint64_t>());
+        thrust::sort_by_key(thrust_par.on(stream), src_ptr, src_ptr + N,
+                            dst_offset_ptr, thrust::less<uint64_t>());
       }
 
       {
         const size_t N = n * DIM;
         const int grid_size = SAFE_GET_GRID_SIZE(N, options_.block_size);
         read_kernel<key_type, vector_type, meta_type, DIM>
-            <<<grid_size, options_.block_size, 0, stream>>>(
-                src, reinterpret_cast<vector_type*>(values), founds, dst_offset,
-                N);
+            <<<grid_size, options_.block_size, 0, stream>>>(src, values, founds,
+                                                            dst_offset, N);
       }
 
       CUDA_CHECK(cudaFreeAsync(src, stream));
@@ -892,12 +914,7 @@ class HashTable {
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-#if THRUST_VERSION >= 101600
-    auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-    auto policy = thrust::cuda::par.on(stream);
-#endif
-    h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+    h_size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
                             thrust::plus<int>());
     CudaCheckError();
     return h_size;
@@ -1144,12 +1161,7 @@ class HashTable {
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-#if THRUST_VERSION >= 101600
-    auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-    auto policy = thrust::cuda::par.on(stream);
-#endif
-    h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+    h_size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
                             thrust::plus<int>());
 
     CudaCheckError();
