@@ -251,15 +251,16 @@ class HashTable {
       check_evict_strategy(metas);
     }
 
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
+    }
+
     if (is_fast_mode()) {
       const size_t block_size = 128;
       const size_t N = n * TILE_SIZE;
       const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-
-      std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-      if (!reach_max_capacity_) {
-        lock.lock();
-      }
 
       if (metas == nullptr) {
         upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
@@ -277,11 +278,6 @@ class HashTable {
     } else {
       vector_type** d_dst = nullptr;
       int* d_src_offset = nullptr;
-
-      std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-      if (!reach_max_capacity_) {
-        lock.lock();
-      }
 
       CUDA_CHECK(cudaMallocAsync(&d_dst, n * sizeof(vector_type*), stream));
       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, n * sizeof(vector_type*), stream));
@@ -424,9 +420,10 @@ class HashTable {
     int* src_offset;
     bool* founds;
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
 
     CUDA_CHECK(cudaMallocAsync(&dst, n * sizeof(vector_type*), stream));
@@ -516,9 +513,10 @@ class HashTable {
       return;
     }
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
 
     CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
@@ -602,9 +600,10 @@ class HashTable {
     size_t count = 0;
     size_t* d_count;
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
 
     CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_t), stream));
@@ -660,9 +659,10 @@ class HashTable {
     size_t* d_count;
     Pred h_pred;
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
 
     CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_t), stream));
@@ -689,10 +689,10 @@ class HashTable {
    * object.
    */
   void clear(cudaStream_t stream = 0) {
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
 
     const size_t N = table_->buckets_num * table_->bucket_max_size;
@@ -740,9 +740,10 @@ class HashTable {
     n = std::min(table_->capacity - offset, n);
     size_type meta_size = (metas == nullptr ? 0 : sizeof(meta_type));
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
 
     const size_t block_size =
@@ -840,10 +841,12 @@ class HashTable {
     n = std::min(table_->capacity - offset, n);
     size_type meta_size = (metas == nullptr ? 0 : sizeof(meta_type));
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
+
     const size_t block_size =
         std::min(shared_mem_size_ / 2 /
                      (sizeof(key_type) + sizeof(vector_type) + meta_size),
@@ -885,9 +888,11 @@ class HashTable {
   size_type size(cudaStream_t stream = 0) const {
     size_t h_size = 0;
     size_type N = table_->buckets_num;
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
@@ -934,8 +939,9 @@ class HashTable {
     }
 
     {
+      // Ensure exclusive table access.
+      std::unique_lock<std::shared_timed_mutex> lock(table_mutex_);
       CUDA_CHECK(cudaDeviceSynchronize());
-      std::unique_lock<std::shared_timed_mutex> lock(mutex_);
 
       while (capacity() < new_capacity &&
              capacity() * 2 <= options_.max_capacity) {
@@ -981,7 +987,10 @@ class HashTable {
   size_type save(BaseKVFile<K, V, M, DIM>* file,
                  size_type buffer_size = 1048576,
                  cudaStream_t stream = 0) const {
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    // Ensure exclusive table access.
+    std::unique_lock<std::shared_timed_mutex> lock(table_mutex_);
+    CUDA_CHECK(cudaDeviceSynchronize());
+
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
     M* d_metas = nullptr;
@@ -1073,7 +1082,10 @@ class HashTable {
    */
   size_type load(BaseKVFile<K, V, M, DIM>* file,
                  size_type buffer_size = 1048576, cudaStream_t stream = 0) {
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    // Ensure exclusive table access.
+    std::unique_lock<std::shared_timed_mutex> lock(table_mutex_);
+    CUDA_CHECK(cudaDeviceSynchronize());
+
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
     M* d_metas = nullptr;
@@ -1136,10 +1148,12 @@ class HashTable {
                                 cudaStream_t stream = 0) const {
     size_t h_size = 0;
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
+    // Block exclusive access, unless table structure cannot change anymore.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
+    if (reach_max_capacity_) {
+      lock.unlock();
     }
+
     size_type N = std::min(table_->buckets_num, 1024UL);
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
@@ -1178,7 +1192,7 @@ class HashTable {
   size_t shared_mem_size_ = 0;
   bool reach_max_capacity_ = false;
   bool initialized_ = false;
-  mutable std::shared_timed_mutex mutex_;
+  mutable std::shared_timed_mutex table_mutex_;
 };
 
 }  // namespace merlin
