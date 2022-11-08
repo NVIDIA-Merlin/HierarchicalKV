@@ -103,8 +103,8 @@ using EraseIfPredict = bool (*)(
 );
 
 /**
- * A HierarchicalKV hash table is a concurrent and hierarchical hash table that is
- * powered by GPUs and can use HBM and host memory as storage for key-value
+ * A HierarchicalKV hash table is a concurrent and hierarchical hash table that
+ * is powered by GPUs and can use HBM and host memory as storage for key-value
  * pairs. Support for SSD storage is a future consideration.
  *
  * The `meta` is introduced to define the importance of each key, the
@@ -242,19 +242,23 @@ class HashTable {
       return;
     }
 
-    while (!reach_max_capacity_ &&
-           fast_load_factor(n) > options_.max_load_factor) {
-      reserve(capacity() * 2);
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      // Attempt to grow if load factor is too high.
+      if (fast_load_factor(n, stream) <= options_.max_load_factor) {
+        lock.lock();
+      } else if (!preemptive_grow(n, stream)) {
+        lock.lock();
+      }
+
+      // TODO: This still has issues because things can happen between
+      // fast_load_factor and premptive grow. Would need something like
+      // `boost::upgradable` lock. Otherwise, it cannot work perfectly.
     }
 
     if (!ignore_evict_strategy) {
       check_evict_strategy(metas);
-    }
-
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
     }
 
     if (is_fast_mode()) {
@@ -304,9 +308,10 @@ class HashTable {
       }
 
       {
-        static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[HierarchicalKV] illegal conversation. value_type pointer "
-                      "should be 64 bit!");
+        static_assert(
+            sizeof(value_type*) == sizeof(uint64_t),
+            "[HierarchicalKV] illegal conversation. value_type pointer "
+            "should be 64 bit!");
 
         const size_t N = n;
         thrust::device_ptr<uint64_t> d_dst_ptr(
@@ -407,9 +412,19 @@ class HashTable {
       return;
     }
 
-    while (!reach_max_capacity_ &&
-           fast_load_factor(n) > options_.max_load_factor) {
-      reserve(capacity() * 2);
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      // Attempt to grow if load factor is too high.
+      if (fast_load_factor(n, stream) <= options_.max_load_factor) {
+        lock.lock();
+      } else if (!preemptive_grow(n, stream)) {
+        lock.lock();
+      }
+
+      // TODO: This still has issues because things can happen between
+      // fast_load_factor and premptive grow. Would need something like
+      // `boost::upgradable` lock. Otherwise, it cannot work perfectly.
     }
 
     if (!ignore_evict_strategy) {
@@ -419,12 +434,6 @@ class HashTable {
     vector_type** dst;
     int* src_offset;
     bool* founds;
-
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
-    }
 
     CUDA_CHECK(cudaMallocAsync(&dst, n * sizeof(vector_type*), stream));
     CUDA_CHECK(cudaMemsetAsync(dst, 0, n * sizeof(vector_type*), stream));
@@ -453,9 +462,10 @@ class HashTable {
     }
 
     if (!is_fast_mode()) {
-      static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                    "[HierarchicalKV] illegal conversation. value_type pointer must "
-                    "be 64 bit!");
+      static_assert(
+          sizeof(value_type*) == sizeof(uint64_t),
+          "[HierarchicalKV] illegal conversation. value_type pointer must "
+          "be 64 bit!");
 
       const size_t N = n;
       thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t*>(dst));
@@ -513,10 +523,11 @@ class HashTable {
       return;
     }
 
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
     CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
@@ -551,9 +562,10 @@ class HashTable {
       }
 
       {
-        static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[HierarchicalKV] illegal conversation. value_type pointer "
-                      "must be 64 bit!");
+        static_assert(
+            sizeof(value_type*) == sizeof(uint64_t),
+            "[HierarchicalKV] illegal conversation. value_type pointer "
+            "must be 64 bit!");
 
         const size_t N = n;
         thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t*>(src));
@@ -600,10 +612,11 @@ class HashTable {
     size_t count = 0;
     size_t* d_count;
 
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
     CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_t), stream));
@@ -659,10 +672,11 @@ class HashTable {
     size_t* d_count;
     Pred h_pred;
 
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
     CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_t), stream));
@@ -689,10 +703,11 @@ class HashTable {
    * object.
    */
   void clear(cudaStream_t stream = 0) {
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
     const size_t N = table_->buckets_num * table_->bucket_max_size;
@@ -740,10 +755,11 @@ class HashTable {
     n = std::min(table_->capacity - offset, n);
     size_type meta_size = (metas == nullptr ? 0 : sizeof(meta_type));
 
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
     const size_t block_size =
@@ -841,10 +857,11 @@ class HashTable {
     n = std::min(table_->capacity - offset, n);
     size_type meta_size = (metas == nullptr ? 0 : sizeof(meta_type));
 
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
     const size_t block_size =
@@ -889,10 +906,11 @@ class HashTable {
     size_t h_size = 0;
     size_type N = table_->buckets_num;
 
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
@@ -934,35 +952,28 @@ class HashTable {
    * @param stream The CUDA stream that is used to execute the operation.
    */
   void reserve(size_type new_capacity, cudaStream_t stream = 0) {
-    if (reach_max_capacity_ || new_capacity > options_.max_capacity) {
+    if (new_capacity > options_.max_capacity) {
       return;
     }
 
-    {
-      // Ensure exclusive table access.
-      std::unique_lock<std::shared_timed_mutex> lock(table_mutex_);
-      CUDA_CHECK(cudaDeviceSynchronize());
+    // Ensure exclusive table access.
+    std::unique_lock<std::shared_timed_mutex> lock(table_mutex_);
+    CUDA_CHECK(cudaDeviceSynchronize());
 
-      while (capacity() < new_capacity &&
-             capacity() * 2 <= options_.max_capacity) {
-        double_capacity(&table_);
-
-        const size_t block_size = 128;
-        const size_t N = TILE_SIZE * table_->buckets_num / 2;
-        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-        rehash_kernel_for_fast_mode<key_type, vector_type, meta_type, DIM,
-                                    TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, N);
-      }
-      CUDA_CHECK(cudaStreamSynchronize(stream));
+    if (reach_max_capacity_) {
+      return;
     }
 
-    reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
-    CudaCheckError();
+    // Repeatedly grow until the table growth capacity limits are met.
+    while (table_->capacity < new_capacity) {
+      if (grow_unsafe(stream)) {
+        // Max capacity reached.
+        break;
+      }
+    }
   }
 
+ public:
   /**
    * @brief Returns the average number of elements per slot, that is, size()
    * divided by capacity().
@@ -1146,14 +1157,18 @@ class HashTable {
    */
   inline float fast_load_factor(size_type delta = 0,
                                 cudaStream_t stream = 0) const {
-    size_t h_size = 0;
-
-    // Block exclusive access, unless table structure cannot change anymore.
-    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_);
-    if (reach_max_capacity_) {
-      lock.unlock();
+    // Only need to lock if the structure of the table may still change.
+    std::shared_lock<std::shared_timed_mutex> lock(table_mutex_,
+                                                   std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
     }
 
+    return fast_load_factor_unsafe(delta, stream);
+  }
+
+  inline float fast_load_factor_unsafe(size_type delta = 0,
+                                       cudaStream_t stream = 0) const {
     size_type N = std::min(table_->buckets_num, 1024UL);
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
@@ -1163,13 +1178,57 @@ class HashTable {
 #else
     auto policy = thrust::cuda::par.on(stream);
 #endif
-    h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
-                            thrust::plus<int>());
+    size_t h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+                                   thrust::plus<int>());
 
     CudaCheckError();
+
     return static_cast<float>((delta * 1.0) / (capacity() * 1.0) +
                               (h_size * 1.0) /
                                   (options_.max_bucket_size * N * 1.0));
+  }
+
+  inline bool preemptive_grow(size_type delta, cudaStream_t stream = 0) {
+    // Ensure exclusive table access.
+    std::unique_lock<std::shared_timed_mutex> lock(table_mutex_);
+    CUDA_CHECK(cudaDeviceSynchronize());
+
+    // If further growth is still possible.
+    if (reach_max_capacity_) {
+      return true;
+    }
+
+    // Repeatedly grow the table until load factor falls below target.
+    do {
+      if (grow_unsafe(stream)) {
+        // Max capacity reached.
+        return true;
+      }
+    } while (fast_load_factor_unsafe(delta, stream) > options_.max_load_factor);
+    
+    return false;
+  }
+
+  inline bool grow_unsafe(cudaStream_t stream = 0) {
+    double_capacity(&table_);
+
+    const size_t block_size = 128;
+    const size_t N = TILE_SIZE * table_->buckets_num / 2;
+    const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+    rehash_kernel_for_fast_mode<key_type, vector_type, meta_type, DIM,
+                                TILE_SIZE>
+        <<<grid_size, block_size, 0, stream>>>(
+            table_, table_->buckets, table_->buckets_size,
+            table_->bucket_max_size, table_->buckets_num, N);
+
+    // Must synchronuize here to ensure the rehash is complete bofore toggling
+    // the `reach_max_capacity` flag.
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CudaCheckError();
+
+    bool reach_max_capacity = table_->capacity * 2 > options_.max_capacity;
+    reach_max_capacity_ = reach_max_capacity;
+    return reach_max_capacity;
   }
 
   inline void check_evict_strategy(const meta_type* metas) {
@@ -1190,7 +1249,7 @@ class HashTable {
   HashTableOptions options_;
   TableCore* table_ = nullptr;
   size_t shared_mem_size_ = 0;
-  bool reach_max_capacity_ = false;
+  std::atomic<bool> reach_max_capacity_{false};
   bool initialized_ = false;
   mutable std::shared_timed_mutex table_mutex_;
 };
