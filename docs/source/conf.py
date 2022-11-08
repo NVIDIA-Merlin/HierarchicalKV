@@ -126,7 +126,7 @@ html_sidebars = {"**": ["versions.html"]}
 html_baseurl = "https://nvidia-merlin.github.io/HierarchicalKV/master"
 
 html_static_path = [ '_static' ]
-html_css_files = [ "css/custom.css" ]
+html_css_files = [ "css/custom.css", "css/banner.css" ]
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
