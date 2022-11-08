@@ -99,6 +99,7 @@ exclude_patterns = []
 html_theme = "sphinx_rtd_theme"
 html_theme_options = {
     "navigation_depth": 2,
+    "analytics_id": "G-NVJ1Y1YJHK",
 }
 html_show_sourcelink = False
 
@@ -122,6 +123,7 @@ smv_branch_whitelist = "^master$"
 smv_refs_override_suffix = "-docs"
 
 html_sidebars = {"**": ["versions.html"]}
+html_baseurl = "https://nvidia-merlin.github.io/HierarchicalKV/master"
 
 html_static_path = [ '_static' ]
 html_css_files = [ "css/custom.css" ]
