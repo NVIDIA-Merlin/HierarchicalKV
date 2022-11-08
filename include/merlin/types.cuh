@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <stddef.h>
 #include <cuda/std/semaphore>
 #include <limits>
 
