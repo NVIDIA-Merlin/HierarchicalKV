@@ -299,28 +299,43 @@ struct TypeConvertFunc<int, unsigned int> {
 
 template <class P>
 void realloc(P* ptr, size_t old_size, size_t new_size) {
-  void* new_ptr = nullptr;
+  // Truncate old_size to limit dowstream copy ops.
+  old_size = std::min(old_size, new_size);
+
+  // Alloc new buffer and copy at old data.
+  char* new_ptr;
   CUDA_CHECK(cudaMalloc(&new_ptr, new_size));
-  CUDA_CHECK(cudaMemset(new_ptr, 0, new_size));
-  if (*ptr != nullptr && old_size != 0) {
+  if (*ptr != nullptr) {
     CUDA_CHECK(cudaMemcpy(new_ptr, *ptr, old_size, cudaMemcpyDefault));
     CUDA_CHECK(cudaFree(*ptr));
   }
-  *ptr = (P)new_ptr;
+
+  // Zero-fill remainder.
+  CUDA_CHECK(cudaMemset(new_ptr + old_size, 0, new_size - old_size));
+
+  // Switch to new pointer.
+  *ptr = reinterpret_cast<P>(new_ptr);
   return;
 }
 
 template <class P>
 void realloc_managed(P* ptr, size_t old_size, size_t new_size) {
-  void* new_ptr = nullptr;
+  // Truncate old_size to limit dowstream copy ops.
+  old_size = std::min(old_size, new_size);
 
+  // Alloc new buffer and copy at old data.
+  char* new_ptr;
   CUDA_CHECK(cudaMallocManaged(&new_ptr, new_size));
-  CUDA_CHECK(cudaMemset(new_ptr, 0, new_size));
-  if (*ptr != nullptr && old_size != 0) {
+  if (*ptr != nullptr) {
     CUDA_CHECK(cudaMemcpy(new_ptr, *ptr, old_size, cudaMemcpyDefault));
     CUDA_CHECK(cudaFree(*ptr));
   }
-  *ptr = (P)new_ptr;
+
+  // Zero-fill remainder.
+  CUDA_CHECK(cudaMemset(new_ptr + old_size, 0, new_size - old_size));
+
+  // Switch to new pointer.
+  *ptr = reinterpret_cast<P>(new_ptr);
   return;
 }
 
