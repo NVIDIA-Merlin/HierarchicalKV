@@ -981,7 +981,7 @@ class HashTable {
   size_type save(BaseKVFile<K, V, M, DIM>* file,
                  size_type buffer_size = 1048576,
                  cudaStream_t stream = 0) const {
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(exclude_mutex_);
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
     M* d_metas = nullptr;
@@ -1073,7 +1073,7 @@ class HashTable {
    */
   size_type load(BaseKVFile<K, V, M, DIM>* file,
                  size_type buffer_size = 1048576, cudaStream_t stream = 0) {
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(exclude_mutex_);
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
     M* d_metas = nullptr;
@@ -1179,6 +1179,7 @@ class HashTable {
   bool reach_max_capacity_ = false;
   bool initialized_ = false;
   mutable std::shared_timed_mutex mutex_;
+  mutable std::mutex exclude_mutex_;
 };
 
 }  // namespace merlin
