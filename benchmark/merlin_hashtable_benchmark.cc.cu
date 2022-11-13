@@ -152,8 +152,11 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
   auto end_insert_or_assign = std::chrono::steady_clock::now();
   auto start_find = std::chrono::steady_clock::now();
   auto end_find = std::chrono::steady_clock::now();
+  auto start_erase = std::chrono::steady_clock::now();
+  auto end_erase = std::chrono::steady_clock::now();
   std::chrono::duration<double> diff_insert_or_assign;
   std::chrono::duration<double> diff_find;
+  std::chrono::duration<double> diff_erase;
 
   while (cur_load_factor < load_factor) {
     create_continuous_keys<K, M>(h_keys, h_metas, key_num_per_op, start);
@@ -183,12 +186,19 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
     start += key_num_per_op;
   }
 
+  start_erase = std::chrono::steady_clock::now();
+  table->erase(key_num_per_op, d_keys, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  end_erase = std::chrono::steady_clock::now();
+  diff_erase = end_erase - start_erase;
+
   size_t hmem4values =
       init_capacity * DIM * sizeof(float) / (1024 * 1024 * 1024);
   hmem4values = hmem4values < hbm4values ? 0 : (hmem4values - hbm4values);
   float insert_tput =
       key_num_per_op / diff_insert_or_assign.count() / (1024 * 1024 * 1024.0);
   float find_tput = key_num_per_op / diff_find.count() / (1024 * 1024 * 1024.0);
+  float erase_tput = key_num_per_op / diff_erase.count() / (1024 * 1024 * 1024.0);
 
   cout << "|" << rep(1) << setw(3) << setfill(' ') << DIM << " "
        << "|" << rep(1) << setw(11) << setfill(' ') << init_capacity << " "
@@ -196,7 +206,8 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
        << "|" << rep(5) << setw(3) << setfill(' ') << hbm4values << " "
        << "|" << rep(6) << setw(3) << setfill(' ') << hmem4values << " "
        << "|" << rep(2) << fixed << setprecision(3) << insert_tput << " "
-       << "|" << rep(2) << fixed << setprecision(3) << find_tput << " |"
+       << "|" << rep(2) << fixed << setprecision(3) << find_tput << " "
+       << "|" << rep(2) << fixed << setprecision(3) << erase_tput << " |"
        << endl;
 
   CUDA_CHECK(cudaStreamDestroy(stream));
@@ -225,7 +236,8 @@ void print_title() {
        << "| HBM(GB) "
        << "| HMEM(GB) "
        << "| insert "
-       << "|   find |" << endl;
+       << "|   find "
+       << "|  erase |" << endl;
   cout << "|----:"
        //<< "| capacity "
        << "|------------:"
@@ -238,7 +250,9 @@ void print_title() {
        //<< "| insert "
        << "|-------:"
        //<< "|  find "
-       << "|-------:|" << endl;
+       << "|-------:"
+       //<< "| erase "
+       << "|-------:|"<< endl;
 }
 
 int main() {
