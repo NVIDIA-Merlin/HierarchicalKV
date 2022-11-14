@@ -31,6 +31,7 @@ Program Listing for File merlin_hashtable.cuh
    #include <thrust/device_vector.h>
    #include <thrust/execution_policy.h>
    #include <thrust/sort.h>
+   #include <cstdint>
    #include <mutex>
    #include <shared_mutex>
    #include <type_traits>
