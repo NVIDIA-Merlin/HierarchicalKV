@@ -19,6 +19,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
+#include <cstdint>
 #include <mutex>
 #include <shared_mutex>
 #include <type_traits>
@@ -103,8 +104,8 @@ using EraseIfPredict = bool (*)(
 );
 
 /**
- * A HierarchicalKV hash table is a concurrent and hierarchical hash table that is
- * powered by GPUs and can use HBM and host memory as storage for key-value
+ * A HierarchicalKV hash table is a concurrent and hierarchical hash table that
+ * is powered by GPUs and can use HBM and host memory as storage for key-value
  * pairs. Support for SSD storage is a future consideration.
  *
  * The `meta` is introduced to define the importance of each key, the
@@ -149,6 +150,12 @@ class HashTable {
  private:
   using TableCore = nv::merlin::Table<key_type, vector_type, meta_type, DIM>;
   static constexpr unsigned int TILE_SIZE = 8;
+
+#if THRUST_VERSION >= 101600
+  static constexpr auto thrust_par = thrust::cuda::par_nosync;
+#else
+  static constexpr auto thrust_par = thrust::cuda::par;
+#endif
 
  public:
   /**
@@ -308,22 +315,13 @@ class HashTable {
       }
 
       {
-        static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[HierarchicalKV] illegal conversation. value_type pointer "
-                      "should be 64 bit!");
-
         const size_t N = n;
-        thrust::device_ptr<uint64_t> d_dst_ptr(
-            reinterpret_cast<uint64_t*>(d_dst));
+        thrust::device_ptr<uintptr_t> d_dst_ptr(
+            reinterpret_cast<uintptr_t*>(d_dst));
         thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
 
-#if THRUST_VERSION >= 101600
-        auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-        auto policy = thrust::cuda::par.on(stream);
-#endif
-        thrust::sort_by_key(policy, d_dst_ptr, d_dst_ptr + N, d_src_offset_ptr,
-                            thrust::less<uint64_t>());
+        thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + N,
+                            d_src_offset_ptr, thrust::less<uintptr_t>());
       }
 
       if (options_.io_by_cpu) {
@@ -456,21 +454,12 @@ class HashTable {
     }
 
     if (!is_fast_mode()) {
-      static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                    "[HierarchicalKV] illegal conversation. value_type pointer must "
-                    "be 64 bit!");
-
       const size_t N = n;
-      thrust::device_ptr<uint64_t> dst_ptr(reinterpret_cast<uint64_t*>(dst));
+      thrust::device_ptr<uintptr_t> dst_ptr(reinterpret_cast<uintptr_t*>(dst));
       thrust::device_ptr<int> src_offset_ptr(src_offset);
 
-#if THRUST_VERSION >= 101600
-      auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-      auto policy = thrust::cuda::par.on(stream);
-#endif
-      thrust::sort_by_key(policy, dst_ptr, dst_ptr + N, src_offset_ptr,
-                          thrust::less<uint64_t>());
+      thrust::sort_by_key(thrust_par.on(stream), dst_ptr, dst_ptr + N,
+                          src_offset_ptr, thrust::less<uintptr_t>());
     }
 
     {
@@ -553,21 +542,13 @@ class HashTable {
       }
 
       {
-        static_assert(sizeof(value_type*) == sizeof(uint64_t),
-                      "[HierarchicalKV] illegal conversation. value_type pointer "
-                      "must be 64 bit!");
-
         const size_t N = n;
-        thrust::device_ptr<uint64_t> src_ptr(reinterpret_cast<uint64_t*>(src));
+        thrust::device_ptr<uintptr_t> src_ptr(
+            reinterpret_cast<uintptr_t*>(src));
         thrust::device_ptr<int> dst_offset_ptr(dst_offset);
 
-#if THRUST_VERSION >= 101600
-        auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-        auto policy = thrust::cuda::par.on(stream);
-#endif
-        thrust::sort_by_key(policy, src_ptr, src_ptr + N, dst_offset_ptr,
-                            thrust::less<uint64_t>());
+        thrust::sort_by_key(thrust_par.on(stream), src_ptr, src_ptr + N,
+                            dst_offset_ptr, thrust::less<uintptr_t>());
       }
 
       {
@@ -892,12 +873,7 @@ class HashTable {
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-#if THRUST_VERSION >= 101600
-    auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-    auto policy = thrust::cuda::par.on(stream);
-#endif
-    h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+    h_size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
                             thrust::plus<int>());
     CudaCheckError();
     return h_size;
@@ -1144,12 +1120,7 @@ class HashTable {
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-#if THRUST_VERSION >= 101600
-    auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-    auto policy = thrust::cuda::par.on(stream);
-#endif
-    h_size = thrust::reduce(policy, size_ptr, size_ptr + N, (int)0,
+    h_size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
                             thrust::plus<int>());
 
     CudaCheckError();
