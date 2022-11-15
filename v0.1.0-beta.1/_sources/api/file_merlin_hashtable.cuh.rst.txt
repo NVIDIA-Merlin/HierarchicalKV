@@ -33,6 +33,8 @@ Includes
 
 - ``cooperative_groups/reduce.h``
 
+- ``cstdint``
+
 - ``cuda/std/semaphore``
 
 - ``cuda_fp16.h``
