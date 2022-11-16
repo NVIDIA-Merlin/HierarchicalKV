@@ -21,6 +21,26 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CUDA_STANDARD 14)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
+option(CLANGFORMAT "Clangformat code files before compiling" OFF)
+if(CLANGFORMAT)
+  include(ClangFormat)
+  file(GLOB_RECURSE clangformat_includes
+    ${PROJECT_SOURCE_DIR}/include/*.h
+    ${PROJECT_SOURCE_DIR}/include/*.hpp
+    ${PROJECT_SOURCE_DIR}/include/*.cuh
+  )
+  file(GLOB clangformat_tests
+    ${PROJECT_SOURCE_DIR}/tests/*.c
+    ${PROJECT_SOURCE_DIR}/tests/*.h
+    ${PROJECT_SOURCE_DIR}/tests/*.cpp
+    ${PROJECT_SOURCE_DIR}/tests/*.hpp
+    ${PROJECT_SOURCE_DIR}/tests/*.cu
+    ${PROJECT_SOURCE_DIR}/tests/*.cuh
+  )
+  set(clangformat_files ${clangformat_includes} ${clangformat_tests})
+  clangformat_setup("${clangformat_files}")
+endif()
+
 # Default to release build.
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
