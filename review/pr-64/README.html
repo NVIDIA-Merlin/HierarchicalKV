@@ -150,12 +150,14 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 <span class="nb">cd</span> HierarchicalKV <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
 cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
-
-// <span class="k">for</span> Benchmark
-./merlin_hashtable_benchmark
-
-// <span class="k">for</span> Unit Test
-./merlin_hashtable_test
+</pre></div>
+</div>
+<p>For Benchmark:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_benchmark
+</pre></div>
+</div>
+<p>For Unit Test:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_test
 </pre></div>
 </div>
 <p>Your environment must meet the following requirements:</p>

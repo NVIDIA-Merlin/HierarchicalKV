@@ -61,11 +61,15 @@ Basically, HierarchicalKV is a headers only library, the commands below only cre
 git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 cd HierarchicalKV && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -Dsm=80 .. && make -j
+```
 
-// for Benchmark
+For Benchmark:
+```shell
 ./merlin_hashtable_benchmark
+```
 
-// for Unit Test
+For Unit Test:
+```shell
 ./merlin_hashtable_test
 ```
 
