@@ -1,4 +1,4 @@
-# [NVIDIA HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV)
+# [NVIDIA HierarchicalKV(Beta)](https://github.com/NVIDIA-Merlin/HierarchicalKV)
 
 [![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange)](https://github.com/NVIDIA-Merlin/HierarchicalKV/releases)
 [![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/HierarchicalKV)](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/LICENSE)
@@ -79,7 +79,7 @@ Your environment must meet the following requirements:
 - NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0
 
 
-## Benchmark
+## Benchmark & Performance(W.I.P)
 
 * GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0
 * Key Type = uint64_t
