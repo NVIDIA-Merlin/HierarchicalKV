@@ -182,7 +182,9 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
 
     cur_load_factor = table->load_factor(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-
+    if (start == 0) {
+      table->erase(key_num_per_op, d_keys, stream);  // warmup for erase kernel.
+    }
     start += key_num_per_op;
   }
 
@@ -198,7 +200,8 @@ void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
   float insert_tput =
       key_num_per_op / diff_insert_or_assign.count() / (1024 * 1024 * 1024.0);
   float find_tput = key_num_per_op / diff_find.count() / (1024 * 1024 * 1024.0);
-  float erase_tput = key_num_per_op / diff_erase.count() / (1024 * 1024 * 1024.0);
+  float erase_tput =
+      key_num_per_op / diff_erase.count() / (1024 * 1024 * 1024.0);
 
   cout << "|" << rep(1) << setw(3) << setfill(' ') << DIM << " "
        << "|" << rep(1) << setw(11) << setfill(' ') << init_capacity << " "
@@ -252,7 +255,7 @@ void print_title() {
        //<< "|  find "
        << "|-------:"
        //<< "| erase "
-       << "|-------:|"<< endl;
+       << "|-------:|" << endl;
 }
 
 int main() {
@@ -291,21 +294,21 @@ int main() {
 
     cout << "### On HBM+HMEM hybrid mode: " << endl;
     print_title();
-    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
-    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
-    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
+    test_main<64>(128 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
 
-    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
-    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
-    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 0.50);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 0.75);
+    test_main<64>(1024 * 1024 * 1024UL, key_num_per_op, 56, 1.00);
 
-    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
-    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
-    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.50);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 0.75);
+    test_main<128>(64 * 1024 * 1024UL, key_num_per_op, 16, 1.00);
 
-    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 0, 0.50, true);
-    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 0, 0.75, true);
-    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 0, 1.00, true);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 0.50);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 0.75);
+    test_main<128>(512 * 1024 * 1024UL, key_num_per_op, 56, 1.00);
     cout << endl;
 
     CUDA_CHECK(cudaDeviceSynchronize());
