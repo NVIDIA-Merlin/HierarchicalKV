@@ -159,7 +159,7 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (is_fast_mode()) {
-         constexpr size_t block_size = 128;
+         const size_t block_size = options_.block_size;
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -186,7 +186,7 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, n * sizeof(int), stream));
    
          {
-           constexpr size_t block_size = 128;
+           const size_t block_size = options_.block_size;
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -286,7 +286,7 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
    
        {
-         constexpr size_t block_size = 128;
+         const size_t block_size = options_.block_size;
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -348,7 +348,7 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (is_fast_mode()) {
-         constexpr size_t block_size = 128;
+         const size_t block_size = options_.block_size;
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -366,7 +366,7 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(cudaMemsetAsync(dst_offset, 0, n * sizeof(int), stream));
    
          {
-           constexpr size_t block_size = 128;
+           const size_t block_size = options_.block_size;
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -419,7 +419,7 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
    
        {
-         constexpr size_t block_size = 128;
+         const size_t block_size = options_.block_size;
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -455,7 +455,7 @@ Program Listing for File merlin_hashtable.cuh
                                             cudaMemcpyDeviceToHost, stream));
    
        {
-         constexpr size_t block_size = 256;
+         const size_t block_size = options_.block_size;
          const size_t N = table_->buckets_num;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -627,7 +627,7 @@ Program Listing for File merlin_hashtable.cuh
                 capacity() * 2 <= options_.max_capacity) {
            double_capacity(&table_);
    
-           constexpr size_t block_size = 128;
+           const size_t block_size = options_.block_size;
            const size_t N = TILE_SIZE * table_->buckets_num / 2;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
