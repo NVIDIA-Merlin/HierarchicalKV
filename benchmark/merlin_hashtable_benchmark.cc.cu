@@ -44,7 +44,7 @@ uint64_t getTimestamp() {
       .count();
 }
 template <class K, class M>
-void create_random_keys(K* h_keys, M* h_metas, int key_num_per_op) {
+void create_random_keys(K* h_keys, M* h_metas, const int key_num_per_op) {
   std::unordered_set<K> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
@@ -64,8 +64,8 @@ void create_random_keys(K* h_keys, M* h_metas, int key_num_per_op) {
 std::string rep(int n) { return std::string(n, ' '); }
 
 template <class K, class M>
-void create_continuous_keys(K* h_keys, M* h_metas, int key_num_per_op,
-                            K start = 0) {
+void create_continuous_keys(K* h_keys, M* h_metas, const int key_num_per_op,
+                            const K start = 0) {
   for (K i = 0; i < key_num_per_op; i++) {
     h_keys[i] = start + static_cast<K>(i);
     h_metas[i] = getTimestamp();
@@ -78,10 +78,10 @@ struct ValueArray {
 };
 
 template <size_t DIM>
-void test_main(size_t init_capacity = 64 * 1024 * 1024UL,
-               size_t key_num_per_op = 1 * 1024 * 1024UL,
-               size_t hbm4values = 16, float load_factor = 1.0,
-               bool io_by_cpu = false) {
+void test_main(const size_t init_capacity = 64 * 1024 * 1024UL,
+               const size_t key_num_per_op = 1 * 1024 * 1024UL,
+               const size_t hbm4values = 16, const float load_factor = 1.0,
+               const bool io_by_cpu = false) {
   using K = uint64_t;
   using M = uint64_t;
   using Vector = ValueArray<float, DIM>;

@@ -239,7 +239,7 @@ class HashTable {
    * the evict strategy. If false, it requires the metas follow the evict
    * strategy of table.
    */
-  void insert_or_assign(size_type n,
+  void insert_or_assign(const size_type n,
                         const key_type* keys,              // (n)
                         const value_type* values,          // (n, DIM)
                         const meta_type* metas = nullptr,  // (n)
@@ -398,7 +398,7 @@ class HashTable {
    * strategy of table.
    *
    */
-  void accum_or_assign(size_type n,
+  void accum_or_assign(const size_type n,
                        const key_type* keys,               // (n)
                        const value_type* value_or_deltas,  // (n, DIM)
                        const bool* accum_or_assigns,       // (n)
@@ -496,10 +496,10 @@ class HashTable {
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
-  void find(size_type n, const key_type* keys,  // (n)
-            value_type* values,                 // (n, DIM)
-            bool* founds,                       // (n)
-            meta_type* metas = nullptr,         // (n)
+  void find(const size_type n, const key_type* keys,  // (n)
+            value_type* values,                       // (n, DIM)
+            bool* founds,                             // (n)
+            meta_type* metas = nullptr,               // (n)
             cudaStream_t stream = 0) const {
     if (n == 0) {
       return;
@@ -576,7 +576,8 @@ class HashTable {
    *
    * @return The number of elements removed.
    */
-  size_t erase(size_type n, const key_type* keys, cudaStream_t stream = 0) {
+  size_t erase(const size_type n, const key_type* keys,
+               cudaStream_t stream = 0) {
     const size_t block_size = 128;
     const size_t N = n * TILE_SIZE;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
@@ -632,7 +633,7 @@ class HashTable {
    * @return The number of elements removed.
    *
    */
-  size_t erase_if(Pred& pred, const key_type& pattern,
+  size_t erase_if(const Pred& pred, const key_type& pattern,
                   const meta_type& threshold, cudaStream_t stream = 0) {
     const size_t block_size = 256;
     const size_t N = table_->buckets_num;
@@ -709,7 +710,7 @@ class HashTable {
    * memory. Reducing the value for @p n is currently required if this exception
    * occurs.
    */
-  void export_batch(size_type n, size_type offset, size_type* counter,
+  void export_batch(size_type n, const size_type offset, size_type* counter,
                     key_type* keys,              // (n)
                     value_type* values,          // (n, DIM)
                     meta_type* metas = nullptr,  // (n)
@@ -745,7 +746,7 @@ class HashTable {
     CudaCheckError();
   }
 
-  size_type export_batch(size_type n, size_type offset,
+  size_type export_batch(const size_type n, const size_type offset,
                          key_type* keys,              // (n)
                          value_type* values,          // (n, DIM)
                          meta_type* metas = nullptr,  // (n)
@@ -806,7 +807,7 @@ class HashTable {
    */
   void export_batch_if(Pred& pred, const key_type& pattern,
                        const meta_type& threshold, size_type n,
-                       size_type offset, size_type* d_counter,
+                       const size_type offset, size_type* d_counter,
                        key_type* keys,              // (n)
                        value_type* values,          // (n, DIM)
                        meta_type* metas = nullptr,  // (n)
@@ -904,7 +905,7 @@ class HashTable {
    * @param new_capacity The requested capacity for the hash table.
    * @param stream The CUDA stream that is used to execute the operation.
    */
-  void reserve(size_type new_capacity, cudaStream_t stream = 0) {
+  void reserve(const size_type new_capacity, cudaStream_t stream = 0) {
     if (reach_max_capacity_ || new_capacity > options_.max_capacity) {
       return;
     }
@@ -955,7 +956,7 @@ class HashTable {
    * @return Number of KV pairs saved to file.
    */
   size_type save(BaseKVFile<K, V, M, DIM>* file,
-                 size_type buffer_size = 1048576,
+                 const size_type buffer_size = 1048576,
                  cudaStream_t stream = 0) const {
     std::unique_lock<std::shared_timed_mutex> lock(mutex_);
     K* d_keys = nullptr;
@@ -1048,7 +1049,8 @@ class HashTable {
    * @return Number of keys loaded from file.
    */
   size_type load(BaseKVFile<K, V, M, DIM>* file,
-                 size_type buffer_size = 1048576, cudaStream_t stream = 0) {
+                 const size_type buffer_size = 1048576,
+                 cudaStream_t stream = 0) {
     std::unique_lock<std::shared_timed_mutex> lock(mutex_);
     K* d_keys = nullptr;
     V* d_vectors = nullptr;
@@ -1108,7 +1110,7 @@ class HashTable {
    *
    * @return The evaluated load factor
    */
-  inline float fast_load_factor(size_type delta = 0,
+  inline float fast_load_factor(const size_type delta = 0,
                                 cudaStream_t stream = 0) const {
     size_t h_size = 0;
 

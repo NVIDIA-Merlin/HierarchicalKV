@@ -30,7 +30,8 @@ namespace nv {
 namespace merlin {
 
 template <class M>
-__global__ void create_locks(M* __restrict mutex, size_t start, size_t end) {
+__global__ void create_locks(M* __restrict mutex, const size_t start,
+                             const size_t end) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (start + tid < end) {
     new (mutex + start + tid) M(1);
@@ -38,7 +39,8 @@ __global__ void create_locks(M* __restrict mutex, size_t start, size_t end) {
 }
 
 template <class M>
-__global__ void release_locks(M* __restrict mutex, size_t start, size_t end) {
+__global__ void release_locks(M* __restrict mutex, const size_t start,
+                              const size_t end) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (start + tid < end) {
     (mutex + start + tid)->~M();
@@ -50,7 +52,8 @@ constexpr size_t kDefaultBytesPerSlice = (8ul << 30);
 
 /* Initialize the buckets with index from start to end. */
 template <class K, class V, class M, size_t DIM>
-void initialize_buckets(Table<K, V, M, DIM>** table, size_t start, size_t end) {
+void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
+                        const size_t end) {
   /* As testing results show us, when the number of buckets is greater than
    * the 4 million the performance will drop significantly, we believe the
    * to many pinned memory allocation causes this issue, so we change the
@@ -124,11 +127,13 @@ void initialize_buckets(Table<K, V, M, DIM>** table, size_t start, size_t end) {
    DIM: Vector dimension.
 */
 template <class K, class V, class M, size_t DIM>
-void create_table(Table<K, V, M, DIM>** table, size_t init_size = 134217728,
-                  size_t max_size = std::numeric_limits<size_t>::max(),
-                  size_t max_hbm_for_vectors = 0, size_t bucket_max_size = 128,
-                  size_t tile_size = 32, bool primary = true,
-                  size_t bytes_per_slice = kDefaultBytesPerSlice) {
+void create_table(Table<K, V, M, DIM>** table,
+                  const size_t init_size = 134217728,
+                  const size_t max_size = std::numeric_limits<size_t>::max(),
+                  const size_t max_hbm_for_vectors = 0,
+                  const size_t bucket_max_size = 128,
+                  const size_t tile_size = 32, const bool primary = true,
+                  const size_t bytes_per_slice = kDefaultBytesPerSlice) {
   CUDA_CHECK(cudaMallocManaged((void**)table, sizeof(Table<K, V, M, DIM>)));
   CUDA_CHECK(cudaMemset(*table, 0, sizeof(Table<K, V, M, DIM>)));
   (*table)->bucket_max_size = bucket_max_size;
@@ -332,8 +337,9 @@ template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __forceinline__ __device__ void move_key_to_new_bucket(
     cg::thread_block_tile<TILE_SIZE> g, int rank, const K& key, const M& meta,
     const V* __restrict vector, Bucket<K, V, M, DIM>* __restrict new_bucket,
-    size_t new_bkt_idx, size_t new_start_idx, int* __restrict buckets_size,
-    const size_t bucket_max_size, const size_t buckets_num) {
+    const size_t new_bkt_idx, const size_t new_start_idx,
+    int* __restrict buckets_size, const size_t bucket_max_size,
+    const size_t buckets_num) {
   uint32_t key_pos;
   unsigned empty_vote;
   int local_size;

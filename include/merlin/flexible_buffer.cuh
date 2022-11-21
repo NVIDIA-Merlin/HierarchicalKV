@@ -28,7 +28,7 @@ namespace merlin {
 template <class T>
 class FlexPinnedBuffer {
  public:
-  FlexPinnedBuffer(size_t size = 1) : ptr_(nullptr) {
+  FlexPinnedBuffer(const size_t size = 1) : ptr_(nullptr) {
     if (!ptr_) {
       size_ = size;
       CUDA_CHECK(cudaMallocHost(&ptr_, sizeof(T) * size_));
@@ -42,7 +42,7 @@ class FlexPinnedBuffer {
     }
   }
 
-  __inline__ T* alloc_or_reuse(size_t size = 0) {
+  __inline__ T* alloc_or_reuse(const size_t size = 0) {
     if (size > size_) {
       CUDA_CHECK(cudaFreeHost(ptr_));
       size_ = size;

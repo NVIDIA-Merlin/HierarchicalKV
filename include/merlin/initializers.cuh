@@ -38,13 +38,14 @@ inline void cuda_rand_check_(curandStatus_t val, const char* file, int line) {
   { nv::merlin::initializers::cuda_rand_check_((val), __FILE__, __LINE__); }
 
 template <class T>
-void zeros(T* d_data, size_t len, cudaStream_t stream) {
+void zeros(T* d_data, const size_t len, cudaStream_t stream) {
   CUDA_CHECK(cudaMemsetAsync(d_data, 0, len, stream));
 }
 
 template <class T>
-void random_normal(T* d_data, size_t len, cudaStream_t stream, T mean = 0.0,
-                   T stddev = 0.05, unsigned long long seed = 2022ULL) {
+void random_normal(T* d_data, const size_t len, cudaStream_t stream,
+                   const T mean = 0.0, const T stddev = 0.05,
+                   const unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
   CURAND_CHECK(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
   CURAND_CHECK(curandSetPseudoRandomGeneratorSeed(generator, seed));
@@ -52,7 +53,8 @@ void random_normal(T* d_data, size_t len, cudaStream_t stream, T mean = 0.0,
 }
 
 template <class T>
-__global__ void adjust_max_min(T* d_data, T minval, T maxval, size_t N) {
+__global__ void adjust_max_min(T* d_data, const T minval, const T maxval,
+                               const size_t N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (tid < N) {
     d_data[tid] =
@@ -61,8 +63,9 @@ __global__ void adjust_max_min(T* d_data, T minval, T maxval, size_t N) {
 }
 
 template <class T>
-void random_uniform(T* d_data, size_t len, cudaStream_t stream, T minval = 0.0,
-                    T maxval = 1.0, unsigned long long seed = 2022ULL) {
+void random_uniform(T* d_data, const size_t len, cudaStream_t stream,
+                    const T minval = 0.0, const T maxval = 1.0,
+                    const unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
 
   CURAND_CHECK(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
@@ -78,7 +81,7 @@ void random_uniform(T* d_data, size_t len, cudaStream_t stream, T minval = 0.0,
 
 template <class T>
 __global__ void init_states(curandStatePhilox4_32_10_t* states,
-                            unsigned long long seed, size_t N) {
+                            const unsigned long long seed, const size_t N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (tid < N) {
     curand_init(seed, tid, 0, &states[tid]);
@@ -88,7 +91,7 @@ __global__ void init_states(curandStatePhilox4_32_10_t* states,
 template <class T>
 __global__ void make_truncated_normal(T* d_data,
                                       curandStatePhilox4_32_10_t* states,
-                                      size_t N) {
+                                      const size_t N) {
   int tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (tid < N) {
     constexpr T truncated_val = T(2.0);
@@ -99,9 +102,9 @@ __global__ void make_truncated_normal(T* d_data,
 }
 
 template <class T>
-void truncated_normal(T* d_data, size_t len, cudaStream_t stream,
-                      T minval = 0.0, T maxval = 1.0,
-                      unsigned long long seed = 2022ULL) {
+void truncated_normal(T* d_data, const size_t len, cudaStream_t stream,
+                      const T minval = 0.0, const T maxval = 1.0,
+                      const unsigned long long seed = 2022ULL) {
   curandGenerator_t generator;
 
   CURAND_CHECK(curandCreateGenerator(&generator, CURAND_RNG_PSEUDO_DEFAULT));
@@ -134,7 +137,7 @@ class Initializer {
 template <class T>
 class Zeros final : public Initializer<T> {
  public:
-  void initialize(T* data, size_t len, cudaStream_t stream) override {
+  void initialize(T* data, const size_t len, cudaStream_t stream) override {
     zeros<T>(data, len, stream);
   }
 };
