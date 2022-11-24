@@ -18,6 +18,7 @@
 
 #include <cooperative_groups.h>
 #include <stdarg.h>
+#include <cstdint>
 #include <exception>
 #include <string>
 #include "cuda_fp16.h"
@@ -185,9 +186,9 @@ __inline__ __device__ int64_t Murmur3HashDevice(int64_t const& key) {
 __inline__ __device__ uint32_t Murmur3HashDevice(uint32_t const& key) {
   uint32_t k = key;
   k ^= k >> 16;
-  k *= 0x85ebca6b;
+  k *= UINT32_C(0x85ebca6b);
   k ^= k >> 13;
-  k *= 0xc2b2ae35;
+  k *= UINT32_C(0xc2b2ae35);
   k ^= k >> 16;
 
   return k;
@@ -196,9 +197,9 @@ __inline__ __device__ uint32_t Murmur3HashDevice(uint32_t const& key) {
 __inline__ __device__ int32_t Murmur3HashDevice(int32_t const& key) {
   uint32_t k = uint32_t(key);
   k ^= k >> 16;
-  k *= 0x85ebca6b;
+  k *= UINT32_C(0x85ebca6b);
   k ^= k >> 13;
-  k *= 0xc2b2ae35;
+  k *= UINT32_C(0xc2b2ae35);
   k ^= k >> 16;
 
   return int32_t(k);
