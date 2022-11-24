@@ -11,11 +11,11 @@ jobs:
     runs-on: "ubuntu-latest"
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           fetch-depth: 0
       - name: Set up Python 3.8
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.8
       - name: Install Ubuntu packages
@@ -32,8 +32,12 @@ jobs:
       - name: Building docs (multiversion)
         run: |
           sphinx-multiversion -D 'exhale_args.containmentFolder=${sourcedir}/api' docs/source docs/build/html
+      - name: Delete unnecessary files
+        run: |
+          find docs/build -name .doctrees -prune -exec rm -rf {} \;
+          find docs/build -name .buildinfo -exec rm {} \;
       - name: Upload HTML
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
           name: html-build-artifact
           path: docs/build/html
@@ -45,7 +49,7 @@ jobs:
     needs: [build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           ref: "gh-pages"
       - name: Initialize Git configuration
@@ -53,7 +57,7 @@ jobs:
           git config user.name docs-sched-rebuild
           git config user.email do-not-send-@github.com
       - name: Download artifacts
-        uses: actions/download-artifact@v2
+        uses: actions/download-artifact@v3
         with:
           name: html-build-artifact
       - name: Copy HTML directories
