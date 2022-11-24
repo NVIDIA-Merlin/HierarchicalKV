@@ -134,7 +134,7 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
-     void insert_or_assign(size_type n,
+     void insert_or_assign(const size_type n,
                            const key_type* keys,              // (n)
                            const value_type* values,          // (n, DIM)
                            const meta_type* metas = nullptr,  // (n)
@@ -249,7 +249,7 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
-     void accum_or_assign(size_type n,
+     void accum_or_assign(const size_type n,
                           const key_type* keys,               // (n)
                           const value_type* value_or_deltas,  // (n, DIM)
                           const bool* accum_or_assigns,       // (n)
@@ -331,10 +331,10 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
-     void find(size_type n, const key_type* keys,  // (n)
-               value_type* values,                 // (n, DIM)
-               bool* founds,                       // (n)
-               meta_type* metas = nullptr,         // (n)
+     void find(const size_type n, const key_type* keys,  // (n)
+               value_type* values,                       // (n, DIM)
+               bool* founds,                             // (n)
+               meta_type* metas = nullptr,               // (n)
                cudaStream_t stream = 0) const {
        if (n == 0) {
          return;
@@ -404,7 +404,8 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
-     size_type erase(size_type n, const key_type* keys, cudaStream_t stream = 0) {
+     size_type erase(const size_type n, const key_type* keys,
+                     cudaStream_t stream = 0) {
        if (n == 0) {
          return 0;
        }
@@ -439,7 +440,7 @@ Program Listing for File merlin_hashtable.cuh
        return count;
      }
    
-     size_type erase_if(Pred& pred, const key_type& pattern,
+     size_type erase_if(const Pred& pred, const key_type& pattern,
                         const meta_type& threshold, cudaStream_t stream = 0) {
        std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
        if (!reach_max_capacity_) {
@@ -493,7 +494,7 @@ Program Listing for File merlin_hashtable.cuh
      }
    
     public:
-     void export_batch(size_type n, size_t offset,
+     void export_batch(size_type n, const size_type offset,
                        size_type* counter,          // (1)
                        key_type* keys,              // (n)
                        value_type* values,          // (n, DIM)
@@ -528,7 +529,7 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
-     size_type export_batch(size_type n, size_type offset,
+     size_type export_batch(const size_type n, const size_type offset,
                             key_type* keys,              // (n)
                             value_type* values,          // (n, DIM)
                             meta_type* metas = nullptr,  // (n)
@@ -548,7 +549,7 @@ Program Listing for File merlin_hashtable.cuh
    
      void export_batch_if(Pred& pred, const key_type& pattern,
                           const meta_type& threshold, size_type n,
-                          size_type offset, size_type* d_counter,
+                          const size_type offset, size_type* d_counter,
                           key_type* keys,              // (n)
                           value_type* values,          // (n, DIM)
                           meta_type* metas = nullptr,  // (n)
@@ -611,7 +612,7 @@ Program Listing for File merlin_hashtable.cuh
    
      size_type capacity() const { return table_->capacity; }
    
-     void reserve(size_type new_capacity, cudaStream_t stream = 0) {
+     void reserve(const size_type new_capacity, cudaStream_t stream = 0) {
        if (reach_max_capacity_ || new_capacity > options_.max_capacity) {
          return;
        }
@@ -649,7 +650,7 @@ Program Listing for File merlin_hashtable.cuh
      }
    
      size_type save(BaseKVFile<K, V, M, DIM>* file,
-                    size_type buffer_size = 1048576,
+                    const size_type buffer_size = 1048576,
                     cudaStream_t stream = 0) const {
        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
        K* d_keys = nullptr;
@@ -733,7 +734,8 @@ Program Listing for File merlin_hashtable.cuh
      }
    
      size_type load(BaseKVFile<K, V, M, DIM>* file,
-                    size_type buffer_size = 1048576, cudaStream_t stream = 0) {
+                    const size_type buffer_size = 1048576,
+                    cudaStream_t stream = 0) {
        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
        K* d_keys = nullptr;
        V* d_vectors = nullptr;
@@ -781,7 +783,7 @@ Program Listing for File merlin_hashtable.cuh
     private:
      inline bool is_fast_mode() const noexcept { return table_->is_pure_hbm; }
    
-     inline float fast_load_factor(size_type delta = 0,
+     inline float fast_load_factor(const size_type delta = 0,
                                    cudaStream_t stream = 0) const {
        std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
        if (!reach_max_capacity_) {
