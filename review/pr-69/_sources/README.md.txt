@@ -1,4 +1,4 @@
-# [NVIDIA HierarchicalKV](https://github.com/NVIDIA-Merlin/HierarchicalKV)
+# [NVIDIA HierarchicalKV(Beta)](https://github.com/NVIDIA-Merlin/HierarchicalKV)
 
 [![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange)](https://github.com/NVIDIA-Merlin/HierarchicalKV/releases)
 [![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/HierarchicalKV)](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/LICENSE)
@@ -46,6 +46,7 @@ For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/
 ## Usage restrictions
 
 - The `key_type` and `meta_type` must be `uint64_t`.
+- The keys of `0xFFFFFFFFFFFFFFFF` and `0xFFFFFFFFFFFFFFFE` are reserved for internal using.
 
 ## Contributors
 
@@ -60,11 +61,15 @@ Basically, HierarchicalKV is a headers only library, the commands below only cre
 git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 cd HierarchicalKV && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -Dsm=80 .. && make -j
+```
 
-// for Benchmark
+For Benchmark:
+```shell
 ./merlin_hashtable_benchmark
+```
 
-// for Unit Test
+For Unit Test:
+```shell
 ./merlin_hashtable_test
 ```
 
@@ -74,7 +79,7 @@ Your environment must meet the following requirements:
 - NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0
 
 
-## Benchmark
+## Benchmark & Performance(W.I.P)
 
 * GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0
 * Key Type = uint64_t
@@ -84,36 +89,38 @@ Your environment must meet the following requirements:
 
 ### On pure HBM mode:
 
-| dim |    capacity | load_factor | HBM(GB) | HMEM(GB) | insert |  find |
-|----:|------------:|------------:|--------:|---------:|-------:|------:|
-|   4 |    67108864 |        0.50 |      16 |        0 |  1.167 | 1.750 |
-|   4 |    67108864 |        0.75 |      16 |        0 |  0.897 | 1.386 |
-|   4 |    67108864 |        1.00 |      16 |        0 |  0.213 | 0.678 |
-|  16 |    67108864 |        0.50 |      16 |        0 |  1.114 | 1.564 |
-|  16 |    67108864 |        0.75 |      16 |        0 |  0.894 | 1.258 |
-|  16 |    67108864 |        1.00 |      16 |        0 |  0.215 | 0.640 |
-|  64 |    67108864 |        0.50 |      16 |        0 |  0.873 | 0.915 |
-|  64 |    67108864 |        0.75 |      16 |        0 |  0.767 | 0.823 |
-|  64 |    67108864 |        1.00 |      16 |        0 |  0.206 | 0.492 |
-| 128 |   134217728 |        0.50 |      64 |        0 |  0.664 | 0.613 |
-| 128 |   134217728 |        0.75 |      64 |        0 |  0.593 | 0.560 |
-| 128 |   134217728 |        1.00 |      64 |        0 |  0.191 | 0.387 |
+| dim |    capacity | load_factor | HBM(GB) | HMEM(GB) | insert |   find |  erase |
+|----:|------------:|------------:|--------:|---------:|-------:|-------:|-------:|
+|   4 |    67108864 |        0.50 |      32 |        0 |  1.118 |  1.478 |  0.482 |
+|   4 |    67108864 |        0.75 |      32 |        0 |  0.902 |  1.242 |  0.472 |
+|   4 |    67108864 |        1.00 |      32 |        0 |  0.178 |  0.683 |  0.487 |
+|  16 |    67108864 |        0.50 |      16 |        0 |  1.104 |  1.334 |  0.485 |
+|  16 |    67108864 |        0.75 |      16 |        0 |  0.894 |  1.145 |  0.476 |
+|  16 |    67108864 |        1.00 |      16 |        0 |  0.178 |  0.654 |  0.486 |
+|  64 |    67108864 |        0.50 |      16 |        0 |  0.875 |  0.849 |  0.481 |
+|  64 |    67108864 |        0.75 |      16 |        0 |  0.723 |  0.777 |  0.482 |
+|  64 |    67108864 |        1.00 |      16 |        0 |  0.168 |  0.536 |  0.481 |
+| 128 |   134217728 |        0.50 |      64 |        0 |  0.634 |  0.577 |  0.393 |
+| 128 |   134217728 |        0.75 |      64 |        0 |  0.555 |  0.545 |  0.365 |
+| 128 |   134217728 |        1.00 |      64 |        0 |  0.147 |  0.417 |  0.352 |
 
 ### On HBM+HMEM hybrid mode:
-| dim |    capacity | load_factor | HBM(GB) | HMEM(GB) | insert |  find |
-|----:|------------:|------------:|--------:|---------:|-------:|------:|
-|  64 |   134217728 |        0.50 |      16 |       16 |  0.107 | 0.103 |
-|  64 |   134217728 |        0.75 |      16 |       16 |  0.106 | 0.101 |
-|  64 |   134217728 |        1.00 |      16 |       16 |  0.077 | 0.094 |
-|  64 |  1073741824 |        0.50 |      56 |      200 |  0.037 | 0.040 |
-|  64 |  1073741824 |        0.75 |      56 |      200 |  0.037 | 0.040 |
-|  64 |  1073741824 |        1.00 |      56 |      200 |  0.030 | 0.036 |
-| 128 |    67108864 |        0.50 |      16 |       16 |  0.076 | 0.072 |
-| 128 |    67108864 |        0.75 |      16 |       16 |  0.071 | 0.071 |
-| 128 |    67108864 |        1.00 |      16 |       16 |  0.059 | 0.068 |
-| 128 |   536870912 |        0.50 |      56 |      200 |  0.039 | 0.040 |
-| 128 |   536870912 |        0.75 |      56 |      200 |  0.041 | 0.040 |
-| 128 |   536870912 |        1.00 |      56 |      200 |  0.035 | 0.038 |
+
+| dim |    capacity | load_factor | HBM(GB) | HMEM(GB) | insert |   find |  erase |
+|----:|------------:|------------:|--------:|---------:|-------:|-------:|-------:|
+|  64 |   134217728 |        0.50 |      16 |       16 |  0.114 |  0.106 |  0.456 |
+|  64 |   134217728 |        0.75 |      16 |       16 |  0.113 |  0.107 |  0.430 |
+|  64 |   134217728 |        1.00 |      16 |       16 |  0.075 |  0.115 |  0.421 |
+|  64 |  1073741824 |        0.50 |      56 |      200 |  0.038 |  0.040 |  0.293 |
+|  64 |  1073741824 |        0.75 |      56 |      200 |  0.037 |  0.040 |  0.291 |
+|  64 |  1073741824 |        1.00 |      56 |      200 |  0.033 |  0.041 |  0.278 |
+| 128 |    67108864 |        0.50 |      16 |       16 |  0.079 |  0.073 |  0.562 |
+| 128 |    67108864 |        0.75 |      16 |       16 |  0.078 |  0.078 |  0.550 |
+| 128 |    67108864 |        1.00 |      16 |       16 |  0.061 |  0.111 |  0.576 |
+| 128 |   536870912 |        0.50 |      56 |      200 |  0.041 |  0.041 |  0.313 |
+| 128 |   536870912 |        0.75 |      56 |      200 |  0.041 |  0.041 |  0.305 |
+| 128 |   536870912 |        1.00 |      56 |      200 |  0.035 |  0.045 |  0.296 |
+
 
 ### Support and Feedback:
 

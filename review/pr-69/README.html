@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NVIDIA HierarchicalKV &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+  <title>NVIDIA HierarchicalKV(Beta) &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="_static/mystnb.css" type="text/css" />
       <link rel="stylesheet" href="_static/togglebutton.css" type="text/css" />
@@ -60,7 +60,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#usage-restrictions">Usage restrictions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#contributors">Contributors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-to-build">How to build</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#benchmark">Benchmark</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benchmark-performance-w-i-p">Benchmark &amp; Performance(W.I.P)</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="api/index.html">API Documentation</a></li>
@@ -81,7 +81,7 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home"></a></li>
-      <li class="breadcrumb-item active">NVIDIA HierarchicalKV</li>
+      <li class="breadcrumb-item active">NVIDIA HierarchicalKV(Beta)</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -90,8 +90,8 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <div class="tex2jax_ignore mathjax_ignore section" id="nvidia-hierarchicalkv">
-<h1><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV">NVIDIA HierarchicalKV</a><a class="headerlink" href="#nvidia-hierarchicalkv" title="Permalink to this headline"></a></h1>
+  <div class="tex2jax_ignore mathjax_ignore section" id="nvidia-hierarchicalkv-beta">
+<h1><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV">NVIDIA HierarchicalKV(Beta)</a><a class="headerlink" href="#nvidia-hierarchicalkv-beta" title="Permalink to this headline"></a></h1>
 <p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/releases"><img alt="Version" src="https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange" /></a>
 <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/NVIDIA-Merlin/HierarchicalKV" /></a>
 <a class="reference external" href="https://nvidia-merlin.github.io/HierarchicalKV/master/README.html"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue.svg" /></a></p>
@@ -136,6 +136,7 @@ The library simplifies the common challenges to building, evaluating, and servin
 <h2>Usage restrictions<a class="headerlink" href="#usage-restrictions" title="Permalink to this headline"></a></h2>
 <ul class="simple">
 <li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> and <code class="docutils literal notranslate"><span class="pre">meta_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
+<li><p>The keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code> are reserved for internal using.</p></li>
 </ul>
 </div>
 <div class="section" id="contributors">
@@ -149,12 +150,14 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 <span class="nb">cd</span> HierarchicalKV <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
 cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
-
-// <span class="k">for</span> Benchmark
-./merlin_hashtable_benchmark
-
-// <span class="k">for</span> Unit Test
-./merlin_hashtable_test
+</pre></div>
+</div>
+<p>For Benchmark:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_benchmark
+</pre></div>
+</div>
+<p>For Unit Test:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_test
 </pre></div>
 </div>
 <p>Your environment must meet the following requirements:</p>
@@ -163,8 +166,8 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <li><p>NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0</p></li>
 </ul>
 </div>
-<div class="section" id="benchmark">
-<h2>Benchmark<a class="headerlink" href="#benchmark" title="Permalink to this headline"></a></h2>
+<div class="section" id="benchmark-performance-w-i-p">
+<h2>Benchmark &amp; Performance(W.I.P)<a class="headerlink" href="#benchmark-performance-w-i-p" title="Permalink to this headline"></a></h2>
 <ul class="simple">
 <li><p>GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0</p></li>
 <li><p>Key Type = uint64_t</p></li>
@@ -183,40 +186,45 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <th class="text-right head"><p>HMEM(GB)</p></th>
 <th class="text-right head"><p>insert</p></th>
 <th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>erase</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>4</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>16</p></td>
+<td class="text-right"><p>32</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>1.167</p></td>
-<td class="text-right"><p>1.750</p></td>
+<td class="text-right"><p>1.118</p></td>
+<td class="text-right"><p>1.478</p></td>
+<td class="text-right"><p>0.482</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>4</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>16</p></td>
+<td class="text-right"><p>32</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.897</p></td>
-<td class="text-right"><p>1.386</p></td>
+<td class="text-right"><p>0.902</p></td>
+<td class="text-right"><p>1.242</p></td>
+<td class="text-right"><p>0.472</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>4</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>16</p></td>
+<td class="text-right"><p>32</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.213</p></td>
-<td class="text-right"><p>0.678</p></td>
+<td class="text-right"><p>0.178</p></td>
+<td class="text-right"><p>0.683</p></td>
+<td class="text-right"><p>0.487</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>16</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>1.114</p></td>
-<td class="text-right"><p>1.564</p></td>
+<td class="text-right"><p>1.104</p></td>
+<td class="text-right"><p>1.334</p></td>
+<td class="text-right"><p>0.485</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>16</p></td>
 <td class="text-right"><p>67108864</p></td>
@@ -224,63 +232,71 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>0</p></td>
 <td class="text-right"><p>0.894</p></td>
-<td class="text-right"><p>1.258</p></td>
+<td class="text-right"><p>1.145</p></td>
+<td class="text-right"><p>0.476</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>16</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.215</p></td>
-<td class="text-right"><p>0.640</p></td>
+<td class="text-right"><p>0.178</p></td>
+<td class="text-right"><p>0.654</p></td>
+<td class="text-right"><p>0.486</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.873</p></td>
-<td class="text-right"><p>0.915</p></td>
+<td class="text-right"><p>0.875</p></td>
+<td class="text-right"><p>0.849</p></td>
+<td class="text-right"><p>0.481</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>0.75</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.767</p></td>
-<td class="text-right"><p>0.823</p></td>
+<td class="text-right"><p>0.723</p></td>
+<td class="text-right"><p>0.777</p></td>
+<td class="text-right"><p>0.482</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.206</p></td>
-<td class="text-right"><p>0.492</p></td>
+<td class="text-right"><p>0.168</p></td>
+<td class="text-right"><p>0.536</p></td>
+<td class="text-right"><p>0.481</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>134217728</p></td>
 <td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>64</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.664</p></td>
-<td class="text-right"><p>0.613</p></td>
+<td class="text-right"><p>0.634</p></td>
+<td class="text-right"><p>0.577</p></td>
+<td class="text-right"><p>0.393</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>134217728</p></td>
 <td class="text-right"><p>0.75</p></td>
 <td class="text-right"><p>64</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.593</p></td>
-<td class="text-right"><p>0.560</p></td>
+<td class="text-right"><p>0.555</p></td>
+<td class="text-right"><p>0.545</p></td>
+<td class="text-right"><p>0.365</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>134217728</p></td>
 <td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>64</p></td>
 <td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.191</p></td>
-<td class="text-right"><p>0.387</p></td>
+<td class="text-right"><p>0.147</p></td>
+<td class="text-right"><p>0.417</p></td>
+<td class="text-right"><p>0.352</p></td>
 </tr>
 </tbody>
 </table>
@@ -296,6 +312,7 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <th class="text-right head"><p>HMEM(GB)</p></th>
 <th class="text-right head"><p>insert</p></th>
 <th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>erase</p></th>
 </tr>
 </thead>
 <tbody>
@@ -304,32 +321,36 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.107</p></td>
-<td class="text-right"><p>0.103</p></td>
+<td class="text-right"><p>0.114</p></td>
+<td class="text-right"><p>0.106</p></td>
+<td class="text-right"><p>0.456</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>134217728</p></td>
 <td class="text-right"><p>0.75</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.106</p></td>
-<td class="text-right"><p>0.101</p></td>
+<td class="text-right"><p>0.113</p></td>
+<td class="text-right"><p>0.107</p></td>
+<td class="text-right"><p>0.430</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>134217728</p></td>
 <td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.077</p></td>
-<td class="text-right"><p>0.094</p></td>
+<td class="text-right"><p>0.075</p></td>
+<td class="text-right"><p>0.115</p></td>
+<td class="text-right"><p>0.421</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>1073741824</p></td>
 <td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>56</p></td>
 <td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.037</p></td>
+<td class="text-right"><p>0.038</p></td>
 <td class="text-right"><p>0.040</p></td>
+<td class="text-right"><p>0.293</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>1073741824</p></td>
@@ -338,46 +359,52 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <td class="text-right"><p>200</p></td>
 <td class="text-right"><p>0.037</p></td>
 <td class="text-right"><p>0.040</p></td>
+<td class="text-right"><p>0.291</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>64</p></td>
 <td class="text-right"><p>1073741824</p></td>
 <td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>56</p></td>
 <td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.030</p></td>
-<td class="text-right"><p>0.036</p></td>
+<td class="text-right"><p>0.033</p></td>
+<td class="text-right"><p>0.041</p></td>
+<td class="text-right"><p>0.278</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.076</p></td>
-<td class="text-right"><p>0.072</p></td>
+<td class="text-right"><p>0.079</p></td>
+<td class="text-right"><p>0.073</p></td>
+<td class="text-right"><p>0.562</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>0.75</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.071</p></td>
-<td class="text-right"><p>0.071</p></td>
+<td class="text-right"><p>0.078</p></td>
+<td class="text-right"><p>0.078</p></td>
+<td class="text-right"><p>0.550</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>67108864</p></td>
 <td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>16</p></td>
 <td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.059</p></td>
-<td class="text-right"><p>0.068</p></td>
+<td class="text-right"><p>0.061</p></td>
+<td class="text-right"><p>0.111</p></td>
+<td class="text-right"><p>0.576</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>536870912</p></td>
 <td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>56</p></td>
 <td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.039</p></td>
-<td class="text-right"><p>0.040</p></td>
+<td class="text-right"><p>0.041</p></td>
+<td class="text-right"><p>0.041</p></td>
+<td class="text-right"><p>0.313</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>536870912</p></td>
@@ -385,7 +412,8 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <td class="text-right"><p>56</p></td>
 <td class="text-right"><p>200</p></td>
 <td class="text-right"><p>0.041</p></td>
-<td class="text-right"><p>0.040</p></td>
+<td class="text-right"><p>0.041</p></td>
+<td class="text-right"><p>0.305</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
 <td class="text-right"><p>536870912</p></td>
@@ -393,7 +421,8 @@ cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</s
 <td class="text-right"><p>56</p></td>
 <td class="text-right"><p>200</p></td>
 <td class="text-right"><p>0.035</p></td>
-<td class="text-right"><p>0.038</p></td>
+<td class="text-right"><p>0.045</p></td>
+<td class="text-right"><p>0.296</p></td>
 </tr>
 </tbody>
 </table>
