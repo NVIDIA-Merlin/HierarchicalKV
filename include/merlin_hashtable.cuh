@@ -728,16 +728,16 @@ class HashTable {
                     value_type* values,          // (n, DIM)
                     meta_type* metas = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    if (!reach_max_capacity_) {
+      lock.lock();
+    }
+
     if (offset >= table_->capacity) {
       CUDA_CHECK(cudaMemsetAsync(counter, 0, sizeof(size_type), stream));
       return;
     }
     n = std::min(table_->capacity - offset, n);
-
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
 
     const size_t meta_size = metas ? sizeof(meta_type) : 0;
     const size_t kvm_size = sizeof(key_type) + sizeof(vector_type) + meta_size;
@@ -824,17 +824,16 @@ class HashTable {
                        value_type* values,          // (n, DIM)
                        meta_type* metas = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
-    if (offset >= table_->capacity) {
-      CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
-      return;
-    }
-
-    n = std::min(table_->capacity - offset, n);
-
     std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
     if (!reach_max_capacity_) {
       lock.lock();
     }
+
+    if (offset >= table_->capacity) {
+      CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+      return;
+    }
+    n = std::min(table_->capacity - offset, n);
 
     const size_t meta_size = metas ? sizeof(meta_type) : 0;
     const size_t kvm_size = sizeof(key_type) + sizeof(vector_type) + meta_size;
