@@ -354,6 +354,60 @@ class HashTable {
     CudaCheckError();
   }
 
+  void insert_or_evict(size_type n,
+                       const key_type* keys,
+                       const value_type* values,
+                       const meta_type* metas,
+                       key_type* evicted_keys,
+                       value_type* evicted_values,
+                       meta_type* evicted_metas,
+                       bool* evicted,
+                       cudaStream_t stream = 0,
+                       bool ignore_evict_strategy = false) {
+    if (n == 0) {
+      return;
+    }
+    while (!reach_max_capacity_ &&
+           fast_load_factor(n) > options_.max_load_factor) {
+      reserve(capacity() * 2);
+    }
+
+    if (!ignore_evict_strategy) {
+      check_evict_strategy(metas);
+    }
+    if ((metas == nullptr) != (evicted_metas == nullptr)) {
+      throw std::invalid_argument("metas and evicted_metas must be both null or both existed.");
+    }
+
+    const size_t block_size = 128;
+    const size_t N = n * TILE_SIZE;
+    const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+    if (is_fast_mode()) {
+      std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+      if (!reach_max_capacity_) {
+        lock.lock();
+      }
+      if (metas == nullptr) {
+        upsert_and_evict_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+            <<<grid_size, block_size, 0, stream>>>(
+                table_, keys, reinterpret_cast<const vector_type*>(values),
+                evicted_keys, reinterpret_cast<vector_type*>(evicted_values),
+                evicted, table_->buckets, table_->buckets_size, table_->bucket_max_size,
+                table_->buckets_num, N);
+      } else {
+        upsert_and_evict_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+            <<<grid_size, block_size, 0, stream>>>(
+                table_, keys, reinterpret_cast<const vector_type*>(values), metas,
+                evicted_keys, reinterpret_cast<vector_type*>(evicted_values), evicted_metas,
+                evicted, table_->buckets, table_->buckets_size,
+                table_->bucket_max_size, table_->buckets_num, N);
+      }
+    } else {
+      throw std::invalid_argument("Hybrid mode is not supported when recording the evicted keys.");
+    }
+
+  }
+
   /**
    * Searches for each key in @p keys in the hash table.
    * If the key is found and the corresponding value in @p accum_or_assigns is
