@@ -620,8 +620,7 @@ __global__ void upsert_kernel_with_io(
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
-         tile_offset += TILE_SIZE) {
+    for (; tile_offset < bucket_max_size; tile_offset += TILE_SIZE) {
       key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
       current_key = *(bucket->keys + key_offset);
       found_or_empty_vote =
@@ -694,8 +693,8 @@ __global__ void upsert_kernel_with_io(
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void upsert_and_evict_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
-    const V* __restrict values, const M* __restrict metas,
-    K* evicted_keys, V* evicted_values, M* evicted_metas, bool *evicted,
+    const V* __restrict values, const M* __restrict metas, K* evicted_keys,
+    V* evicted_values, M* evicted_metas, bool* evicted,
     Bucket<K, V, M, DIM>* __restrict buckets, int* __restrict buckets_size,
     const size_t bucket_max_size, const size_t buckets_num, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -718,15 +717,17 @@ __global__ void upsert_and_evict_kernel_with_io(
 
     int src_lane = -1;
 
+    uint32_t tile_offset = 0;
+    size_t key_offset = 0;
+    K current_key = 0;
+
     Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
-         tile_offset += TILE_SIZE) {
-      size_t key_offset =
-          (start_idx + tile_offset + rank) & (bucket_max_size - 1);
-      K current_key = *(bucket->keys + key_offset);
+    for (; tile_offset < bucket_max_size; tile_offset += TILE_SIZE) {
+      key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
+      current_key = *(bucket->keys + key_offset);
       found_or_empty_vote =
           g.ballot(current_key == EMPTY_KEY || insert_key == current_key);
       reclaim_vote = g.ballot(current_key == RECLAIM_KEY);
@@ -789,7 +790,8 @@ __global__ void upsert_and_evict_kernel_with_io(
       }
       refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket, bucket_max_size);
       key_pos = g.shfl(key_pos, src_lane);
-      copy_vector<V, DIM, TILE_SIZE>(g, bucket->vectors + key_pos, evicted_values + key_idx);
+      copy_vector<V, DIM, TILE_SIZE>(g, bucket->vectors + key_pos,
+                                     evicted_values + key_idx);
       copy_vector<V, DIM, TILE_SIZE>(g, values + key_idx,
                                      bucket->vectors + key_pos);
       evicted[key_idx] = true;
@@ -835,8 +837,7 @@ __global__ void upsert_kernel_with_io(
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
-         tile_offset += TILE_SIZE) {
+    for (; tile_offset < bucket_max_size; tile_offset += TILE_SIZE) {
       key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
       current_key = *(bucket->keys + key_offset);
       found_or_empty_vote =
@@ -913,8 +914,8 @@ __global__ void upsert_kernel_with_io(
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
 __global__ void upsert_and_evict_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
-    const V* __restrict values, K* evicted_keys, V* evicted_values, bool *evicted,
-    Bucket<K, V, M, DIM>* __restrict buckets,
+    const V* __restrict values, K* evicted_keys, V* evicted_values,
+    bool* evicted, Bucket<K, V, M, DIM>* __restrict buckets,
     int* __restrict buckets_size, const size_t bucket_max_size,
     const size_t buckets_num, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -936,6 +937,8 @@ __global__ void upsert_and_evict_kernel_with_io(
     size_t start_idx = global_idx % bucket_max_size;
 
     int src_lane = -1;
+
+    uint32_t tile_offset = 0;
     size_t key_offset = 0;
     K current_key = 0;
 
@@ -943,11 +946,10 @@ __global__ void upsert_and_evict_kernel_with_io(
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+    for (tile_offset = 0; tile_offset < bucket_max_size;
          tile_offset += TILE_SIZE) {
-      size_t key_offset =
-          (start_idx + tile_offset + rank) & (bucket_max_size - 1);
-      K current_key = *(bucket->keys + key_offset);
+      key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
+      current_key = *(bucket->keys + key_offset);
       found_or_empty_vote =
           g.ballot(current_key == EMPTY_KEY || insert_key == current_key);
       reclaim_vote = g.ballot(current_key == RECLAIM_KEY);
@@ -1007,14 +1009,14 @@ __global__ void upsert_and_evict_kernel_with_io(
         key_pos = bucket->min_pos;
         evicted_keys[key_idx] = *(bucket->keys + key_pos);
         *(bucket->keys + key_pos) = insert_key;
-        evicted_metas[key_idx] = bucket->cur_meta;
         M cur_meta = bucket->cur_meta + 1;
         bucket->cur_meta = cur_meta;
         bucket->metas[key_pos].val = cur_meta;
       }
       refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket, bucket_max_size);
       key_pos = g.shfl(key_pos, src_lane);
-      copy_vector<V, DIM, TILE_SIZE>(g, bucket->vectors + key_pos, evicted_values + key_idx);
+      copy_vector<V, DIM, TILE_SIZE>(g, bucket->vectors + key_pos,
+                                     evicted_values + key_idx);
       copy_vector<V, DIM, TILE_SIZE>(g, values + key_idx,
                                      bucket->vectors + key_pos);
       evicted[key_idx] = true;
@@ -1065,7 +1067,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
     }
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+    for (tile_offset = 0; tile_offset < bucket_max_size;
          tile_offset += TILE_SIZE) {
       key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
       current_key = *(bucket->keys + key_offset);

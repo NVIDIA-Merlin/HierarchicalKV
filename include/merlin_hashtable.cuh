@@ -354,14 +354,10 @@ class HashTable {
     CudaCheckError();
   }
 
-  void insert_or_evict(size_type n,
-                       const key_type* keys,
-                       const value_type* values,
-                       const meta_type* metas,
-                       key_type* evicted_keys,
-                       value_type* evicted_values,
-                       meta_type* evicted_metas,
-                       bool* evicted,
+  void insert_or_evict(size_type n, const key_type* keys,
+                       const value_type* values, const meta_type* metas,
+                       key_type* evicted_keys, value_type* evicted_values,
+                       meta_type* evicted_metas, bool* evicted,
                        cudaStream_t stream = 0,
                        bool ignore_evict_strategy = false) {
     if (n == 0) {
@@ -376,7 +372,8 @@ class HashTable {
       check_evict_strategy(metas);
     }
     if ((metas == nullptr) != (evicted_metas == nullptr)) {
-      throw std::invalid_argument("metas and evicted_metas must be both null or both existed.");
+      throw std::invalid_argument(
+          "metas and evicted_metas must be both null or both existed.");
     }
 
     const size_t block_size = 128;
@@ -388,24 +385,27 @@ class HashTable {
         lock.lock();
       }
       if (metas == nullptr) {
-        upsert_and_evict_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+        upsert_and_evict_kernel_with_io<key_type, vector_type, meta_type, DIM,
+                                        TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 table_, keys, reinterpret_cast<const vector_type*>(values),
                 evicted_keys, reinterpret_cast<vector_type*>(evicted_values),
-                evicted, table_->buckets, table_->buckets_size, table_->bucket_max_size,
-                table_->buckets_num, N);
+                evicted, table_->buckets, table_->buckets_size,
+                table_->bucket_max_size, table_->buckets_num, N);
       } else {
-        upsert_and_evict_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+        upsert_and_evict_kernel_with_io<key_type, vector_type, meta_type, DIM,
+                                        TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<const vector_type*>(values), metas,
-                evicted_keys, reinterpret_cast<vector_type*>(evicted_values), evicted_metas,
+                table_, keys, reinterpret_cast<const vector_type*>(values),
+                metas, evicted_keys,
+                reinterpret_cast<vector_type*>(evicted_values), evicted_metas,
                 evicted, table_->buckets, table_->buckets_size,
                 table_->bucket_max_size, table_->buckets_num, N);
       }
     } else {
-      throw std::invalid_argument("Hybrid mode is not supported when recording the evicted keys.");
+      throw std::invalid_argument(
+          "Hybrid mode is not supported when recording the evicted keys.");
     }
-
   }
 
   /**
