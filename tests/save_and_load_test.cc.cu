@@ -18,7 +18,7 @@
 #include <stdio.h>
 #include "merlin/types.cuh"
 #include "merlin_hashtable.cuh"
-#include "merlin_localfile.h"
+#include "merlin_localfile.hpp"
 #include "test_util.cuh"
 
 constexpr uint64_t DIM = 64;

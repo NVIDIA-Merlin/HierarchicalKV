@@ -272,7 +272,7 @@ void test_basic() {
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas))
+  CUDA_CHECK(cudaFree(d_metas));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
@@ -396,7 +396,7 @@ void test_erase_if_pred() {
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas))
+  CUDA_CHECK(cudaFree(d_metas));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -526,7 +526,7 @@ void test_rehash() {
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas))
+  CUDA_CHECK(cudaFree(d_metas));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -660,7 +660,7 @@ void test_rehash_on_big_batch() {
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas))
+  CUDA_CHECK(cudaFree(d_metas));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -890,7 +890,7 @@ void test_export_batch_if() {
   CUDA_CHECK(cudaFreeHost(h_metas));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas))
+  CUDA_CHECK(cudaFree(d_metas));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaFree(d_dump_counter));
@@ -1029,7 +1029,7 @@ void test_basic_for_cpu_io() {
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas))
+  CUDA_CHECK(cudaFree(d_metas));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
