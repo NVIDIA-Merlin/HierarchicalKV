@@ -23,6 +23,7 @@
 #include <string>
 #include "cuda_fp16.h"
 #include "cuda_runtime_api.h"
+#include "debug.hpp"
 
 using namespace cooperative_groups;
 namespace cg = cooperative_groups;
@@ -81,22 +82,6 @@ __inline__ __device__ uint64_t atomicAdd(uint64_t* address,
 namespace nv {
 namespace merlin {
 
-class CudaException : public std::runtime_error {
- public:
-  CudaException(const std::string& what) : runtime_error(what) {}
-};
-
-inline void cuda_check_(cudaError_t val, const char* file, int line) {
-  if (val != cudaSuccess) {
-    throw CudaException(std::string(file) + ":" + std::to_string(line) +
-                        ": CUDA error " + std::to_string(val) + ": " +
-                        cudaGetErrorString(val));
-  }
-}
-
-#define CUDA_CHECK(val) \
-  { nv::merlin::cuda_check_((val), __FILE__, __LINE__); }
-
 inline void __cudaCheckError(const char* file, const int line) {
 #ifdef CUDA_ERROR_CHECK
   cudaError err = cudaGetLastError();
@@ -119,17 +104,6 @@ inline void __cudaCheckError(const char* file, const int line) {
   return;
 }
 #define CudaCheckError() nv::merlin::__cudaCheckError(__FILE__, __LINE__)
-
-inline void merlin_check_(bool cond, const std::string& msg, const char* file,
-                          int line) {
-  if (!cond) {
-    throw CudaException(std::string(file) + ":" + std::to_string(line) +
-                        ": HierarchicalKV error " + msg);
-  }
-}
-
-#define MERLIN_CHECK(cond, msg) \
-  { nv::merlin::merlin_check_((cond), (msg), __FILE__, __LINE__); }
 
 static inline size_t SAFE_GET_GRID_SIZE(size_t N, int block_size) {
   return ((N) > std::numeric_limits<int>::max())

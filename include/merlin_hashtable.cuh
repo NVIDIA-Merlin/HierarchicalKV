@@ -839,7 +839,7 @@ class HashTable {
     const size_t kvm_size = sizeof(key_type) + sizeof(vector_type) + meta_size;
     const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
     MERLIN_CHECK(
-        (block_size > 0),
+        block_size > 0,
         "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
 
     const size_t shared_size = kvm_size * block_size;
@@ -1147,15 +1147,15 @@ class HashTable {
 
   inline void check_evict_strategy(const meta_type* metas) {
     if (options_.evict_strategy == EvictStrategy::kLru) {
-      MERLIN_CHECK((metas == nullptr),
+      MERLIN_CHECK(metas == nullptr,
                    "the metas should not be specified when running on "
                    "LRU mode.");
     }
 
     if (options_.evict_strategy == EvictStrategy::kCustomized) {
-      MERLIN_CHECK((metas != nullptr),
+      MERLIN_CHECK(metas != nullptr,
                    "the metas should be specified when running on "
-                   "customized mode.")
+                   "customized mode.");
     }
   }
 
