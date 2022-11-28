@@ -25,6 +25,8 @@ Includes
 --------
 
 
+- ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/debug.hpp``
+
 - ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/types.cuh``
 
 - ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/utils.cuh``
@@ -47,6 +49,8 @@ Includes
 
 - ``exception``
 
+- ``functional``
+
 - ``iostream``
 
 - ``memory``
@@ -65,9 +69,13 @@ Includes
 
 - ``shared_mutex``
 
+- ``sstream``
+
 - ``stdarg.h``
 
 - ``stddef.h``
+
+- ``stdexcept``
 
 - ``string``
 
