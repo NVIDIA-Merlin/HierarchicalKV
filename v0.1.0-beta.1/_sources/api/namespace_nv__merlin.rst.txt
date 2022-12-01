@@ -23,8 +23,6 @@ Classes
 
 - :ref:`exhale_class_classnv_1_1merlin_1_1HashTable`
 
-- :ref:`exhale_class_classnv_1_1merlin_1_1LocalKVFile`
-
 
 Enums
 -----
