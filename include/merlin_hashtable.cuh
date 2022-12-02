@@ -20,6 +20,7 @@
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <shared_mutex>
 #include <type_traits>
@@ -879,16 +880,22 @@ class HashTable {
       lock.lock();
     }
 
-    const size_t N = table_->buckets_num;
+    size_type h_size = 0;
+
+    const size_type N = table_->buckets_num;
+    const size_type step = static_cast<size_type>(
+        std::numeric_limits<int>::max() / options_.max_bucket_size);
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-    // TODO: Summation in `int` can lead to overflow here.
-    int size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
-                              thrust::plus<int>());
+    for (size_type start_i = 0; start_i < N; start_i += step) {
+      size_type end_i = std::min(start_i + step, N);
+      h_size += thrust::reduce(thrust_par.on(stream), size_ptr + start_i,
+                               size_ptr + end_i, 0, thrust::plus<int>());
+    }
 
     CudaCheckError();
-    return size;
+    return h_size;
   }
 
   /**
@@ -1135,7 +1142,6 @@ class HashTable {
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-    // TODO: Summation in `int` can lead to overflow here.
     int size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
                               thrust::plus<int>());
 
