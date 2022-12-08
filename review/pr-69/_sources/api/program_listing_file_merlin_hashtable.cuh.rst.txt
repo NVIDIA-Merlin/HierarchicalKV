@@ -32,6 +32,7 @@ Program Listing for File merlin_hashtable.cuh
    #include <thrust/execution_policy.h>
    #include <thrust/sort.h>
    #include <cstdint>
+   #include <limits>
    #include <mutex>
    #include <shared_mutex>
    #include <type_traits>
@@ -213,11 +214,7 @@ Program Listing for File merlin_hashtable.cuh
                    table_->buckets_size, table_->bucket_max_size,
                    table_->buckets_num, N);
          }
-   
-         CudaCheckError();
        } else {
-         size_t max_read_bs;
-   
          auto device_ws = device_memory_pool_->get_workspace<2>(stream);
          auto d_dst = device_ws.get<vector_type**>(0);
          auto d_src_offset = device_ws.get<int*>(1);
@@ -227,24 +224,26 @@ Program Listing for File merlin_hashtable.cuh
          vector_type* h_values;
          int* h_src_offset;
    
+         size_t max_bs;
          if (options_.io_by_cpu) {
-           max_read_bs = device_memory_pool_->max_batch_size(
-               std::max(sizeof(vector_type), sizeof(void*)));
-   
            host_ws = std::move(host_memory_pool_->get_workspace<3>(stream));
            h_dst = host_ws.get<vector_type**>(0);
            h_values = host_ws.get<vector_type*>(1);
            h_src_offset = host_ws.get<int*>(2);
+   
+           max_bs = device_memory_pool_->max_batch_size(
+               std::max(sizeof(vector_type), sizeof(void*)));
          } else {
-           max_read_bs = device_memory_pool_->max_batch_size<void*>();
+           max_bs = device_memory_pool_->max_batch_size<void*>();
          }
    
-         for (size_t i = 0; i < n; i += max_read_bs) {
-           const size_t bs = std::min(n - i, max_read_bs);
+         for (size_t i = 0; i < n; i += max_bs) {
+           const size_t bs = std::min(n - i, max_bs);
    
            CUDA_CHECK(
                cudaMemsetAsync(d_dst, 0, bs * sizeof(vector_type*), stream));
            CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, bs * sizeof(int), stream));
+   
            {
              const size_t block_size = options_.block_size;
              const size_t N = bs * TILE_SIZE;
@@ -297,6 +296,8 @@ Program Listing for File merlin_hashtable.cuh
            }
          }
        }
+   
+       CudaCheckError();
      }
    
      void accum_or_assign(const size_type n,
@@ -322,10 +323,9 @@ Program Listing for File merlin_hashtable.cuh
        auto value_or_delta_vectors =
            reinterpret_cast<const vector_type*>(value_or_deltas);
    
-       // Unless we reached capacity, reallocation could happen.
-       std::shared_lock<std::shared_timed_mutex> lock(mutex_);
-       if (reach_max_capacity_) {
-         lock.unlock();
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+       if (!reach_max_capacity_) {
+         lock.lock();
        }
    
        const size_t max_bs = device_memory_pool_->max_batch_size<void*>();
@@ -575,7 +575,7 @@ Program Listing for File merlin_hashtable.cuh
        const size_t kvm_size = sizeof(key_type) + sizeof(vector_type) + meta_size;
        const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
        MERLIN_CHECK(
-           block_size > 0,
+           (block_size > 0),
            "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
    
        const size_t shared_size = kvm_size * block_size;
@@ -599,10 +599,8 @@ Program Listing for File merlin_hashtable.cuh
    
        CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
    
-       // Perform export.
        export_batch(n, offset, d_counter, keys, values, metas, stream);
    
-       // Move counter to CPU.
        size_type counter = 0;
        CUDA_CHECK(cudaMemcpyAsync(&counter, d_counter, sizeof(size_type),
                                   cudaMemcpyDeviceToHost, stream));
@@ -660,16 +658,22 @@ Program Listing for File merlin_hashtable.cuh
          lock.lock();
        }
    
-       const size_t N = table_->buckets_num;
+       size_type h_size = 0;
+   
+       const size_type N = table_->buckets_num;
+       const size_type step = static_cast<size_type>(
+           std::numeric_limits<int>::max() / options_.max_bucket_size);
    
        thrust::device_ptr<int> size_ptr(table_->buckets_size);
    
-       // TODO: Summation in `int` can lead to overflow here.
-       int size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
-                                 thrust::plus<int>());
+       for (size_type start_i = 0; start_i < N; start_i += step) {
+         size_type end_i = std::min(start_i + step, N);
+         h_size += thrust::reduce(thrust_par.on(stream), size_ptr + start_i,
+                                  size_ptr + end_i, 0, thrust::plus<int>());
+       }
    
        CudaCheckError();
-       return size;
+       return h_size;
      }
    
      size_type capacity() const { return table_->capacity; }
@@ -728,11 +732,9 @@ Program Listing for File merlin_hashtable.cuh
        const size_t shared_size = kvm_size * block_size;
        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-       // Unless we reached capacity, reallocation could happen.
-       std::shared_lock<std::shared_timed_mutex> lock(mutex_);
-       if (reach_max_capacity_) {
-         lock.unlock();
-       }
+       // Request exclusive access.
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+   
        const size_type total_size = capacity();
    
        // Grab temporary device workspace.
@@ -800,10 +802,8 @@ Program Listing for File merlin_hashtable.cuh
          return 0;
        }
    
-       // Request exclusive access and ensure pending CUDA calls have been
-       // processed.
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
-       CUDA_CHECK(cudaDeviceSynchronize());
+       // TODO: Doesn't work, because insert_or_assign may request a scoped_lock on
+       // `mutex_`. std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        // Fetch temporary workspace on device.
        auto device_ws = device_memory_pool_->get_workspace<3>(stream);
@@ -821,12 +821,12 @@ Program Listing for File merlin_hashtable.cuh
                                     cudaMemcpyHostToDevice, stream));
          CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas, sizeof(meta_type) * count,
                                     cudaMemcpyHostToDevice, stream));
-         CUDA_CHECK(cudaStreamSynchronize(stream));
    
          insert_or_assign(count, d_keys, d_values, d_metas, stream);
          total_count += count;
    
          // Read next batch.
+         CUDA_CHECK(cudaStreamSynchronize(stream));
          count = file->read(max_count, h_keys, h_values, h_metas);
        } while (count > 0);
    
@@ -846,7 +846,6 @@ Program Listing for File merlin_hashtable.cuh
    
        thrust::device_ptr<int> size_ptr(table_->buckets_size);
    
-       // TODO: Summation in `int` can lead to overflow here.
        int size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
                                  thrust::plus<int>());
    
