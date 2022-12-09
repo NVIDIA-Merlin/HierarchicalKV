@@ -25,43 +25,15 @@ Includes
 --------
 
 
-- ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/debug.hpp``
-
-- ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/types.cuh``
-
-- ``/home/runner/work/HierarchicalKV/HierarchicalKV/include/merlin/utils.cuh``
-
-- ``algorithm``
-
-- ``array``
-
-- ``cooperative_groups.h``
-
-- ``cooperative_groups/reduce.h``
-
 - ``cstdint``
 
-- ``cuda/std/semaphore``
-
-- ``cuda_fp16.h``
-
-- ``cuda_runtime_api.h``
-
-- ``exception``
-
-- ``functional``
-
-- ``iostream``
-
 - ``limits``
-
-- ``memory``
 
 - ``merlin/core_kernels.cuh``
 
 - ``merlin/flexible_buffer.cuh``
 
-- ``merlin/memory_pool.cuh``
+- ``merlin/memory_pool.hpp``
 
 - ``merlin/types.cuh``
 
@@ -71,18 +43,6 @@ Includes
 
 - ``shared_mutex``
 
-- ``sstream``
-
-- ``stdarg.h``
-
-- ``stddef.h``
-
-- ``stdexcept``
-
-- ``string``
-
-- ``thread``
-
 - ``thrust/device_vector.h``
 
 - ``thrust/execution_policy.h``
@@ -90,8 +50,6 @@ Includes
 - ``thrust/sort.h``
 
 - ``type_traits``
-
-- ``vector``
 
 
 
