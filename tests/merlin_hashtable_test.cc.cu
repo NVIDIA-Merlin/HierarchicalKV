@@ -282,6 +282,111 @@ void test_basic() {
   CudaCheckError();
 }
 
+void test_basic_when_full() {
+  constexpr uint64_t INIT_CAPACITY = 1 * 1024 * 1024UL;
+  constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
+  constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
+  constexpr uint64_t TEST_TIMES = 1;
+
+  K* h_keys;
+  M* h_metas;
+  Vector* h_vectors;
+  bool* h_found;
+
+  TableOptions options;
+
+  options.init_capacity = INIT_CAPACITY;
+  options.max_capacity = MAX_CAPACITY;
+  options.max_hbm_for_vectors = nv::merlin::GB(16);
+  options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+
+  CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(Vector)));
+  CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
+
+  CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(Vector)));
+
+  create_random_keys<K, M, float, DIM>(h_keys, h_metas, nullptr, KEY_NUM);
+
+  K* d_keys;
+  M* d_metas = nullptr;
+  Vector* d_vectors;
+  Vector* d_def_val;
+  Vector** d_vectors_ptr;
+  bool* d_found;
+  size_t dump_counter = 0;
+
+  CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(Vector)));
+  CUDA_CHECK(cudaMalloc(&d_def_val, KEY_NUM * sizeof(Vector)));
+  CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(Vector*)));
+  CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
+
+  CUDA_CHECK(
+      cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+                        cudaMemcpyHostToDevice));
+
+  CUDA_CHECK(cudaMemset(d_vectors, 1, KEY_NUM * sizeof(Vector)));
+  CUDA_CHECK(cudaMemset(d_def_val, 2, KEY_NUM * sizeof(Vector)));
+  CUDA_CHECK(cudaMemset(d_vectors_ptr, 0, KEY_NUM * sizeof(Vector*)));
+  CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  uint64_t total_size = 0;
+  for (int i = 0; i < TEST_TIMES; i++) {
+    std::unique_ptr<Table> table = std::make_unique<Table>();
+    table->init(options);
+    total_size = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_TRUE(total_size == 0);
+
+    table->insert_or_assign(
+        KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_metas, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    uint64_t total_size_after_insert = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    size_t erase_num = table->erase(KEY_NUM, d_keys, stream);
+    uint64_t total_size_after_erase = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_TRUE(total_size_after_erase == 0);
+
+    table->insert_or_assign(
+        KEY_NUM, d_keys, reinterpret_cast<float*>(d_vectors), d_metas, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    uint64_t total_size_after_reinsert = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    std::cout << total_size_after_insert << " " << total_size_after_reinsert
+              << std::endl;
+    ASSERT_TRUE(total_size_after_insert == total_size_after_reinsert);
+  }
+  CUDA_CHECK(cudaStreamDestroy(stream));
+
+  CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors, KEY_NUM * sizeof(Vector),
+                        cudaMemcpyDeviceToHost));
+
+  CUDA_CHECK(cudaFreeHost(h_keys));
+  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_found));
+
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_vectors));
+  CUDA_CHECK(cudaFree(d_def_val));
+  CUDA_CHECK(cudaFree(d_vectors_ptr));
+  CUDA_CHECK(cudaFree(d_found));
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  CudaCheckError();
+}
+
 void test_erase_if_pred() {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
@@ -1040,6 +1145,7 @@ void test_basic_for_cpu_io() {
 }
 
 TEST(MerlinHashTableTest, test_basic) { test_basic(); }
+TEST(MerlinHashTableTest, test_basic_when_full) { test_basic_when_full(); }
 TEST(MerlinHashTableTest, test_erase_if_pred) { test_erase_if_pred(); }
 TEST(MerlinHashTableTest, test_rehash) { test_rehash(); }
 TEST(MerlinHashTableTest, test_rehash_on_big_batch) {
