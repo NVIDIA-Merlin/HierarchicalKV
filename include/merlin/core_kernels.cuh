@@ -620,7 +620,7 @@ __global__ void upsert_kernel_with_io(
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+    for (tile_offset = 0; tile_offset < bucket_max_size;
          tile_offset += TILE_SIZE) {
       key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
       current_key = *(bucket->keys + key_offset);
@@ -728,7 +728,7 @@ __global__ void upsert_kernel_with_io(
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+    for (tile_offset = 0; tile_offset < bucket_max_size;
          tile_offset += TILE_SIZE) {
       key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
       current_key = *(bucket->keys + key_offset);
@@ -845,7 +845,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
     }
 
 #pragma unroll
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+    for (tile_offset = 0; tile_offset < bucket_max_size;
          tile_offset += TILE_SIZE) {
       key_offset = (start_idx + tile_offset + rank) & (bucket_max_size - 1);
       current_key = *(bucket->keys + key_offset);
