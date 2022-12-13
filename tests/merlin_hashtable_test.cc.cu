@@ -243,10 +243,10 @@ void test_basic() {
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_TRUE(total_size == KEY_NUM);
 
-    size_t erase_num = table->erase(KEY_NUM >> 1, d_keys, stream);
-    total_size = table->size(stream);
+    table->erase(KEY_NUM >> 1, d_keys, stream);
+    size_t total_size_after_erase = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    ASSERT_TRUE(erase_num == total_size);
+    ASSERT_TRUE(total_size_after_erase == total_size >> 1);
 
     table->clear(stream);
     total_size = table->size(stream);
@@ -351,8 +351,8 @@ void test_basic_when_full() {
     uint64_t total_size_after_insert = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
-    size_t erase_num = table->erase(KEY_NUM, d_keys, stream);
-    uint64_t total_size_after_erase = table->size(stream);
+    table->erase(KEY_NUM, d_keys, stream);
+    size_t total_size_after_erase = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_TRUE(total_size_after_erase == 0);
 
@@ -1102,10 +1102,10 @@ void test_basic_for_cpu_io() {
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_TRUE(total_size == KEY_NUM);
 
-    size_t erase_num = table->erase(KEY_NUM >> 1, d_keys, stream);
-    total_size = table->size(stream);
+    table->erase(KEY_NUM >> 1, d_keys, stream);
+    size_t total_size_after_erase = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    ASSERT_TRUE(erase_num == total_size);
+    ASSERT_TRUE(total_size_after_erase == total_size >> 1);
 
     table->clear(stream);
     total_size = table->size(stream);

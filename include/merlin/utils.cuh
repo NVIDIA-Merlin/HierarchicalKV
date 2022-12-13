@@ -316,17 +316,19 @@ void realloc_managed(P* ptr, size_t old_size, size_t new_size) {
 
 template <typename mutex, uint32_t TILE_SIZE, bool THREAD_SAFE = true>
 __forceinline__ __device__ void lock(
-    const cg::thread_block_tile<TILE_SIZE>& tile, mutex& set_mutex) {
+    const cg::thread_block_tile<TILE_SIZE>& tile, mutex& set_mutex,
+    unsigned long long lane = 0) {
   if (THREAD_SAFE) {
-    set_mutex.acquire(tile, 0);
+    set_mutex.acquire(tile, lane);
   }
 }
 
 template <typename mutex, uint32_t TILE_SIZE, bool THREAD_SAFE = true>
 __forceinline__ __device__ void unlock(
-    const cg::thread_block_tile<TILE_SIZE>& tile, mutex& set_mutex) {
+    const cg::thread_block_tile<TILE_SIZE>& tile, mutex& set_mutex,
+    unsigned long long lane = 0) {
   if (THREAD_SAFE) {
-    set_mutex.release(tile, 0);
+    set_mutex.release(tile, lane);
   }
 }
 

@@ -222,7 +222,7 @@ void destroy_table(Table<K, V, M, DIM>** table) {
   CudaCheckError();
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void defragmentation_for_rehash(
     Bucket<K, V, M, DIM>* __restrict bucket, uint32_t remove_pos,
     const size_t bucket_max_size, const size_t buckets_num) {
@@ -264,7 +264,7 @@ __forceinline__ __device__ void defragmentation_for_rehash(
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void refresh_bucket_meta(
     cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M, DIM>* bucket,
     const size_t bucket_max_size) {
@@ -287,7 +287,7 @@ __forceinline__ __device__ void refresh_bucket_meta(
   }
 }
 
-template <class V, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class V, size_t DIM, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void copy_vector(cg::thread_block_tile<TILE_SIZE> g,
                                             const V* src, V* dst) {
   for (auto i = g.thread_rank(); i < DIM; i += g.size()) {
@@ -333,7 +333,7 @@ void write_by_cpu(V** __restrict dst, const V* __restrict src,
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void move_key_to_new_bucket(
     cg::thread_block_tile<TILE_SIZE> g, int rank, const K& key, const M& meta,
     const V* __restrict vector, Bucket<K, V, M, DIM>* __restrict new_bucket,
@@ -373,7 +373,7 @@ __forceinline__ __device__ void move_key_to_new_bucket(
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void rehash_kernel_for_fast_mode(
     const Table<K, V, M, DIM>* __restrict table,
     Bucket<K, V, M, DIM>* __restrict buckets, int* __restrict buckets_size,
@@ -583,10 +583,48 @@ __global__ void read_kernel(V** __restrict src, V* __restrict dst,
   }
 }
 
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+__forceinline__ __device__ unsigned find_in_bucket(
+    cg::thread_block_tile<TILE_SIZE> g,
+    const Bucket<K, V, M, DIM>* __restrict bucket, const K find_key,
+    uint32_t& tile_offset, const uint32_t start_idx,
+    const size_t bucket_max_size) {
+  uint32_t key_offset = 0;
+  K current_key = 0;
+
+#pragma unroll
+  for (tile_offset = 0; tile_offset < bucket_max_size;
+       tile_offset += TILE_SIZE) {
+    key_offset =
+        (start_idx + tile_offset + g.thread_rank()) & (bucket_max_size - 1);
+    current_key = *(bucket->keys + key_offset);
+    auto const found_vote = g.ballot(find_key == current_key);
+    if (found_vote) {
+      return found_vote;
+    }
+
+    if (g.any(current_key == EMPTY_KEY)) {
+      return 0;
+    }
+  }
+  return 0;
+}
+
+template <class K, class V, class M, size_t DIM>
+__forceinline__ __device__ Bucket<K, V, M, DIM>* get_key_position(
+    Bucket<K, V, M, DIM>* __restrict buckets, const K key, size_t* bkt_idx,
+    size_t* start_idx, const size_t buckets_num, const size_t bucket_max_size) {
+  uint32_t hashed_key = Murmur3HashDevice(key);
+  size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+  *bkt_idx = global_idx / bucket_max_size;
+  *start_idx = global_idx % bucket_max_size;
+  return buckets + *bkt_idx;
+}
+
 /* Upsert with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void upsert_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
     const V* __restrict values, const M* __restrict metas,
@@ -694,7 +732,7 @@ __global__ void upsert_kernel_with_io(
 /* Upsert with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void upsert_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
     const V* __restrict values, Bucket<K, V, M, DIM>* __restrict buckets,
@@ -805,7 +843,7 @@ __global__ void upsert_kernel_with_io(
 
 /* Upsert with the end-user specified meta.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,
                               const M* __restrict metas,
@@ -917,7 +955,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
    the `bucket->cur_meta` which always increment by 1 when insert happens,
    we assume the cur_meta with `size_t` type will never overflow.
 */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,
                               Bucket<K, V, M, DIM>* __restrict buckets,
@@ -1032,7 +1070,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
    the `bucket->cur_meta` which always increment by 1 when insert happens,
    we assume the cur_meta with `size_t` type will never overflow.
 */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void accum_kernel(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
     V** __restrict vectors, const bool* __restrict existed,
@@ -1118,7 +1156,7 @@ __global__ void accum_kernel(
 
 /* Accum kernel with customized metas.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void accum_kernel(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
     V** __restrict vectors, const M* __restrict metas,
@@ -1200,48 +1238,10 @@ __global__ void accum_kernel(
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
-__forceinline__ __device__ int find_in_bucket(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M, DIM>* bucket,
-    const K find_key, uint32_t tile_offset, const uint32_t start_idx,
-    const size_t bucket_max_size) {
-  uint32_t key_offset = 0;
-  K current_key = 0;
-
-#pragma unroll
-  for (tile_offset = 0; tile_offset < bucket_max_size;
-       tile_offset += TILE_SIZE) {
-    key_offset =
-        (start_idx + tile_offset + g.thread_rank()) & (bucket_max_size - 1);
-    current_key = *(bucket->keys + key_offset);
-    auto const found_vote = g.ballot(find_key == current_key);
-    if (found_vote) {
-      int src_lane = __ffs(found_vote) - 1;
-      return (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-    }
-
-    if (g.any(current_key == EMPTY_KEY)) {
-      return -1;
-    }
-  }
-  return -1;
-}
-
-template <class K>
-__forceinline__ __device__ void get_key_position(K key, size_t* bkt_idx,
-                                                 size_t* start_idx,
-                                                 const size_t buckets_num,
-                                                 const size_t bucket_max_size) {
-  uint32_t hashed_key = Murmur3HashDevice(key);
-  size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
-  *bkt_idx = global_idx / bucket_max_size;
-  *start_idx = global_idx % bucket_max_size;
-}
-
 /* lookup with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void lookup_kernel_with_io(
     const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
     V* __restrict values, M* __restrict metas, bool* __restrict found,
@@ -1260,15 +1260,16 @@ __global__ void lookup_kernel_with_io(
     size_t start_idx = 0;
     uint32_t tile_offset = 0;
 
-    get_key_position<K>(find_key, &bkt_idx, &start_idx, buckets_num,
-                        bucket_max_size);
+    Bucket<K, V, M, DIM>* bucket = get_key_position<K>(
+        buckets, find_key, &bkt_idx, &start_idx, buckets_num, bucket_max_size);
 
-    Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
-
-    const int key_pos = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
+    const unsigned found_vote = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
         g, bucket, find_key, tile_offset, start_idx, bucket_max_size);
 
-    if (key_pos >= 0) {
+    if (found_vote) {
+      const int src_lane = __ffs(found_vote) - 1;
+      const int key_pos =
+          (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
       lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
       copy_vector<V, DIM, TILE_SIZE>(g, bucket->vectors + key_pos,
                                      values + key_idx);
@@ -1282,7 +1283,6 @@ __global__ void lookup_kernel_with_io(
           *(found + key_idx) = key_pos >= 0;
         }
       }
-
       break;
     }
   }
@@ -1290,7 +1290,7 @@ __global__ void lookup_kernel_with_io(
 
 /* lookup kernel.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void lookup_kernel(const Table<K, V, M, DIM>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,
                               M* __restrict metas, bool* __restrict found,
@@ -1376,10 +1376,9 @@ __global__ void clear_kernel(Table<K, V, M, DIM>* __restrict table, size_t N) {
 }
 
 /* Remove specified keys. */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
 __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
                               const K* __restrict keys,
-                              size_t* __restrict count,
                               Bucket<K, V, M, DIM>* __restrict buckets,
                               int* __restrict buckets_size,
                               const size_t bucket_max_size,
@@ -1390,45 +1389,29 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
   for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
        t += blockDim.x * gridDim.x) {
     int key_idx = t / TILE_SIZE;
-    int key_pos = -1;
-    bool local_found = false;
-
     K find_key = keys[key_idx];
-    uint32_t hashed_key = Murmur3HashDevice(find_key);
-    size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
-    size_t bkt_idx = global_idx / bucket_max_size;
-    size_t start_idx = global_idx % bucket_max_size;
 
-    int src_lane = -1;
-
-    Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
-    lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
-
+    size_t bkt_idx = 0;
+    size_t start_idx = 0;
     uint32_t tile_offset = 0;
-    uint32_t key_offset = 0;
-    K current_key = 0;
-#pragma unroll
-    for (tile_offset = 0; tile_offset < bucket_max_size;
-         tile_offset += TILE_SIZE) {
-      key_offset = (start_idx + tile_offset + rank) % bucket_max_size;
-      current_key = *(bucket->keys + key_offset);
-      auto const found_or_empty_vote =
-          g.ballot(find_key == current_key || current_key == EMPTY_KEY);
-      if (found_or_empty_vote) {
-        src_lane = __ffs(found_or_empty_vote) - 1;
-        key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-        if (src_lane == rank) {
-          local_found = (current_key == find_key);
-          if (local_found) {
-            atomicAdd(count, 1);
-            *(bucket->keys + key_pos) = RECLAIM_KEY;
-            buckets_size[bkt_idx]--;
-          }
-        }
-        break;
+
+    Bucket<K, V, M, DIM>* bucket = get_key_position<K>(
+        buckets, find_key, &bkt_idx, &start_idx, buckets_num, bucket_max_size);
+
+    const unsigned found_vote = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
+        g, bucket, find_key, tile_offset, start_idx, bucket_max_size);
+
+    if (found_vote) {
+      const int src_lane = __ffs(found_vote) - 1;
+
+      if (g.thread_rank() == src_lane) {
+        const int key_pos =
+            (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
+        atomicExch(bucket->keys + key_pos, RECLAIM_KEY);
+        atomicSub(&buckets_size[bkt_idx], 1);
       }
+      break;
     }
-    unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
   }
 }
 
@@ -1450,7 +1433,6 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
     uint32_t key_pos = 0;
 
     Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
-    lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
     K current_key = 0;
     uint32_t key_offset = 0;
@@ -1461,8 +1443,8 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
                  threshold)) {
           atomicAdd(count, 1);
           key_pos = key_offset;
-          *(bucket->keys + key_pos) = RECLAIM_KEY;
-          buckets_size[bkt_idx]--;
+          atomicExch(bucket->keys + key_pos, RECLAIM_KEY);
+          atomicSub(&buckets_size[bkt_idx], 1);
         } else {
           key_offset++;
         }
@@ -1470,7 +1452,6 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
         key_offset++;
       }
     }
-    unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
   }
 }
 
