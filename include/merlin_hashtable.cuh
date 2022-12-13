@@ -576,22 +576,14 @@ class HashTable {
    * @param keys The keys to remove on GPU-accessible memory.
    * @param stream The CUDA stream that is used to execute the operation.
    *
-   * @return The number of elements removed.
    */
-  size_type erase(const size_type n, const key_type* keys,
-                  cudaStream_t stream = 0) {
+  void erase(const size_type n, const key_type* keys, cudaStream_t stream = 0) {
     if (n == 0) {
-      return 0;
+      return;
     }
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
-
-    size_type* d_count;
-    CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_type), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    lock.lock();
 
     {
       const size_t block_size = options_.block_size;
@@ -600,18 +592,14 @@ class HashTable {
 
       remove_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, keys, d_count, table_->buckets, table_->buckets_size,
+              table_, keys, table_->buckets, table_->buckets_size,
               table_->bucket_max_size, table_->buckets_num, N);
     }
 
-    size_type count = 0;
-    CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
-                               cudaMemcpyDeviceToHost, stream));
-    CUDA_CHECK(cudaFreeAsync(d_count, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     CudaCheckError();
-    return count;
+    return;
   }
 
   /**
@@ -644,10 +632,8 @@ class HashTable {
    */
   size_type erase_if(const Pred& pred, const key_type& pattern,
                      const meta_type& threshold, cudaStream_t stream = 0) {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    lock.lock();
 
     size_type* d_count;
     CUDA_CHECK(cudaMallocAsync(&d_count, sizeof(size_type), stream));
