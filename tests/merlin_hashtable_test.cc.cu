@@ -362,8 +362,6 @@ void test_basic_when_full() {
 
     uint64_t total_size_after_reinsert = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    std::cout << total_size_after_insert << " " << total_size_after_reinsert
-              << std::endl;
     ASSERT_TRUE(total_size_after_insert == total_size_after_reinsert);
   }
   CUDA_CHECK(cudaStreamDestroy(stream));

@@ -1200,6 +1200,44 @@ __global__ void accum_kernel(
   }
 }
 
+template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 8>
+__forceinline__ __device__ int find_in_bucket(
+    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M, DIM>* bucket,
+    const K find_key, uint32_t tile_offset, const uint32_t start_idx,
+    const size_t bucket_max_size) {
+  uint32_t key_offset = 0;
+  K current_key = 0;
+
+#pragma unroll
+  for (tile_offset = 0; tile_offset < bucket_max_size;
+       tile_offset += TILE_SIZE) {
+    key_offset =
+        (start_idx + tile_offset + g.thread_rank()) & (bucket_max_size - 1);
+    current_key = *(bucket->keys + key_offset);
+    auto const found_vote = g.ballot(find_key == current_key);
+    if (found_vote) {
+      int src_lane = __ffs(found_vote) - 1;
+      return (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
+    }
+
+    if (g.any(current_key == EMPTY_KEY)) {
+      return -1;
+    }
+  }
+  return -1;
+}
+
+template <class K>
+__forceinline__ __device__ void get_key_position(K key, size_t* bkt_idx,
+                                                 size_t* start_idx,
+                                                 const size_t buckets_num,
+                                                 const size_t bucket_max_size) {
+  uint32_t hashed_key = Murmur3HashDevice(key);
+  size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+  *bkt_idx = global_idx / bucket_max_size;
+  *start_idx = global_idx % bucket_max_size;
+}
+
 /* lookup with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
@@ -1215,55 +1253,38 @@ __global__ void lookup_kernel_with_io(
   for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
        t += blockDim.x * gridDim.x) {
     int key_idx = t / TILE_SIZE;
-    int key_pos = -1;
-    bool local_found = false;
 
-    K find_key = keys[key_idx];
-    uint32_t hashed_key = Murmur3HashDevice(find_key);
-    size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
-    size_t bkt_idx = global_idx / bucket_max_size;
-    size_t start_idx = global_idx % bucket_max_size;
+    const K find_key = keys[key_idx];
 
-    int src_lane = -1;
+    size_t bkt_idx = 0;
+    size_t start_idx = 0;
+    uint32_t tile_offset = 0;
+
+    get_key_position<K>(find_key, &bkt_idx, &start_idx, buckets_num,
+                        bucket_max_size);
 
     Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
-    lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
 
-    uint32_t tile_offset = 0;
-    uint32_t key_offset = 0;
-    K current_key = 0;
-#pragma unroll
-    for (tile_offset = 0; tile_offset < bucket_max_size;
-         tile_offset += TILE_SIZE) {
-      key_offset = (start_idx + tile_offset + rank) % bucket_max_size;
-      current_key = *(bucket->keys + key_offset);
-      auto const found_or_empty_vote =
-          g.ballot(find_key == current_key || current_key == EMPTY_KEY);
-      if (found_or_empty_vote) {
-        src_lane = __ffs(found_or_empty_vote) - 1;
-        key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-        if (src_lane == rank) {
-          local_found = (current_key == find_key);
-        }
-        local_found = g.shfl(local_found, src_lane);
-        break;
-      }
-    }
+    const int key_pos = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
+        g, bucket, find_key, tile_offset, start_idx, bucket_max_size);
 
-    if (rank == 0) {
-      if (metas != nullptr && local_found) {
-        *(metas + key_idx) = bucket->metas[key_pos].val;
-      }
-      if (found != nullptr) {
-        *(found + key_idx) = local_found;
-      }
-    }
-
-    if (local_found) {
+    if (key_pos >= 0) {
+      lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
       copy_vector<V, DIM, TILE_SIZE>(g, bucket->vectors + key_pos,
                                      values + key_idx);
+      unlock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
+
+      if (rank == 0) {
+        if (metas != nullptr && key_pos >= 0) {
+          *(metas + key_idx) = bucket->metas[key_pos].val;
+        }
+        if (found != nullptr) {
+          *(found + key_idx) = key_pos >= 0;
+        }
+      }
+
+      break;
     }
-    unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
   }
 }
 
