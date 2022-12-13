@@ -315,7 +315,6 @@ void test_basic_when_full() {
   Vector* d_def_val;
   Vector** d_vectors_ptr;
   bool* d_found;
-  size_t dump_counter = 0;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
