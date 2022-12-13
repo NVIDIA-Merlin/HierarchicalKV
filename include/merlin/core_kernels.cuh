@@ -34,7 +34,7 @@ __global__ void create_locks(M* __restrict mutex, const size_t start,
                              const size_t end) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (start + tid < end) {
-    new (mutex + start + tid) M(1);
+    new (mutex + start + tid) M();
   }
 }
 
