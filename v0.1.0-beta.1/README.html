@@ -146,14 +146,14 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="section" id="how-to-build">
 <h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
 <p>Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
-<span class="nb">cd</span> HierarchicalKV <span class="o">&amp;&amp;</span> mkdir -p build <span class="o">&amp;&amp;</span> <span class="nb">cd</span> build
-cmake -DCMAKE_BUILD_TYPE<span class="o">=</span>Release -Dsm<span class="o">=</span><span class="m">80</span> .. <span class="o">&amp;&amp;</span> make -j
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
+cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-Dsm<span class="o">=</span><span class="m">80</span><span class="w"> </span>..<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>-j
 
-// <span class="k">for</span> Benchmark
+//<span class="w"> </span><span class="k">for</span><span class="w"> </span>Benchmark
 ./merlin_hashtable_benchmark
 
-// <span class="k">for</span> Unit Test
+//<span class="w"> </span><span class="k">for</span><span class="w"> </span>Unit<span class="w"> </span>Test
 ./merlin_hashtable_test
 </pre></div>
 </div>
