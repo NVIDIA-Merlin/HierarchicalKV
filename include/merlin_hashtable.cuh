@@ -60,6 +60,7 @@ struct HashTableOptions {
   size_t max_bucket_size = 128;    ///< The length of each bucket.
   float max_load_factor = 0.5f;    ///< The max load factor before rehashing.
   int block_size = 1024;           ///< The default block size for CUDA kernels.
+  int io_block_size = 1024;        ///< The block size for IO CUDA kernels.
   int device_id = 0;               ///< The ID of device.
   bool io_by_cpu = false;  ///< The flag indicating if the CPU handles IO.
   EvictStrategy evict_strategy = EvictStrategy::kLru;  ///< The evict strategy.
@@ -170,7 +171,9 @@ class HashTable {
    */
   ~HashTable() {
     if (initialized_) {
+      initialized_ = false;
       destroy_table<key_type, vector_type, meta_type, DIM>(&table_);
+      CUDA_CHECK(cudaFree(d_table_));
     }
   }
 
@@ -186,7 +189,6 @@ class HashTable {
    *
    * @param options The configuration options.
    */
- public:
   void init(const HashTableOptions options) {
     if (initialized_) {
       return;
@@ -204,6 +206,9 @@ class HashTable {
     MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
                  "[HierarchicalKV] `io_by_cpu` should not be true when "
                  "`max_hbm_for_vectors` is not 0!");
+    CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
+    CUDA_CHECK(
+        cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
     initialized_ = true;
     CudaCheckError();
   }
@@ -269,19 +274,10 @@ class HashTable {
       const size_t N = n * TILE_SIZE;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      if (metas == nullptr) {
-        upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<const vector_type*>(values),
-                table_->buckets, table_->buckets_size, table_->bucket_max_size,
-                table_->buckets_num, N);
-      } else {
-        upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<const vector_type*>(values),
-                metas, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, N);
-      }
+      upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+          <<<grid_size, block_size, 0, stream>>>(
+              d_table_, keys, reinterpret_cast<const vector_type*>(values),
+              metas, N);
     } else {
       vector_type** d_dst = nullptr;
       int* d_src_offset = nullptr;
@@ -292,23 +288,13 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, n * sizeof(int), stream));
 
       {
-        const size_t block_size = options_.block_size;
+        const size_t block_size = options_.io_block_size;
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        if (metas == nullptr) {
-          upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-              <<<grid_size, block_size, 0, stream>>>(
-                  table_, keys, d_dst, table_->buckets, table_->buckets_size,
-                  table_->bucket_max_size, table_->buckets_num, d_src_offset,
-                  N);
-        } else {
-          upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-              <<<grid_size, block_size, 0, stream>>>(
-                  table_, keys, d_dst, metas, table_->buckets,
-                  table_->buckets_size, table_->bucket_max_size,
-                  table_->buckets_num, d_src_offset, N);
-        }
+        upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+            <<<grid_size, block_size, 0, stream>>>(d_table_, keys, d_dst, metas,
+                                                   d_src_offset, N);
       }
 
       {
@@ -338,7 +324,7 @@ class HashTable {
                               cudaMemcpyDeviceToHost));
         write_by_cpu<vector_type>(l_dst, l_values, l_src_offset, n);
       } else {
-        const size_t block_size = options_.block_size;
+        const size_t block_size = options_.io_block_size;
         const size_t N = n * DIM;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
@@ -437,19 +423,11 @@ class HashTable {
       const size_t N = n * TILE_SIZE;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      if (metas == nullptr) {
-        accum_kernel<key_type, vector_type, meta_type, DIM>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, dst, accum_or_assigns, table_->buckets,
-                table_->buckets_size, table_->bucket_max_size,
-                table_->buckets_num, src_offset, founds, N);
-      } else {
-        accum_kernel<key_type, vector_type, meta_type, DIM>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, dst, metas, accum_or_assigns, table_->buckets,
-                table_->buckets_size, table_->bucket_max_size,
-                table_->buckets_num, src_offset, founds, N);
-      }
+      accum_kernel<key_type, vector_type, meta_type, DIM>
+          <<<grid_size, block_size, 0, stream>>>(
+              table_, keys, dst, metas, accum_or_assigns, table_->buckets,
+              table_->buckets_size, table_->bucket_max_size,
+              table_->buckets_num, src_offset, founds, N);
     }
 
     if (!is_fast_mode()) {
@@ -461,7 +439,7 @@ class HashTable {
     }
 
     {
-      const size_t block_size = options_.block_size;
+      const size_t block_size = options_.io_block_size;
       const size_t N = n * DIM;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
@@ -519,9 +497,8 @@ class HashTable {
 
       lookup_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, keys, reinterpret_cast<vector_type*>(values), metas,
-              founds, table_->buckets, table_->buckets_size,
-              table_->bucket_max_size, table_->buckets_num, N);
+              d_table_, keys, reinterpret_cast<vector_type*>(values), metas,
+              founds, N);
     } else {
       vector_type** src;
       int* dst_offset = nullptr;
@@ -537,9 +514,8 @@ class HashTable {
 
         lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                table_, keys, reinterpret_cast<vector_type**>(src), metas,
-                founds, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, dst_offset, N);
+                d_table_, keys, reinterpret_cast<vector_type**>(src), metas,
+                founds, dst_offset, N);
       }
 
       {
@@ -552,7 +528,7 @@ class HashTable {
       }
 
       {
-        const size_t block_size = options_.block_size;
+        const size_t block_size = options_.io_block_size;
         const size_t N = n * DIM;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
@@ -924,6 +900,8 @@ class HashTable {
       while (capacity() < new_capacity &&
              capacity() * 2 <= options_.max_capacity) {
         double_capacity(&table_);
+        CUDA_CHECK(
+            cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
 
         const size_t block_size = options_.block_size;
         const size_t N = TILE_SIZE * table_->buckets_num / 2;
@@ -931,9 +909,7 @@ class HashTable {
 
         rehash_kernel_for_fast_mode<key_type, vector_type, meta_type, DIM,
                                     TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                table_, table_->buckets, table_->buckets_size,
-                table_->bucket_max_size, table_->buckets_num, N);
+            <<<grid_size, block_size, 0, stream>>>(d_table_, N);
       }
       CUDA_CHECK(cudaDeviceSynchronize());
     }
@@ -1154,6 +1130,7 @@ class HashTable {
  private:
   HashTableOptions options_;
   TableCore* table_ = nullptr;
+  TableCore* d_table_ = nullptr;
   size_t shared_mem_size_ = 0;
   bool reach_max_capacity_ = false;
   bool initialized_ = false;
