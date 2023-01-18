@@ -33,12 +33,15 @@ constexpr uint64_t RECLAIM_KEY = UINT64_C(0xFFFFFFFFFFFFFFFE);
 constexpr uint64_t MAX_META = UINT64_C(0xFFFFFFFFFFFFFFFF);
 constexpr uint64_t EMPTY_META = UINT64_C(0);
 
+template <class K>
+using AtomicKey = cuda::atomic<K, cuda::thread_scope_device>;
+
 template <class K, class V, class M, size_t DIM>
 struct Bucket {
-  K* keys;         // HBM
-  Meta<M>* metas;  // HBM
-  V* cache;        // HBM(optional)
-  V* vectors;      // Pinned memory or HBM
+  AtomicKey<K>* keys;  // HBM
+  Meta<M>* metas;      // HBM
+  V* cache;            // HBM(optional)
+  V* vectors;          // Pinned memory or HBM
 
   /* For upsert_kernel without user specified metas
      recording the current meta, the cur_meta will
@@ -52,17 +55,18 @@ struct Bucket {
   int min_pos;
 };
 
-template <cuda::thread_scope Scope>
+template <cuda::thread_scope Scope, class T = int>
 class Lock {
-  mutable cuda::atomic<int, Scope> _lock;
+  mutable cuda::atomic<T, Scope> _lock;
 
  public:
   __device__ Lock() : _lock{1} {}
 
   template <typename CG>
-  __device__ void acquire(CG const& g, unsigned long long lane = 0) const {
+  __forceinline__ __device__ void acquire(CG const& g,
+                                          unsigned long long lane = 0) const {
     if (g.thread_rank() == lane) {
-      int expected = 1;
+      T expected = 1;
       while (!_lock.compare_exchange_weak(expected, 2,
                                           cuda::std::memory_order_acquire)) {
         expected = 1;
@@ -72,7 +76,8 @@ class Lock {
   }
 
   template <typename CG>
-  __device__ void release(CG const& g, unsigned long long lane = 0) const {
+  __forceinline__ __device__ void release(CG const& g,
+                                          unsigned long long lane = 0) const {
     g.sync();
     if (g.thread_rank() == lane) {
       _lock.store(1, cuda::std::memory_order_release);
@@ -162,6 +167,14 @@ class BaseKVFile {
    */
   virtual size_t write(size_t n, const K* keys, const V* vectors,
                        const M* metas) = 0;
+};
+
+enum class OccupyResult {
+  INITIAL,         ///< Initial status
+  CONTINUE,        ///< Insert did not succeed, continue trying to insert
+  OCCUPIED_EMPTY,  ///< New pair inserted successfully
+  OCCUPIED_RECLAIMED,
+  DUPLICATE,  ///< Insert did not succeed, key is already present,
 };
 
 }  // namespace merlin

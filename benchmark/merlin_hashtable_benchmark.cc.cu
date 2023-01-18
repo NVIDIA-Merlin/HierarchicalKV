@@ -81,7 +81,7 @@ template <size_t DIM>
 void test_main(const size_t init_capacity = 64 * 1024 * 1024UL,
                const size_t key_num_per_op = 1 * 1024 * 1024UL,
                const size_t hbm4values = 16, const float load_factor = 1.0,
-               const bool io_by_cpu = false) {
+               const float hitrate = 0.6, const bool io_by_cpu = false) {
   using K = uint64_t;
   using M = uint64_t;
   using Vector = ValueArray<float, DIM>;
@@ -171,7 +171,7 @@ void test_main(const size_t init_capacity = 64 * 1024 * 1024UL,
                             stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     end_insert_or_assign = std::chrono::steady_clock::now();
-    diff_insert_or_assign = end_insert_or_assign - start_insert_or_assign;
+    diff_insert_or_assign = (end_insert_or_assign - start_insert_or_assign);
 
     start_find = std::chrono::steady_clock::now();
     table->find(key_num_per_op, d_keys, reinterpret_cast<float*>(d_vectors),
@@ -185,7 +185,7 @@ void test_main(const size_t init_capacity = 64 * 1024 * 1024UL,
     if (start == 0) {
       table->erase(key_num_per_op, d_keys, stream);  // warmup for erase kernel.
     }
-    start += key_num_per_op;
+    start += (key_num_per_op * (1.0 - hitrate));
   }
 
   start_erase = std::chrono::steady_clock::now();
