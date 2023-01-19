@@ -1137,6 +1137,32 @@ __global__ void lookup_kernel_with_io(
   }
 }
 
+template <typename K, typename V, typename M, size_t DIM>
+struct SelectLookupKernelWithIO {
+  static void execute_kernel(const float& load_factor, const int& block_size,
+                             cudaStream_t& stream, const size_t& n,
+                             const Table<K, V, M, DIM>* __restrict table,
+                             const K* __restrict keys, V* __restrict values,
+                             M* __restrict metas, bool* __restrict found) {
+    if (load_factor <= 0.9) {
+      const unsigned int tile_size = 4;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      lookup_kernel_with_io<K, V, M, DIM, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
+                                                 found, N);
+    } else {
+      const unsigned int tile_size = 32;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      lookup_kernel_with_io<K, V, M, DIM, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
+                                                 found, N);
+    }
+    return;
+  }
+};
+
 /* lookup kernel.
  */
 template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
