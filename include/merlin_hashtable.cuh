@@ -19,6 +19,7 @@
 #include <thrust/device_vector.h>
 #include <thrust/execution_policy.h>
 #include <thrust/sort.h>
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <mutex>
@@ -59,7 +60,7 @@ struct HashTableOptions {
   size_t max_hbm_for_vectors = 0;  ///< The maximum HBM for vectors, in bytes.
   size_t max_bucket_size = 128;    ///< The length of each bucket.
   float max_load_factor = 0.5f;    ///< The max load factor before rehashing.
-  int block_size = 1024;           ///< The default block size for CUDA kernels.
+  int block_size = 128;            ///< The default block size for CUDA kernels.
   int io_block_size = 1024;        ///< The block size for IO CUDA kernels.
   int device_id = 0;               ///< The ID of device.
   bool io_by_cpu = false;  ///< The flag indicating if the CPU handles IO.
@@ -270,14 +271,18 @@ class HashTable {
     }
 
     if (is_fast_mode()) {
-      const size_t block_size = options_.block_size;
-      const size_t N = n * TILE_SIZE;
-      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      using Selector =
+          SelectUpsertKernelWithIO<key_type, vector_type, meta_type, DIM>;
+      static thread_local int step_counter = 0;
+      static thread_local float load_factor = 0.0;
 
-      upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-          <<<grid_size, block_size, 0, stream>>>(
-              d_table_, keys, reinterpret_cast<const vector_type*>(values),
-              metas, N);
+      if (((step_counter++) % 7) == 0) {
+        load_factor = fast_load_factor();
+      }
+
+      Selector::execute_kernel(
+          load_factor, options_.block_size, stream, n, d_table_, keys,
+          reinterpret_cast<const vector_type*>(values), metas);
     } else {
       vector_type** d_dst = nullptr;
       int* d_src_offset = nullptr;
@@ -288,7 +293,7 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(d_src_offset, 0, n * sizeof(int), stream));
 
       {
-        const size_t block_size = options_.io_block_size;
+        const size_t block_size = options_.block_size;
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
@@ -900,6 +905,7 @@ class HashTable {
       while (capacity() < new_capacity &&
              capacity() * 2 <= options_.max_capacity) {
         double_capacity(&table_);
+        CUDA_CHECK(cudaDeviceSynchronize());
         CUDA_CHECK(
             cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
 
@@ -912,9 +918,8 @@ class HashTable {
             <<<grid_size, block_size, 0, stream>>>(d_table_, N);
       }
       CUDA_CHECK(cudaDeviceSynchronize());
+      reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
     }
-
-    reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
     CudaCheckError();
   }
 
@@ -1132,7 +1137,7 @@ class HashTable {
   TableCore* table_ = nullptr;
   TableCore* d_table_ = nullptr;
   size_t shared_mem_size_ = 0;
-  bool reach_max_capacity_ = false;
+  std::atomic_bool reach_max_capacity_{false};
   bool initialized_ = false;
   mutable std::shared_timed_mutex mutex_;
 };

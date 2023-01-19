@@ -113,9 +113,7 @@ void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
   (*table)->num_of_memory_slices += num_of_memory_slices;
   for (int i = start; i < end; i++) {
     CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].keys),
-                          (*table)->bucket_max_size * sizeof(K)));
-    CUDA_CHECK(cudaMemset((*table)->buckets[i].keys, 0xFF,
-                          (*table)->bucket_max_size * sizeof(K)));
+                          (*table)->bucket_max_size * sizeof(AtomicKey<K>)));
     CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].metas),
                           (*table)->bucket_max_size * sizeof(Meta<M>)));
   }
@@ -386,7 +384,7 @@ __forceinline__ __device__ void move_key_to_new_bucket(
       if (rank == src_lane) {
         new_bucket->keys[key_pos].store(key, cuda::std::memory_order_relaxed);
         new_bucket->metas[key_pos].val = meta;
-        buckets_size[new_bkt_idx]++;
+        atomicAdd(&(buckets_size[new_bkt_idx]), 1);
       }
       local_size = g.shfl(local_size, src_lane);
       if (local_size >= bucket_max_size) {
@@ -423,7 +421,7 @@ __global__ void rehash_kernel_for_fast_mode(
     while (key_idx < bucket_max_size) {
       key_idx = g.shfl(key_idx, 0);
       target_key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
-      if (target_key != EMPTY_KEY) {
+      if (target_key != EMPTY_KEY && target_key != RECLAIM_KEY) {
         K hashed_key = Murmur3HashDevice(target_key);
         global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
         uint32_t new_bkt_idx = global_idx / bucket_max_size;
@@ -436,7 +434,7 @@ __global__ void rehash_kernel_for_fast_mode(
           if (rank == 0) {
             bucket->keys[key_idx].store(EMPTY_KEY,
                                         cuda::std::memory_order_relaxed);
-            buckets_size[bkt_idx]--;
+            atomicSub(&(buckets_size[bkt_idx]), 1);
             defragmentation_for_rehash<K, V, M, DIM, TILE_SIZE>(
                 bucket, key_idx, bucket_max_size, buckets_num / 2);
             key_idx = 0;
@@ -830,6 +828,38 @@ __global__ void upsert_kernel_with_io(
     }
   }
 }
+
+template <typename K, typename V, typename M, size_t DIM>
+struct SelectUpsertKernelWithIO {
+  static void execute_kernel(const float& load_factor, const int& block_size,
+                             cudaStream_t& stream, const size_t& n,
+                             const Table<K, V, M, DIM>* __restrict table,
+                             const K* __restrict keys,
+                             const V* __restrict values,
+                             const M* __restrict metas) {
+    if (load_factor <= 0.5) {
+      const unsigned int tile_size = 2;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      upsert_kernel_with_io<K, V, M, DIM, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas, N);
+
+    } else if (load_factor <= 0.875) {
+      const unsigned int tile_size = 8;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      upsert_kernel_with_io<K, V, M, DIM, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas, N);
+    } else {
+      const unsigned int tile_size = 16;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      upsert_kernel_with_io<K, V, M, DIM, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas, N);
+    }
+    return;
+  }
+};
 
 /* Upsert with the end-user specified meta.
  */
@@ -1313,8 +1343,8 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
       for (int i = 0; i < DIM; i++) {
-        atomicExch(&(block_result_val[local_index].values[i]),
-                   bucket->vectors[key_idx].values[i]);
+        block_result_val[local_index].values[i] =
+            bucket->vectors[key_idx].values[i];
       }
       if (d_meta != nullptr) {
         block_result_meta[local_index] = bucket->metas[key_idx].val;
