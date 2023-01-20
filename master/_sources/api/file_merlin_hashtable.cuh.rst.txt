@@ -25,6 +25,8 @@ Includes
 --------
 
 
+- ``atomic``
+
 - ``cstdint``
 
 - ``limits``

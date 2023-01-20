@@ -31,6 +31,7 @@ Program Listing for File merlin_hashtable.cuh
    #include <thrust/device_vector.h>
    #include <thrust/execution_policy.h>
    #include <thrust/sort.h>
+   #include <atomic>
    #include <cstdint>
    #include <limits>
    #include <mutex>
@@ -55,7 +56,8 @@ Program Listing for File merlin_hashtable.cuh
      size_t max_hbm_for_vectors = 0;  
      size_t max_bucket_size = 128;    
      float max_load_factor = 0.5f;    
-     int block_size = 1024;           
+     int block_size = 128;            
+     int io_block_size = 1024;        
      int device_id = 0;               
      bool io_by_cpu = false;  
      EvictStrategy evict_strategy = EvictStrategy::kLru;  
@@ -102,7 +104,9 @@ Program Listing for File merlin_hashtable.cuh
    
      ~HashTable() {
        if (initialized_) {
+         initialized_ = false;
          destroy_table<key_type, vector_type, meta_type, DIM>(&table_);
+         CUDA_CHECK(cudaFree(d_table_));
        }
      }
    
@@ -112,7 +116,6 @@ Program Listing for File merlin_hashtable.cuh
      HashTable(HashTable&&) = delete;
      HashTable& operator=(HashTable&&) = delete;
    
-    public:
     public:
      void init(const HashTableOptions options) {
        if (initialized_) {
@@ -131,6 +134,9 @@ Program Listing for File merlin_hashtable.cuh
        MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
                     "[HierarchicalKV] `io_by_cpu` should not be true when "
                     "`max_hbm_for_vectors` is not 0!");
+       CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
+       CUDA_CHECK(
+           cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
        initialized_ = true;
        CudaCheckError();
      }
@@ -160,23 +166,18 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (is_fast_mode()) {
-         const size_t block_size = options_.block_size;
-         const size_t N = n * TILE_SIZE;
-         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+         using Selector =
+             SelectUpsertKernelWithIO<key_type, vector_type, meta_type, DIM>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
    
-         if (metas == nullptr) {
-           upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, reinterpret_cast<const vector_type*>(values),
-                   table_->buckets, table_->buckets_size, table_->bucket_max_size,
-                   table_->buckets_num, N);
-         } else {
-           upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, reinterpret_cast<const vector_type*>(values),
-                   metas, table_->buckets, table_->buckets_size,
-                   table_->bucket_max_size, table_->buckets_num, N);
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor();
          }
+   
+         Selector::execute_kernel(
+             load_factor, options_.block_size, stream, n, d_table_, keys,
+             reinterpret_cast<const vector_type*>(values), metas);
        } else {
          vector_type** d_dst = nullptr;
          int* d_src_offset = nullptr;
@@ -191,19 +192,9 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           if (metas == nullptr) {
-             upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-                 <<<grid_size, block_size, 0, stream>>>(
-                     table_, keys, d_dst, table_->buckets, table_->buckets_size,
-                     table_->bucket_max_size, table_->buckets_num, d_src_offset,
-                     N);
-           } else {
-             upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-                 <<<grid_size, block_size, 0, stream>>>(
-                     table_, keys, d_dst, metas, table_->buckets,
-                     table_->buckets_size, table_->bucket_max_size,
-                     table_->buckets_num, d_src_offset, N);
-           }
+           upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+               <<<grid_size, block_size, 0, stream>>>(d_table_, keys, d_dst, metas,
+                                                      d_src_offset, N);
          }
    
          {
@@ -233,7 +224,7 @@ Program Listing for File merlin_hashtable.cuh
                                  cudaMemcpyDeviceToHost));
            write_by_cpu<vector_type>(l_dst, l_values, l_src_offset, n);
          } else {
-           const size_t block_size = options_.block_size;
+           const size_t block_size = options_.io_block_size;
            const size_t N = n * DIM;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -291,19 +282,11 @@ Program Listing for File merlin_hashtable.cuh
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         if (metas == nullptr) {
-           accum_kernel<key_type, vector_type, meta_type, DIM>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, dst, accum_or_assigns, table_->buckets,
-                   table_->buckets_size, table_->bucket_max_size,
-                   table_->buckets_num, src_offset, founds, N);
-         } else {
-           accum_kernel<key_type, vector_type, meta_type, DIM>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, dst, metas, accum_or_assigns, table_->buckets,
-                   table_->buckets_size, table_->bucket_max_size,
-                   table_->buckets_num, src_offset, founds, N);
-         }
+         accum_kernel<key_type, vector_type, meta_type, DIM>
+             <<<grid_size, block_size, 0, stream>>>(
+                 table_, keys, dst, metas, accum_or_assigns, table_->buckets,
+                 table_->buckets_size, table_->bucket_max_size,
+                 table_->buckets_num, src_offset, founds, N);
        }
    
        if (!is_fast_mode()) {
@@ -315,7 +298,7 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        {
-         const size_t block_size = options_.block_size;
+         const size_t block_size = options_.io_block_size;
          const size_t N = n * DIM;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -349,15 +332,17 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (is_fast_mode()) {
-         const size_t block_size = options_.block_size;
-         const size_t N = n * TILE_SIZE;
-         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+         using Selector =
+             SelectLookupKernelWithIO<key_type, vector_type, meta_type, DIM>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
    
-         lookup_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-             <<<grid_size, block_size, 0, stream>>>(
-                 table_, keys, reinterpret_cast<vector_type*>(values), metas,
-                 founds, table_->buckets, table_->buckets_size,
-                 table_->bucket_max_size, table_->buckets_num, N);
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor();
+         }
+         Selector::execute_kernel(
+             load_factor, options_.block_size, stream, n, d_table_, keys,
+             reinterpret_cast<vector_type*>(values), metas, founds);
        } else {
          vector_type** src;
          int* dst_offset = nullptr;
@@ -373,9 +358,8 @@ Program Listing for File merlin_hashtable.cuh
    
            lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
                <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, reinterpret_cast<vector_type**>(src), metas,
-                   founds, table_->buckets, table_->buckets_size,
-                   table_->bucket_max_size, table_->buckets_num, dst_offset, N);
+                   d_table_, keys, reinterpret_cast<vector_type**>(src), metas,
+                   founds, dst_offset, N);
          }
    
          {
@@ -388,7 +372,7 @@ Program Listing for File merlin_hashtable.cuh
          }
    
          {
-           const size_t block_size = options_.block_size;
+           const size_t block_size = options_.io_block_size;
            const size_t N = n * DIM;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -620,6 +604,9 @@ Program Listing for File merlin_hashtable.cuh
          while (capacity() < new_capacity &&
                 capacity() * 2 <= options_.max_capacity) {
            double_capacity(&table_);
+           CUDA_CHECK(cudaDeviceSynchronize());
+           CUDA_CHECK(
+               cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
    
            const size_t block_size = options_.block_size;
            const size_t N = TILE_SIZE * table_->buckets_num / 2;
@@ -627,14 +614,11 @@ Program Listing for File merlin_hashtable.cuh
    
            rehash_kernel_for_fast_mode<key_type, vector_type, meta_type, DIM,
                                        TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, table_->buckets, table_->buckets_size,
-                   table_->bucket_max_size, table_->buckets_num, N);
+               <<<grid_size, block_size, 0, stream>>>(d_table_, N);
          }
          CUDA_CHECK(cudaDeviceSynchronize());
+         reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
        }
-   
-       reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
        CudaCheckError();
      }
    
@@ -812,10 +796,12 @@ Program Listing for File merlin_hashtable.cuh
     private:
      HashTableOptions options_;
      TableCore* table_ = nullptr;
+     TableCore* d_table_ = nullptr;
      size_t shared_mem_size_ = 0;
-     bool reach_max_capacity_ = false;
+     std::atomic_bool reach_max_capacity_{false};
      bool initialized_ = false;
      mutable std::shared_timed_mutex mutex_;
+     const unsigned int kernel_select_interval_ = 7;
    };
    
    }  // namespace merlin
