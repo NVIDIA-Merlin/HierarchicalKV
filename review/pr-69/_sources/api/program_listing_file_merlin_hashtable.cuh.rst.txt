@@ -369,9 +369,9 @@ Program Listing for File merlin_hashtable.cuh
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
            lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   d_table_, keys, src, metas ? metas : nullptr, founds,
-                   dst_offset, N);
+               <<<grid_size, block_size, 0, stream>>>(d_table_, keys, src,
+                                                      metas ? metas : nullptr,
+                                                      founds, dst_offset, N);
          }
    
          {
