@@ -403,15 +403,6 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
    
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       lock.lock();
-   
-       auto device_ws =
-           device_memory_pool_->get_workspace<1>(sizeof(size_type), stream);
-       auto d_count = device_ws.get<size_type*>(0);
-   
-       CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
-   
        {
          const size_t block_size = options_.block_size;
          const size_t N = n * TILE_SIZE;
@@ -422,11 +413,6 @@ Program Listing for File merlin_hashtable.cuh
                  table_, keys, table_->buckets, table_->buckets_size,
                  table_->bucket_max_size, table_->buckets_num, N);
        }
-   
-       size_type count = 0;
-       CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
-                                  cudaMemcpyDeviceToHost, stream));
-       CUDA_CHECK(cudaStreamSynchronize(stream));
    
        CudaCheckError();
        return;
