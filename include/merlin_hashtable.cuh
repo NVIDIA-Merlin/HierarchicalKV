@@ -1143,7 +1143,7 @@ class HashTable {
   std::atomic_bool reach_max_capacity_{false};
   bool initialized_ = false;
   mutable std::shared_timed_mutex mutex_;
-  const unsigned int kernel_select_interval_ = 7;
+  const unsigned int kernel_select_interval_ = 7; 
 };
 
 }  // namespace merlin
