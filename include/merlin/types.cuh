@@ -36,7 +36,7 @@ constexpr uint64_t EMPTY_META = UINT64_C(0);
 template <class K>
 using AtomicKey = cuda::atomic<K, cuda::thread_scope_device>;
 
-template <class K, class V, class M, size_t DIM>
+template <class K, class V, class M>
 struct Bucket {
   AtomicKey<K>* keys;  // HBM
   Meta<M>* metas;      // HBM
@@ -87,12 +87,13 @@ class Lock {
 
 using Mutex = Lock<cuda::thread_scope_device>;
 
-template <class K, class V, class M, size_t DIM>
+template <class K, class V, class M>
 struct Table {
-  Bucket<K, V, M, DIM>* buckets;
+  Bucket<K, V, M>* buckets;
   Mutex* locks;                 // mutex for write buckets
   int* buckets_size;            // size of each buckets.
   V** slices;                   // Handles of the HBM/ HMEM slices.
+  size_t dim;                   // Dimension of the `vectors`.
   size_t bytes_per_slice;       // Size by byte of one slice.
   size_t num_of_memory_slices;  // Number of vectors memory slices.
   size_t capacity = 134217728;  // Initial capacity.
@@ -128,10 +129,9 @@ using EraseIfPredictInternal =
  *         The item data type should be a basic data type of C++/CUDA.
  * @tparam M The data type for `meta`.
  *           The currently supported data type is only `uint64_t`.
- * @tparam D The dimension of the vectors.
  *
  */
-template <class K, class V, class M, size_t D>
+template <class K, class V, class M>
 class BaseKVFile {
  public:
   virtual ~BaseKVFile() {}
@@ -144,13 +144,15 @@ class BaseKVFile {
    *
    * @param n The number of KV pairs expect to read. `int64_t` was used
    *          here to adapt to various filesytem and formats.
+   * @param dim The dimension of the `vectors`.
    * @param keys The pointer to received buffer for keys.
    * @param vectors The pointer to received buffer for vectors.
    * @param metas The pointer to received buffer for metas.
    *
    * @return Number of KV pairs have been successfully read.
    */
-  virtual size_t read(size_t n, K* keys, V* vectors, M* metas) = 0;
+  virtual size_t read(const size_t n, const size_t dim, K* keys, V* vectors,
+                      M* metas) = 0;
 
   /**
    * Write keys, values, metas from table to the file. It defines
@@ -159,14 +161,15 @@ class BaseKVFile {
    *
    * @param n The number of KV pairs to be written. `int64_t` was used
    *          here to adapt to various filesytem and formats.
+   * @param dim The dimension of the `vectors`.
    * @param keys The keys will be written to file.
    * @param vectors The vectors of values will be written to file.
    * @param metas The metas will be written to file.
    *
    * @return Number of KV pairs have been successfully written.
    */
-  virtual size_t write(size_t n, const K* keys, const V* vectors,
-                       const M* metas) = 0;
+  virtual size_t write(const size_t n, const size_t dim, const K* keys,
+                       const V* vectors, const M* metas) = 0;
 };
 
 enum class OccupyResult {

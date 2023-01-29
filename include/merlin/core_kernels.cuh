@@ -18,6 +18,7 @@
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include <mutex>
 #include <thread>
 #include <vector>
 #include "types.cuh"
@@ -28,6 +29,35 @@ namespace cg = cooperative_groups;
 
 namespace nv {
 namespace merlin {
+
+/* For improving performance consideration, allocating up to 32 table structures
+ * in constant memory is supported. To close this function, please set
+ * `TableOption::use_constant_memory` to `false`.
+ */
+constexpr int MAX_CONSTANT_TABLE = 64;
+__constant__ char
+    c_table_[sizeof(Table<uint64_t, float, uint64_t>) * MAX_CONSTANT_TABLE];
+std::mutex constant_table_mutex;
+uint64_t constant_table_flag = 0;
+
+int allocate_constant_table() {
+  std::lock_guard<std::mutex> guard(constant_table_mutex);
+  if (constant_table_flag == std::numeric_limits<uint64_t>::max()) return -1;
+  int table_index = 0;
+  while (constant_table_flag & (1l << table_index)) {
+    table_index++;
+  }
+
+  constant_table_flag = constant_table_flag | (1l << table_index);
+
+  return table_index;
+}
+
+void release_constant_table(int table_index) {
+  std::lock_guard<std::mutex> guard(constant_table_mutex);
+  if (table_index < 0 || table_index >= MAX_CONSTANT_TABLE) return;
+  constant_table_flag = constant_table_flag & (~(1l << table_index));
+}
 
 template <class M>
 __global__ void create_locks(M* __restrict mutex, const size_t start,
@@ -47,8 +77,8 @@ __global__ void release_locks(M* __restrict mutex, const size_t start,
   }
 }
 
-template <class K, class V, class M, size_t DIM>
-__global__ void create_atomic_keys(Bucket<K, V, M, DIM>* __restrict buckets,
+template <class K, class V, class M>
+__global__ void create_atomic_keys(Bucket<K, V, M>* __restrict buckets,
                                    const size_t start, const size_t end,
                                    const size_t bucket_max_size) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -63,8 +93,8 @@ __global__ void create_atomic_keys(Bucket<K, V, M, DIM>* __restrict buckets,
 constexpr size_t kDefaultBytesPerSlice = (8ul << 30);
 
 /* Initialize the buckets with index from start to end. */
-template <class K, class V, class M, size_t DIM>
-void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
+template <class K, class V, class M>
+void initialize_buckets(Table<K, V, M>** table, const size_t start,
                         const size_t end) {
   /* As testing results show us, when the number of buckets is greater than
    * the 4 million the performance will drop significantly, we believe the
@@ -76,11 +106,12 @@ void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
                "initialize_buckets, start should be less than end!");
   size_t buckets_num = end - start;
   const size_t total_size_of_vectors =
-      buckets_num * (*table)->bucket_max_size * sizeof(V);
+      buckets_num * (*table)->bucket_max_size * sizeof(V) * (*table)->dim;
   const size_t num_of_memory_slices =
       1 + (total_size_of_vectors - 1) / (*table)->bytes_per_slice;
   size_t num_of_buckets_in_one_slice =
-      (*table)->bytes_per_slice / ((*table)->bucket_max_size * sizeof(V));
+      (*table)->bytes_per_slice /
+      ((*table)->bucket_max_size * sizeof(V) * (*table)->dim);
   size_t num_of_allocated_buckets = 0;
 
   realloc_managed<V**>(
@@ -92,8 +123,9 @@ void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
     if (i == (*table)->num_of_memory_slices + num_of_memory_slices - 1) {
       num_of_buckets_in_one_slice = buckets_num - num_of_allocated_buckets;
     }
-    size_t slice_real_size =
-        num_of_buckets_in_one_slice * (*table)->bucket_max_size * sizeof(V);
+    size_t slice_real_size = num_of_buckets_in_one_slice *
+                             (*table)->bucket_max_size * sizeof(V) *
+                             (*table)->dim;
     if ((*table)->remaining_hbm_for_vectors >= slice_real_size) {
       CUDA_CHECK(cudaMalloc(&((*table)->slices[i]), slice_real_size));
       (*table)->remaining_hbm_for_vectors -= slice_real_size;
@@ -105,7 +137,7 @@ void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
     }
     for (int j = 0; j < num_of_buckets_in_one_slice; j++) {
       (*table)->buckets[start + num_of_allocated_buckets + j].vectors =
-          (*table)->slices[i] + j * (*table)->bucket_max_size;
+          (*table)->slices[i] + j * (*table)->bucket_max_size * (*table)->dim;
     }
     num_of_allocated_buckets += num_of_buckets_in_one_slice;
   }
@@ -129,7 +161,7 @@ void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
     const size_t block_size = 512;
     const size_t N = end - start + 1;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-    create_atomic_keys<K, V, M, DIM><<<grid_size, block_size>>>(
+    create_atomic_keys<K, V, M><<<grid_size, block_size>>>(
         (*table)->buckets, start, end, (*table)->bucket_max_size);
   }
   CudaCheckError();
@@ -144,16 +176,17 @@ void initialize_buckets(Table<K, V, M, DIM>** table, const size_t start,
       or occurrence frequency or any thing for eviction.
    DIM: Vector dimension.
 */
-template <class K, class V, class M, size_t DIM>
-void create_table(Table<K, V, M, DIM>** table,
+template <class K, class V, class M>
+void create_table(Table<K, V, M>** table, const size_t dim,
                   const size_t init_size = 134217728,
                   const size_t max_size = std::numeric_limits<size_t>::max(),
                   const size_t max_hbm_for_vectors = 0,
                   const size_t bucket_max_size = 128,
                   const size_t tile_size = 32, const bool primary = true,
                   const size_t bytes_per_slice = kDefaultBytesPerSlice) {
-  CUDA_CHECK(cudaMallocManaged((void**)table, sizeof(Table<K, V, M, DIM>)));
-  CUDA_CHECK(cudaMemset(*table, 0, sizeof(Table<K, V, M, DIM>)));
+  CUDA_CHECK(cudaMallocManaged((void**)table, sizeof(Table<K, V, M>)));
+  CUDA_CHECK(cudaMemset(*table, 0, sizeof(Table<K, V, M>)));
+  (*table)->dim = dim;
   (*table)->bucket_max_size = bucket_max_size;
   (*table)->bytes_per_slice = bytes_per_slice;
   (*table)->max_size = max_size;
@@ -181,38 +214,37 @@ void create_table(Table<K, V, M, DIM>** table,
 
   CUDA_CHECK(
       cudaMallocManaged((void**)&((*table)->buckets),
-                        (*table)->buckets_num * sizeof(Bucket<K, V, M, DIM>)));
+                        (*table)->buckets_num * sizeof(Bucket<K, V, M>)));
   CUDA_CHECK(cudaMemset((*table)->buckets, 0,
-                        (*table)->buckets_num * sizeof(Bucket<K, V, M, DIM>)));
+                        (*table)->buckets_num * sizeof(Bucket<K, V, M>)));
 
-  initialize_buckets<K, V, M, DIM>(table, 0, (*table)->buckets_num);
+  initialize_buckets<K, V, M>(table, 0, (*table)->buckets_num);
   CudaCheckError();
 }
 
 /* Double the capacity on storage, must be followed by calling the
  * rehash_kernel. */
-template <class K, class V, class M, size_t DIM>
-void double_capacity(Table<K, V, M, DIM>** table) {
+template <class K, class V, class M>
+void double_capacity(Table<K, V, M>** table) {
   realloc<Mutex*>(&((*table)->locks), (*table)->buckets_num * sizeof(Mutex),
                   (*table)->buckets_num * sizeof(Mutex) * 2);
   realloc<int*>(&((*table)->buckets_size), (*table)->buckets_num * sizeof(int),
                 (*table)->buckets_num * sizeof(int) * 2);
 
-  realloc_managed<Bucket<K, V, M, DIM>*>(
-      &((*table)->buckets),
-      (*table)->buckets_num * sizeof(Bucket<K, V, M, DIM>),
-      (*table)->buckets_num * sizeof(Bucket<K, V, M, DIM>) * 2);
+  realloc_managed<Bucket<K, V, M>*>(
+      &((*table)->buckets), (*table)->buckets_num * sizeof(Bucket<K, V, M>),
+      (*table)->buckets_num * sizeof(Bucket<K, V, M>) * 2);
 
-  initialize_buckets<K, V, M, DIM>(table, (*table)->buckets_num,
-                                   (*table)->buckets_num * 2);
+  initialize_buckets<K, V, M>(table, (*table)->buckets_num,
+                              (*table)->buckets_num * 2);
 
   (*table)->capacity *= 2;
   (*table)->buckets_num *= 2;
 }
 
 /* free all of the resource of a Table. */
-template <class K, class V, class M, size_t DIM>
-void destroy_table(Table<K, V, M, DIM>** table) {
+template <class K, class V, class M>
+void destroy_table(Table<K, V, M>** table) {
   for (int i = 0; i < (*table)->buckets_num; i++) {
     CUDA_CHECK(cudaFree((*table)->buckets[i].keys));
     CUDA_CHECK(cudaFree((*table)->buckets[i].metas));
@@ -241,10 +273,10 @@ void destroy_table(Table<K, V, M, DIM>** table) {
   CudaCheckError();
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void defragmentation_for_rehash(
-    Bucket<K, V, M, DIM>* __restrict bucket, uint32_t remove_pos,
-    const size_t bucket_max_size, const size_t buckets_num) {
+    Bucket<K, V, M>* __restrict bucket, uint32_t remove_pos,
+    const size_t bucket_max_size, const size_t buckets_num, const size_t dim) {
   uint32_t key_idx;
   size_t global_idx = 0;
   size_t start_idx = 0;
@@ -271,9 +303,9 @@ __forceinline__ __device__ void defragmentation_for_rehash(
           (*(bucket->keys + key_idx)).load(cuda::std::memory_order_relaxed);
       (*(bucket->keys + empty_pos)).store(key, cuda::std::memory_order_relaxed);
       bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
-      for (int j = 0; j < DIM; j++) {
-        bucket->vectors[empty_pos].values[j] =
-            bucket->vectors[key_idx].values[j];
+      for (int j = 0; j < dim; j++) {
+        bucket->vectors[empty_pos * dim + j] =
+            bucket->vectors[key_idx * dim + j];
       }
       (*(bucket->keys + key_idx))
           .store(EMPTY_KEY, cuda::std::memory_order_relaxed);
@@ -286,9 +318,9 @@ __forceinline__ __device__ void defragmentation_for_rehash(
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void refresh_bucket_meta(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M, DIM>* bucket,
+    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M>* bucket,
     const size_t bucket_max_size) {
   M min_val = MAX_META;
   int min_pos = 0;
@@ -310,11 +342,12 @@ __forceinline__ __device__ void refresh_bucket_meta(
   }
 }
 
-template <class V, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class V, uint32_t TILE_SIZE = 4>
 __device__ __forceinline__ void copy_vector(
-    cg::thread_block_tile<TILE_SIZE> const& g, const V* src, V* dst) {
-  for (auto i = g.thread_rank(); i < DIM; i += g.size()) {
-    reinterpret_cast<float*>(dst)[i] = reinterpret_cast<const float*>(src)[i];
+    cg::thread_block_tile<TILE_SIZE> const& g, const V* src, V* dst,
+    const size_t dim) {
+  for (auto i = g.thread_rank(); i < dim; i += g.size()) {
+    dst[i] = src[i];
   }
 }
 
@@ -327,7 +360,8 @@ __device__ __forceinline__ void copy_vector(
  */
 template <class V>
 void write_by_cpu(V** __restrict dst, const V* __restrict src,
-                  const int* __restrict offset, int N, int n_worker = 16) {
+                  const int* __restrict offset, size_t dim, int N,
+                  int n_worker = 16) {
   std::vector<std::thread> thds;
   if (n_worker < 1) n_worker = 1;
 
@@ -356,13 +390,13 @@ void write_by_cpu(V** __restrict dst, const V* __restrict src,
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void move_key_to_new_bucket(
     cg::thread_block_tile<TILE_SIZE> g, int rank, const K& key, const M& meta,
-    const V* __restrict vector, Bucket<K, V, M, DIM>* __restrict new_bucket,
+    const V* __restrict vector, Bucket<K, V, M>* __restrict new_bucket,
     const size_t new_bkt_idx, const size_t new_start_idx,
     int* __restrict buckets_size, const size_t bucket_max_size,
-    const size_t buckets_num) {
+    const size_t buckets_num, const size_t dim) {
   uint32_t key_pos;
   unsigned empty_vote;
   int local_size;
@@ -388,22 +422,23 @@ __forceinline__ __device__ void move_key_to_new_bucket(
       }
       local_size = g.shfl(local_size, src_lane);
       if (local_size >= bucket_max_size) {
-        refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, new_bucket,
-                                                     bucket_max_size);
+        refresh_bucket_meta<K, V, M, TILE_SIZE>(g, new_bucket, bucket_max_size);
       }
-      copy_vector<V, DIM, TILE_SIZE>(g, vector, new_bucket->vectors + key_pos);
+      copy_vector<V, TILE_SIZE>(g, vector, new_bucket->vectors + key_pos * dim,
+                                dim);
       break;
     }
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __global__ void rehash_kernel_for_fast_mode(
-    const Table<K, V, M, DIM>* __restrict table, size_t N) {
-  Bucket<K, V, M, DIM>* buckets = table->buckets;
+    const Table<K, V, M>* __restrict table, size_t N) {
+  Bucket<K, V, M>* buckets = table->buckets;
   int* __restrict buckets_size = table->buckets_size;
   const size_t bucket_max_size = table->bucket_max_size;
   const size_t buckets_num = table->buckets_num;
+  const size_t dim = table->dim;
 
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
@@ -414,7 +449,7 @@ __global__ void rehash_kernel_for_fast_mode(
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     uint32_t bkt_idx = t / TILE_SIZE;
-    Bucket<K, V, M, DIM>* bucket = (buckets + bkt_idx);
+    Bucket<K, V, M>* bucket = (buckets + bkt_idx);
 
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
     uint32_t key_idx = 0;
@@ -427,16 +462,17 @@ __global__ void rehash_kernel_for_fast_mode(
         uint32_t new_bkt_idx = global_idx / bucket_max_size;
         if (new_bkt_idx != bkt_idx) {
           start_idx = global_idx % bucket_max_size;
-          move_key_to_new_bucket<K, V, M, DIM, TILE_SIZE>(
+          move_key_to_new_bucket<K, V, M, TILE_SIZE>(
               g, rank, target_key, bucket->metas[key_idx].val,
-              (bucket->vectors + key_idx), buckets + new_bkt_idx, new_bkt_idx,
-              start_idx, buckets_size, bucket_max_size, buckets_num);
+              (bucket->vectors + key_idx * dim), buckets + new_bkt_idx,
+              new_bkt_idx, start_idx, buckets_size, bucket_max_size,
+              buckets_num, table->dim);
           if (rank == 0) {
             bucket->keys[key_idx].store(EMPTY_KEY,
                                         cuda::std::memory_order_relaxed);
             atomicSub(&(buckets_size[bkt_idx]), 1);
-            defragmentation_for_rehash<K, V, M, DIM, TILE_SIZE>(
-                bucket, key_idx, bucket_max_size, buckets_num / 2);
+            defragmentation_for_rehash<K, V, M, TILE_SIZE>(
+                bucket, key_idx, bucket_max_size, buckets_num / 2, dim);
             key_idx = 0;
           }
         } else {
@@ -460,22 +496,22 @@ __global__ void rehash_kernel_for_fast_mode(
           memory on HBM or HMEM.
    `N`: Number of vectors that need to be written.
 */
-template <class K, class V, class M, size_t DIM>
+template <class K, class V, class M>
 __global__ void write_kernel(const V* __restrict src, V** __restrict dst,
-                             const int* __restrict src_offset, size_t N) {
+                             const int* __restrict src_offset, const size_t dim,
+                             const size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / DIM);
-    int dim_index = t % DIM;
+    int vec_index = int(t / dim);
+    int dim_index = t % dim;
 
     if (dst[vec_index] != nullptr) {
       if (src_offset != nullptr) {
-        (*(dst[vec_index])).values[dim_index] =
-            src[src_offset[vec_index]].values[dim_index];
+        dst[vec_index][dim_index] =
+            src[src_offset[vec_index] * dim + dim_index];
       } else {
-        (*(dst[vec_index])).values[dim_index] =
-            src[vec_index].values[dim_index];
+        dst[vec_index][dim_index] = src[vec_index * dim + dim_index];
       }
     }
   }
@@ -496,27 +532,27 @@ __global__ void write_kernel(const V* __restrict src, V** __restrict dst,
 
    `N`: number of vectors needed to be writen.
 */
-template <class K, class V, class M, size_t DIM>
+template <class K, class V, class M>
 __global__ void write_with_accum_kernel(const V* __restrict delta_or_val,
                                         V** __restrict dst,
                                         const bool* __restrict existed,
                                         const bool* __restrict status,
                                         const int* __restrict src_offset,
-                                        size_t N) {
+                                        const size_t dim, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / DIM);
-    int dim_index = t % DIM;
+    int vec_index = int(t / dim);
+    int dim_index = t % dim;
 
     if (dst[vec_index] != nullptr &&
         existed[src_offset[vec_index]] == status[src_offset[vec_index]]) {
       if (status[src_offset[vec_index]]) {
-        (*(dst[vec_index])).values[dim_index] +=
-            delta_or_val[src_offset[vec_index]].values[dim_index];
+        dst[vec_index][dim_index] +=
+            delta_or_val[src_offset[vec_index] * dim + dim_index];
       } else {
-        (*(dst[vec_index])).values[dim_index] =
-            delta_or_val[src_offset[vec_index]].values[dim_index];
+        dst[vec_index][dim_index] =
+            delta_or_val[src_offset[vec_index] * dim + dim_index];
       }
     }
   }
@@ -530,20 +566,20 @@ __global__ void write_with_accum_kernel(const V* __restrict delta_or_val,
           memory on HBM or HMEM.
    `N`: number of vectors needed to be writen.
 */
-template <class K, class V, class M, size_t DIM>
+template <class K, class V, class M>
 __global__ void write_with_accum_kernel(const V* __restrict delta,
                                         V** __restrict dst,
                                         const int* __restrict src_offset,
-                                        size_t N) {
+                                        const size_t dim, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / DIM);
-    int dim_index = t % DIM;
+    int vec_index = int(t / dim);
+    int dim_index = t % dim;
 
     if (dst[vec_index] != nullptr) {
-      (*(dst[vec_index])).values[dim_index] +=
-          delta[src_offset[vec_index]].values[dim_index];
+      dst[vec_index][dim_index] +=
+          delta[src_offset[vec_index] * dim + dim_index];
     }
   }
 }
@@ -564,22 +600,21 @@ __global__ void write_with_accum_kernel(const V* __restrict delta,
       If true, the d_def_val will be treated as
       a full size default value which shape must be (N, DIM).
 */
-template <class K, class V, class M, size_t DIM>
+template <class K, class V, class M>
 __global__ void read_kernel(const V* const* __restrict src, V* __restrict dst,
                             const bool* mask, const int* __restrict dst_offset,
-                            size_t N) {
+                            const size_t dim, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / DIM);
-    int dim_index = t % DIM;
+    int vec_index = int(t / dim);
+    int dim_index = t % dim;
     int real_dst_offset =
         dst_offset != nullptr ? dst_offset[vec_index] : vec_index;
 
     /// Copy selected values and fill in default value for all others.
     if (mask[real_dst_offset] && src[vec_index] != nullptr) {
-      dst[real_dst_offset].values[dim_index] =
-          src[vec_index]->values[dim_index];
+      dst[real_dst_offset * dim + dim_index] = src[vec_index][dim_index];
     }
   }
 }
@@ -594,24 +629,24 @@ __global__ void read_kernel(const V* const* __restrict src, V* __restrict dst,
  *         which should be HBM.
  *  `N`: Number of vectors needed to be read.
  */
-template <class K, class V, class M, size_t DIM>
-__global__ void read_kernel(V** __restrict src, V* __restrict dst,
-                            const int* __restrict dst_offset, size_t N) {
+template <class K, class V, class M>
+__global__ void read_kernel(const V** __restrict src, V* __restrict dst,
+                            const int* __restrict dst_offset, const size_t dim,
+                            const size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / DIM);
+    int vec_index = int(t / dim);
     int real_dst_offset =
         dst_offset != nullptr ? dst_offset[vec_index] : vec_index;
-    int dim_index = t % DIM;
+    int dim_index = t % dim;
     if (src[vec_index] != nullptr) {
-      dst[real_dst_offset].values[dim_index] =
-          src[vec_index]->values[dim_index];
+      dst[real_dst_offset * dim + dim_index] = src[vec_index * dim + dim_index];
     }
   }
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __device__ __forceinline__ unsigned find_in_bucket(
     cg::thread_block_tile<TILE_SIZE> g,
     const AtomicKey<K>* __restrict bucket_keys, const K& find_key,
@@ -638,10 +673,10 @@ __device__ __forceinline__ unsigned find_in_bucket(
   return 0;
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ OccupyResult
 try_occupy(cg::thread_block_tile<TILE_SIZE> g,
-           const Bucket<K, V, M, DIM>* __restrict bucket, K find_key,
+           const Bucket<K, V, M>* __restrict bucket, K find_key,
            AtomicKey<K>* current_atomic_key) {
   K expected_key = static_cast<K>(EMPTY_KEY);
   if (current_atomic_key->compare_exchange_strong(
@@ -660,9 +695,9 @@ try_occupy(cg::thread_block_tile<TILE_SIZE> g,
   return OccupyResult::CONTINUE;
 }
 
-template <class K, class V, class M, size_t DIM>
-__forceinline__ __device__ Bucket<K, V, M, DIM>* get_key_position(
-    Bucket<K, V, M, DIM>* __restrict buckets, const K key, size_t& bkt_idx,
+template <class K, class V, class M>
+__forceinline__ __device__ Bucket<K, V, M>* get_key_position(
+    Bucket<K, V, M>* __restrict buckets, const K key, size_t& bkt_idx,
     size_t& start_idx, const size_t buckets_num, const size_t bucket_max_size) {
   uint32_t hashed_key = Murmur3HashDevice(key);
   size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
@@ -671,10 +706,11 @@ __forceinline__ __device__ Bucket<K, V, M, DIM>* get_key_position(
   return buckets + bkt_idx;
 }
 
-template <class K, class V, class M, size_t DIM>
-__forceinline__ __device__ void update_meta(
-    Bucket<K, V, M, DIM>* __restrict bucket, const int key_pos,
-    const M* __restrict metas, const int key_idx) {
+template <class K, class V, class M>
+__forceinline__ __device__ void update_meta(Bucket<K, V, M>* __restrict bucket,
+                                            const int key_pos,
+                                            const M* __restrict metas,
+                                            const int key_idx) {
   if (bucket->metas == nullptr) return;
   if (metas == nullptr) {
     M cur_meta = bucket->cur_meta + 1;
@@ -686,19 +722,20 @@ __forceinline__ __device__ void update_meta(
   return;
 }
 
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
-__global__ void upsert_kernel_with_io(
-    const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__forceinline__ __device__ void upsert_kernel_with_io_core(
+    const Table<K, V, M>* __restrict table, const K* __restrict keys,
     const V* __restrict values, const M* __restrict metas, size_t N) {
-  Bucket<K, V, M, DIM>* buckets = table->buckets;
+  Bucket<K, V, M>* buckets = table->buckets;
   int* buckets_size = table->buckets_size;
   const size_t bucket_max_size = table->bucket_max_size;
   const size_t buckets_num = table->buckets_num;
+  const size_t dim = table->dim;
 
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
-  Bucket<K, V, M, DIM>* bucket;
+  Bucket<K, V, M>* bucket;
   unsigned found_vote;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
@@ -707,7 +744,7 @@ __global__ void upsert_kernel_with_io(
     int local_size = 0;
 
     const K insert_key = keys[key_idx];
-    const V* insert_value = values + key_idx;
+    const V* insert_value = values + key_idx * dim;
 
     size_t bkt_idx = 0;
     size_t start_idx = 0;
@@ -717,23 +754,22 @@ __global__ void upsert_kernel_with_io(
     bucket = get_key_position<K>(buckets, insert_key, bkt_idx, start_idx,
                                  buckets_num, bucket_max_size);
 
-    found_vote = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
+    found_vote = find_in_bucket<K, V, M, TILE_SIZE>(
         g, bucket->keys, insert_key, tile_offset, start_idx, bucket_max_size);
 
     if (found_vote) {
       src_lane = __ffs(found_vote) - 1;
       key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-      auto dst = bucket->vectors + key_pos;
+      auto dst = bucket->vectors + key_pos * dim;
 
       if (rank == src_lane) {
         update_meta(bucket, key_pos, metas, key_idx);
       }
       if (local_size >= bucket_max_size) {
-        refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket,
-                                                     bucket_max_size);
+        refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
       }
       lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx], src_lane);
-      copy_vector<V, DIM, TILE_SIZE>(g, insert_value, dst);
+      copy_vector<V, TILE_SIZE>(g, insert_value, dst, dim);
       unlock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx], src_lane);
       continue;
     }
@@ -757,12 +793,11 @@ __global__ void upsert_kernel_with_io(
           update_meta(bucket, key_pos, metas, key_idx);
         }
         if (local_size >= bucket_max_size) {
-          refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket,
-                                                       bucket_max_size);
+          refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
         }
         lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
-        copy_vector<V, DIM, TILE_SIZE>(g, values + key_idx,
-                                       bucket->vectors + key_pos);
+        copy_vector<V, TILE_SIZE>(g, insert_value,
+                                  bucket->vectors + key_pos * dim, dim);
         unlock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
 
         break;
@@ -777,8 +812,8 @@ __global__ void upsert_kernel_with_io(
         AtomicKey<K>* current_atomic_key = &(bucket->keys[key_pos]);
 
         if (rank == src_lane) {
-          occupy_result = try_occupy<K, V, M, DIM, TILE_SIZE>(
-              g, bucket, insert_key, current_atomic_key);
+          occupy_result = try_occupy<K, V, M, TILE_SIZE>(g, bucket, insert_key,
+                                                         current_atomic_key);
         }
 
         occupy_result = g.shfl(occupy_result, src_lane);
@@ -794,12 +829,11 @@ __global__ void upsert_kernel_with_io(
           local_size++;
 
           if (local_size >= bucket_max_size) {
-            refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket,
-                                                         bucket_max_size);
+            refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
           }
           lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
-          copy_vector<V, DIM, TILE_SIZE>(g, values + key_idx,
-                                         bucket->vectors + key_pos);
+          copy_vector<V, TILE_SIZE>(g, insert_value,
+                                    bucket->vectors + key_pos * dim, dim);
           unlock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
           break;
         } else if (occupy_result == OccupyResult::DUPLICATE) {
@@ -820,42 +854,82 @@ __global__ void upsert_kernel_with_io(
                                     cuda::std::memory_order_relaxed);
         update_meta(bucket, key_pos, metas, key_idx);
       }
-      refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket, bucket_max_size);
+      refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
       lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
-      copy_vector<V, DIM, TILE_SIZE>(g, values + key_idx,
-                                     bucket->vectors + key_pos);
+      copy_vector<V, TILE_SIZE>(g, insert_value,
+                                bucket->vectors + key_pos * dim, dim);
       unlock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
     }
   }
 }
 
-template <typename K, typename V, typename M, size_t DIM>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void upsert_kernel_with_io(const int c_table_index_,
+                                      const K* __restrict keys,
+                                      const V* __restrict values,
+                                      const M* __restrict metas, size_t N) {
+  const Table<K, V, M>* table = reinterpret_cast<const Table<K, V, M>*>(
+      c_table_ + c_table_index_ * sizeof(Table<K, V, M>));
+  upsert_kernel_with_io_core<K, V, M, TILE_SIZE>(table, keys, values, metas, N);
+}
+
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void upsert_kernel_with_io(const Table<K, V, M>* table,
+                                      const K* __restrict keys,
+                                      const V* __restrict values,
+                                      const M* __restrict metas, size_t N) {
+  upsert_kernel_with_io_core<K, V, M, TILE_SIZE>(table, keys, values, metas, N);
+}
+
+template <typename K, typename V, typename M>
 struct SelectUpsertKernelWithIO {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, M, DIM>* __restrict table,
+                             const int c_table_index_,
+                             const Table<K, V, M>* __restrict table,
                              const K* __restrict keys,
                              const V* __restrict values,
                              const M* __restrict metas) {
     if (load_factor <= 0.5) {
-      const unsigned int tile_size = 2;
+      const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      upsert_kernel_with_io<K, V, M, DIM, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas, N);
+      if (c_table_index_ >= 0) {
+        upsert_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(c_table_index_, keys, values,
+                                                   metas, N);
+      } else {
+        upsert_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
+                                                   N);
+      }
 
     } else if (load_factor <= 0.875) {
       const unsigned int tile_size = 8;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      upsert_kernel_with_io<K, V, M, DIM, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas, N);
+      if (c_table_index_ >= 0) {
+        upsert_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(c_table_index_, keys, values,
+                                                   metas, N);
+      } else {
+        upsert_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
+                                                   N);
+      }
     } else {
       const unsigned int tile_size = 16;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      upsert_kernel_with_io<K, V, M, DIM, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas, N);
+      if (c_table_index_ >= 0) {
+        upsert_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(c_table_index_, keys, values,
+                                                   metas, N);
+      } else {
+        upsert_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
+                                                   N);
+      }
     }
     return;
   }
@@ -863,20 +937,21 @@ struct SelectUpsertKernelWithIO {
 
 /* Upsert with the end-user specified meta.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
-__global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void upsert_kernel(const Table<K, V, M>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,
                               const M* __restrict metas,
                               int* __restrict src_offset, size_t N) {
-  Bucket<K, V, M, DIM>* buckets = table->buckets;
+  Bucket<K, V, M>* buckets = table->buckets;
   int* buckets_size = table->buckets_size;
   const size_t bucket_max_size = table->bucket_max_size;
   const size_t buckets_num = table->buckets_num;
+  const size_t dim = table->dim;
 
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
-  Bucket<K, V, M, DIM>* bucket;
+  Bucket<K, V, M>* bucket;
   unsigned found_vote;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
@@ -898,7 +973,7 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
       *(src_offset + key_idx) = key_idx;
     }
 
-    found_vote = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
+    found_vote = find_in_bucket<K, V, M, TILE_SIZE>(
         g, bucket->keys, insert_key, tile_offset, start_idx, bucket_max_size);
 
     if (found_vote) {
@@ -907,11 +982,10 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
 
       if (rank == src_lane) {
         update_meta(bucket, key_pos, metas, key_idx);
-        *(vectors + key_idx) = (bucket->vectors + key_pos);
+        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
       }
       if (local_size >= bucket_max_size) {
-        refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket,
-                                                     bucket_max_size);
+        refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
       }
       continue;
     }
@@ -933,11 +1007,10 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
         key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
         if (rank == src_lane) {
           update_meta(bucket, key_pos, metas, key_idx);
-          *(vectors + key_idx) = (bucket->vectors + key_pos);
+          *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
         }
         if (local_size >= bucket_max_size) {
-          refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket,
-                                                       bucket_max_size);
+          refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
         }
 
         break;
@@ -952,8 +1025,8 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
         AtomicKey<K>* current_atomic_key = &(bucket->keys[key_pos]);
 
         if (rank == src_lane) {
-          occupy_result = try_occupy<K, V, M, DIM, TILE_SIZE>(
-              g, bucket, insert_key, current_atomic_key);
+          occupy_result = try_occupy<K, V, M, TILE_SIZE>(g, bucket, insert_key,
+                                                         current_atomic_key);
         }
 
         occupy_result = g.shfl(occupy_result, src_lane);
@@ -965,13 +1038,12 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
           if (rank == src_lane) {
             update_meta(bucket, key_pos, metas, key_idx);
             atomicAdd(&(buckets_size[bkt_idx]), 1);
-            *(vectors + key_idx) = (bucket->vectors + key_pos);
+            *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
           }
           local_size++;
 
           if (local_size >= bucket_max_size) {
-            refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket,
-                                                         bucket_max_size);
+            refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
           }
           break;
         } else if (occupy_result == OccupyResult::DUPLICATE) {
@@ -990,24 +1062,25 @@ __global__ void upsert_kernel(const Table<K, V, M, DIM>* __restrict table,
       if (rank == src_lane) {
         bucket->keys[key_pos].store(insert_key,
                                     cuda::std::memory_order_relaxed);
-        *(vectors + key_idx) = (bucket->vectors + key_pos);
+        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
         update_meta(bucket, key_pos, metas, key_idx);
       }
-      refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket, bucket_max_size);
+      refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
     }
   }
 }
 
 /* Accum kernel with customized metas.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __global__ void accum_kernel(
-    const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
+    const Table<K, V, M>* __restrict table, const K* __restrict keys,
     V** __restrict vectors, const M* __restrict metas,
-    const bool* __restrict existed, Bucket<K, V, M, DIM>* __restrict buckets,
+    const bool* __restrict existed, Bucket<K, V, M>* __restrict buckets,
     int* __restrict buckets_size, const size_t bucket_max_size,
     const size_t buckets_num, int* __restrict src_offset,
     bool* __restrict status, size_t N) {
+  const size_t dim = table->dim;
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
@@ -1027,7 +1100,7 @@ __global__ void accum_kernel(
 
     int src_lane = -1;
 
-    Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
+    Bucket<K, V, M>* bucket = buckets + bkt_idx;
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
     if (rank == 0 && src_offset != nullptr) {
       *(src_offset + key_idx) = key_idx;
@@ -1058,14 +1131,13 @@ __global__ void accum_kernel(
               buckets_size[bkt_idx]++;
               local_size++;
             }
-            *(vectors + key_idx) = (bucket->vectors + key_pos);
+            *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
             update_meta(bucket, key_pos, metas, key_idx);
           }
         }
         local_size = g.shfl(local_size, src_lane);
         if (local_size >= bucket_max_size) {
-          refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket,
-                                                       bucket_max_size);
+          refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
         }
         break;
       }
@@ -1075,10 +1147,10 @@ __global__ void accum_kernel(
         key_pos = bucket->min_pos;
         bucket->keys[key_pos].store(insert_key,
                                     cuda::std::memory_order_relaxed);
-        *(vectors + key_idx) = (bucket->vectors + key_pos);
+        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
         update_meta(bucket, key_pos, metas, key_idx);
       }
-      refresh_bucket_meta<K, V, M, DIM, TILE_SIZE>(g, bucket, bucket_max_size);
+      refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
     }
     unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
   }
@@ -1087,14 +1159,15 @@ __global__ void accum_kernel(
 /* lookup with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
-__global__ void lookup_kernel_with_io(
-    const Table<K, V, M, DIM>* __restrict table, const K* __restrict keys,
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__forceinline__ __device__ void lookup_kernel_with_io_core(
+    const Table<K, V, M>* __restrict table, const K* __restrict keys,
     V* __restrict values, M* __restrict metas, bool* __restrict found,
     size_t N) {
-  Bucket<K, V, M, DIM>* buckets = table->buckets;
+  Bucket<K, V, M>* buckets = table->buckets;
   const size_t bucket_max_size = table->bucket_max_size;
   const size_t buckets_num = table->buckets_num;
+  const size_t dim = table->dim;
 
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
@@ -1104,25 +1177,25 @@ __global__ void lookup_kernel_with_io(
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
-    V* find_value = values + key_idx;
+    V* find_value = values + key_idx * dim;
 
     int key_pos = -1;
     size_t bkt_idx = 0;
     size_t start_idx = 0;
     uint32_t tile_offset = 0;
 
-    Bucket<K, V, M, DIM>* bucket = get_key_position<K>(
+    Bucket<K, V, M>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
-    auto const found_vote = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
+    auto const found_vote = find_in_bucket<K, V, M, TILE_SIZE>(
         g, bucket->keys, find_key, tile_offset, start_idx, bucket_max_size);
 
     if (found_vote) {
       const int src_lane = __ffs(found_vote) - 1;
       key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-      const V* src = bucket->vectors + key_pos;
+      const V* src = bucket->vectors + key_pos * dim;
       lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
-      copy_vector<V, DIM, TILE_SIZE>(g, src, find_value);
+      copy_vector<V, TILE_SIZE>(g, src, find_value, dim);
       unlock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
 
       if (rank == 0) {
@@ -1137,27 +1210,60 @@ __global__ void lookup_kernel_with_io(
   }
 }
 
-template <typename K, typename V, typename M, size_t DIM>
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void lookup_kernel_with_io(const int c_table_index_,
+                                      const K* __restrict keys,
+                                      V* __restrict values, M* __restrict metas,
+                                      bool* __restrict found, size_t N) {
+  const Table<K, V, M>* table = reinterpret_cast<const Table<K, V, M>*>(
+      c_table_ + c_table_index_ * sizeof(Table<K, V, M>));
+  lookup_kernel_with_io_core<K, V, M, TILE_SIZE>(table, keys, values, metas,
+                                                 found, N);
+}
+
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void lookup_kernel_with_io(const Table<K, V, M>* table,
+                                      const K* __restrict keys,
+                                      V* __restrict values, M* __restrict metas,
+                                      bool* __restrict found, size_t N) {
+  lookup_kernel_with_io_core<K, V, M, TILE_SIZE>(table, keys, values, metas,
+                                                 found, N);
+}
+
+template <typename K, typename V, typename M>
 struct SelectLookupKernelWithIO {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, M, DIM>* __restrict table,
+                             const int c_table_index_,
+                             const Table<K, V, M>* __restrict table,
                              const K* __restrict keys, V* __restrict values,
                              M* __restrict metas, bool* __restrict found) {
     if (load_factor <= 0.9) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      lookup_kernel_with_io<K, V, M, DIM, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
-                                                 found, N);
+      if (c_table_index_ >= 0) {
+        lookup_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(c_table_index_, keys, values,
+                                                   metas, found, N);
+      } else {
+        lookup_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
+                                                   found, N);
+      }
     } else {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      lookup_kernel_with_io<K, V, M, DIM, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
-                                                 found, N);
+      if (c_table_index_ >= 0) {
+        lookup_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(c_table_index_, keys, values,
+                                                   metas, found, N);
+      } else {
+        lookup_kernel_with_io<K, V, M, tile_size>
+            <<<grid_size, block_size, 0, stream>>>(table, keys, values, metas,
+                                                   found, N);
+      }
     }
     return;
   }
@@ -1165,14 +1271,15 @@ struct SelectLookupKernelWithIO {
 
 /* lookup kernel.
  */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
-__global__ void lookup_kernel(const Table<K, V, M, DIM>* __restrict table,
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void lookup_kernel(const Table<K, V, M>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,
                               M* __restrict metas, bool* __restrict found,
                               int* __restrict dst_offset, size_t N) {
-  Bucket<K, V, M, DIM>* buckets = table->buckets;
+  Bucket<K, V, M>* buckets = table->buckets;
   const size_t bucket_max_size = table->bucket_max_size;
   const size_t buckets_num = table->buckets_num;
+  const size_t dim = table->dim;
 
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
@@ -1188,21 +1295,21 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM>* __restrict table,
     size_t start_idx = 0;
     uint32_t tile_offset = 0;
 
-    Bucket<K, V, M, DIM>* bucket = get_key_position<K>(
+    Bucket<K, V, M>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     if (dst_offset != nullptr) {
       *(dst_offset + key_idx) = key_idx;
     }
 
-    auto const found_vote = find_in_bucket<K, V, M, DIM, TILE_SIZE>(
+    auto const found_vote = find_in_bucket<K, V, M, TILE_SIZE>(
         g, bucket->keys, find_key, tile_offset, start_idx, bucket_max_size);
     if (found_vote) {
       const int src_lane = __ffs(found_vote) - 1;
       key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
 
       if (rank == 0) {
-        *(vectors + key_idx) = (bucket->vectors + key_pos);
+        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
 
         if (metas != nullptr) {
           *(metas + key_idx) = bucket->metas[key_pos].val;
@@ -1220,15 +1327,15 @@ __global__ void lookup_kernel(const Table<K, V, M, DIM>* __restrict table,
 }
 
 /* Clear all key-value in the table. */
-template <class K, class V, class M, size_t DIM>
-__global__ void clear_kernel(Table<K, V, M, DIM>* __restrict table, size_t N) {
+template <class K, class V, class M>
+__global__ void clear_kernel(Table<K, V, M>* __restrict table, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const size_t bucket_max_size = table->bucket_max_size;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t % bucket_max_size;
     int bkt_idx = t / bucket_max_size;
-    Bucket<K, V, M, DIM>* bucket = &(table->buckets[bkt_idx]);
+    Bucket<K, V, M>* bucket = &(table->buckets[bkt_idx]);
 
     bucket->keys[key_idx].store(EMPTY_KEY, cuda::std::memory_order_relaxed);
     if (key_idx == 0) {
@@ -1238,10 +1345,10 @@ __global__ void clear_kernel(Table<K, V, M, DIM>* __restrict table, size_t N) {
 }
 
 /* Remove specified keys. */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 4>
-__global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void remove_kernel(const Table<K, V, M>* __restrict table,
                               const K* __restrict keys,
-                              Bucket<K, V, M, DIM>* __restrict buckets,
+                              Bucket<K, V, M>* __restrict buckets,
                               int* __restrict buckets_size,
                               const size_t bucket_max_size,
                               const size_t buckets_num, size_t N) {
@@ -1258,7 +1365,7 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
     size_t start_idx = 0;
     uint32_t tile_offset = 0;
 
-    Bucket<K, V, M, DIM>* bucket = get_key_position<K>(
+    Bucket<K, V, M>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     unsigned found_vote = 0;
@@ -1296,12 +1403,12 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
 }
 
 /* Remove specified keys which match the Predict. */
-template <class K, class V, class M, size_t DIM, uint32_t TILE_SIZE = 1>
-__global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
+template <class K, class V, class M, uint32_t TILE_SIZE = 1>
+__global__ void remove_kernel(const Table<K, V, M>* __restrict table,
                               const EraseIfPredictInternal<K, M> pred,
                               const K pattern, const M threshold,
                               size_t* __restrict count,
-                              Bucket<K, V, M, DIM>* __restrict buckets,
+                              Bucket<K, V, M>* __restrict buckets,
                               int* __restrict buckets_size,
                               const size_t bucket_max_size,
                               const size_t buckets_num, size_t N) {
@@ -1312,7 +1419,7 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
     uint32_t bkt_idx = t;
     uint32_t key_pos = 0;
 
-    Bucket<K, V, M, DIM>* bucket = buckets + bkt_idx;
+    Bucket<K, V, M>* bucket = buckets + bkt_idx;
 
     K current_key = 0;
     uint32_t key_offset = 0;
@@ -1338,9 +1445,9 @@ __global__ void remove_kernel(const Table<K, V, M, DIM>* __restrict table,
 }
 
 /* Dump with meta. */
-template <class K, class V, class M, size_t DIM>
-__global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
-                            K* d_key, V* __restrict d_val, M* __restrict d_meta,
+template <class K, class V, class M>
+__global__ void dump_kernel(const Table<K, V, M>* __restrict table, K* d_key,
+                            V* __restrict d_val, M* __restrict d_meta,
                             const size_t offset, const size_t search_length,
                             size_t* d_dump_counter) {
   extern __shared__ unsigned char s[];
@@ -1351,6 +1458,7 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
   const size_t bucket_max_size = table->bucket_max_size;
+  const size_t dim = table->dim;
 
   const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1362,15 +1470,15 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
   if (tid < search_length) {
     int bkt_idx = (tid + offset) / bucket_max_size;
     int key_idx = (tid + offset) % bucket_max_size;
-    Bucket<K, V, M, DIM>* bucket = &(table->buckets[bkt_idx]);
+    Bucket<K, V, M>* bucket = &(table->buckets[bkt_idx]);
     const K key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
 
     if (key != EMPTY_KEY) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
-      for (int i = 0; i < DIM; i++) {
-        block_result_val[local_index].values[i] =
-            bucket->vectors[key_idx].values[i];
+      for (int i = 0; i < dim; i++) {
+        block_result_val[local_index * dim + i] =
+            bucket->vectors[key_idx * dim + i];
       }
       if (d_meta != nullptr) {
         block_result_meta[local_index] = bucket->metas[key_idx].val;
@@ -1386,9 +1494,9 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
 
   if (threadIdx.x < block_acc) {
     d_key[global_acc + threadIdx.x] = block_result_key[threadIdx.x];
-    for (int i = 0; i < DIM; i++) {
-      d_val[global_acc + threadIdx.x].values[i] =
-          block_result_val[threadIdx.x].values[i];
+    for (int i = 0; i < dim; i++) {
+      d_val[(global_acc + threadIdx.x) * dim + i] =
+          block_result_val[threadIdx.x * dim + i];
     }
     if (d_meta != nullptr) {
       d_meta[global_acc + threadIdx.x] = block_result_meta[threadIdx.x];
@@ -1397,8 +1505,8 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
 }
 
 /* Dump with meta. */
-template <class K, class V, class M, size_t DIM>
-__global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
+template <class K, class V, class M>
+__global__ void dump_kernel(const Table<K, V, M>* __restrict table,
                             const EraseIfPredictInternal<K, M> pred,
                             const K pattern, const M threshold, K* d_key,
                             V* __restrict d_val, M* __restrict d_meta,
@@ -1412,6 +1520,7 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
   const size_t bucket_max_size = table->bucket_max_size;
+  const size_t dim = table->dim;
 
   const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -1423,7 +1532,7 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
   if (tid < search_length) {
     int bkt_idx = (tid + offset) / bucket_max_size;
     int key_idx = (tid + offset) % bucket_max_size;
-    Bucket<K, V, M, DIM>* bucket = &(table->buckets[bkt_idx]);
+    Bucket<K, V, M>* bucket = &(table->buckets[bkt_idx]);
 
     const K key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
     M meta = bucket->metas[key_idx].val;
@@ -1431,9 +1540,9 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
     if (key != EMPTY_KEY && pred(key, meta, pattern, threshold)) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
-      for (int i = 0; i < DIM; i++) {
-        atomicExch(&(block_result_val[local_index].values[i]),
-                   bucket->vectors[key_idx].values[i]);
+      for (int i = 0; i < dim; i++) {
+        atomicExch(&(block_result_val[local_index * dim + i]),
+                   bucket->vectors[key_idx * dim + i]);
       }
       if (d_meta != nullptr) {
         block_result_meta[local_index] = bucket->metas[key_idx].val;
@@ -1449,9 +1558,9 @@ __global__ void dump_kernel(const Table<K, V, M, DIM>* __restrict table,
 
   if (threadIdx.x < block_acc) {
     d_key[global_acc + threadIdx.x] = block_result_key[threadIdx.x];
-    for (int i = 0; i < DIM; i++) {
-      d_val[global_acc + threadIdx.x].values[i] =
-          block_result_val[threadIdx.x].values[i];
+    for (int i = 0; i < dim; i++) {
+      d_val[(global_acc + threadIdx.x) * dim + i] =
+          block_result_val[threadIdx.x * dim + i];
     }
     if (d_meta != nullptr) {
       d_meta[global_acc + threadIdx.x] = block_result_meta[threadIdx.x];
