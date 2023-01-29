@@ -39,11 +39,10 @@ namespace merlin {
  *         The item data type should be a basic data type of C++/CUDA.
  * @tparam M The data type for `meta`.
  *           The currently supported data type is only `uint64_t`.
- * @tparam D The dimension of the vectors.
  *
  */
-template <class K, class V, class M, size_t D>
-class LocalKVFile : public BaseKVFile<K, V, M, D> {
+template <class K, class V, class M>
+class LocalKVFile : public BaseKVFile<K, V, M> {
  public:
   LocalKVFile() : keys_fp_(nullptr), values_fp_(nullptr), metas_fp_(nullptr) {}
 
@@ -106,17 +105,18 @@ class LocalKVFile : public BaseKVFile<K, V, M, D> {
    *
    * @param n The number of KV pairs expect to read. `int64_t` was used
    *          here to adapt to various filesytem and formats.
+   * @param dim The dimension of the `vectors`.
    * @param keys The pointer to received buffer for keys.
    * @param vectors The pointer to received buffer for vectors.
    * @param metas The pointer to received buffer for metas.
    *
    * @return Number of KV pairs have been successfully read.
    */
-  size_t read(const size_t n, K* keys, V* vectors, M* metas) override {
+  size_t read(const size_t n, const size_t dim, K* keys, V* vectors, M* metas) override {
     size_t nread_keys =
         fread(keys, sizeof(K), static_cast<size_t>(n), keys_fp_);
     size_t nread_vecs =
-        fread(vectors, sizeof(V) * D, static_cast<size_t>(n), values_fp_);
+        fread(vectors, sizeof(V) * dim, static_cast<size_t>(n), values_fp_);
     size_t nread_metas =
         fread(metas, sizeof(M), static_cast<size_t>(n), metas_fp_);
     if (nread_keys != nread_vecs || nread_keys != nread_metas) {
@@ -130,18 +130,19 @@ class LocalKVFile : public BaseKVFile<K, V, M, D> {
    *
    * @param n The number of KV pairs to be written. `int64_t` was used
    *          here to adapt to various filesytem and formats.
+   * @param dim The dimension of the `vectors`.
    * @param keys The keys will be written to file.
    * @param vectors The vectors of values will be written to file.
    * @param metas The metas will be written to file.
    *
    * @return Number of KV pairs have been successfully written.
    */
-  size_t write(const size_t n, const K* keys, const V* vectors,
+  size_t write(const size_t n, const size_t dim, const K* keys, const V* vectors,
                const M* metas) override {
     size_t nwritten_keys =
         fwrite(keys, sizeof(K), static_cast<size_t>(n), keys_fp_);
     size_t nwritten_vecs =
-        fwrite(vectors, sizeof(V) * D, static_cast<size_t>(n), values_fp_);
+        fwrite(vectors, sizeof(V) * dim, static_cast<size_t>(n), values_fp_);
     size_t nwritten_metas =
         fwrite(metas, sizeof(M), static_cast<size_t>(n), metas_fp_);
     if (nwritten_keys != nwritten_vecs || nwritten_keys != nwritten_metas) {

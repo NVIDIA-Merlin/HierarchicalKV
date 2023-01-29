@@ -163,11 +163,15 @@ bool allEqualGpu(T* a, T* b, size_t n, cudaStream_t stream) {
   return ndiff == 0;
 }
 
-#define TableType nv::merlin::HashTable<K, V, M, DIM>
-template <typename K, typename V, typename M, size_t DIM>
+#define TableType nv::merlin::HashTable<K, V, M>
+template <typename K, typename V, typename M>
 bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
   size_t size = a->size(stream);
   if (size != b->size(stream)) {
+    return false;
+  }
+
+  if (a->dim() != b->dim()) {
     return false;
   }
 
@@ -181,10 +185,10 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
 
   getBufferOnDevice(&d_size, sizeof(size_t), stream);
   getBufferOnDevice(&d_keys, sizeof(K) * size, stream);
-  getBufferOnDevice(&d_vectors, sizeof(V) * size * DIM, stream);
+  getBufferOnDevice(&d_vectors, sizeof(V) * size * a->dim(), stream);
   getBufferOnDevice(&d_metas, sizeof(M) * size, stream);
   getBufferOnDevice(&d_founds_in_b, sizeof(bool) * size, stream);
-  getBufferOnDevice(&d_vectors_in_b, sizeof(V) * size * DIM, stream);
+  getBufferOnDevice(&d_vectors_in_b, sizeof(V) * size * a->dim(), stream);
   getBufferOnDevice(&d_metas_in_b, sizeof(M) * size, stream);
 
   a->export_batch(a->capacity(), 0, d_size, d_keys, d_vectors, d_metas, stream);
@@ -194,7 +198,7 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
                        d_founds_in_b, d_vectors_in_b, d_metas_in_b);
     return false;
   }
-  if (!allEqualGpu(d_vectors, d_vectors_in_b, size * DIM, stream)) {
+  if (!allEqualGpu(d_vectors, d_vectors_in_b, size * a->dim(), stream)) {
     CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_metas,
                        d_founds_in_b, d_vectors_in_b, d_metas_in_b);
     return false;
