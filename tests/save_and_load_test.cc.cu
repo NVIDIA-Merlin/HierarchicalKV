@@ -25,7 +25,7 @@ constexpr uint64_t DIM = 64;
 using K = int64_t;
 using M = uint64_t;
 using V = float;
-using Table = nv::merlin::HashTable<K, V, M, DIM>;
+using Table = nv::merlin::HashTable<K, V, M>;
 using TableOptions = nv::merlin::HashTableOptions;
 
 void test_save_to_file() {
@@ -65,6 +65,7 @@ void test_save_to_file() {
   TableOptions options;
   options.init_capacity = capacity;
   options.max_capacity = capacity;
+  options.dim = DIM;
   options.evict_strategy = nv::merlin::EvictStrategy::kLru;
 
   std::unique_ptr<Table> table_0 = std::make_unique<Table>();
@@ -76,7 +77,7 @@ void test_save_to_file() {
   table_0->insert_or_assign(keynum, d_keys, d_vectors, /*metas=*/nullptr,
                             stream);
   printf("Fill table_0.\n");
-  nv::merlin::LocalKVFile<K, V, M, DIM> file;
+  nv::merlin::LocalKVFile<K, V, M> file;
   std::string keys_path = prefix + ".keys";
   std::string values_path = prefix + ".values";
   std::string metas_path = prefix + ".metas";
