@@ -632,12 +632,12 @@ Program Listing for File merlin_hashtable.cuh
                     cudaStream_t stream = 0) const {
        const size_type tuple_size{sizeof(key_type) + sizeof(meta_type) +
                                   sizeof(value_type) * dim()};
-       const size_type block_size{
-           std::min(shared_mem_size_ / 2 / tuple_size, UINT64_C(1024))};
-   
        MERLIN_CHECK(max_workspace_size >= tuple_size,
                     "[HierarchicalKV] max_workspace_size is smaller than a single "
                     "`key + metadata + value` tuple! Please set a larger value!");
+   
+       const size_type block_size{
+           std::min(shared_mem_size_ / 2 / tuple_size, UINT64_C(1024))};
        MERLIN_CHECK(
            (block_size > 0),
            "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
@@ -672,7 +672,8 @@ Program Listing for File merlin_hashtable.cuh
    
          dump_kernel<key_type, value_type, meta_type>
              <<<grid_size, block_size, shared_size, stream>>>(
-                 table_, d_keys, d_values, d_metas, i, n, d_count);
+                 table_, d_keys, d_values, d_metas, i, std::min(total_size - i, n),
+                 d_count);
    
          size_type count;
          CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
@@ -705,7 +706,6 @@ Program Listing for File merlin_hashtable.cuh
                     cudaStream_t stream = 0) {
        const size_type tuple_size{sizeof(key_type) + sizeof(meta_type) +
                                   sizeof(value_type) * dim()};
-   
        MERLIN_CHECK(max_workspace_size >= tuple_size,
                     "[HierarchicalKV] max_workspace_size is smaller than a single "
                     "`key + metadata + value` tuple! Please set a larger value!");
@@ -734,8 +734,8 @@ Program Listing for File merlin_hashtable.cuh
        size_type total_count{0};
        do {
          if (count == n) {
-           CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, ws_size,
-                                      cudaMemcpyDeviceToHost, stream));
+           CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys, ws_size,
+                                      cudaMemcpyHostToDevice, stream));
          } else {
            CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys, sizeof(key_type) * count,
                                       cudaMemcpyHostToDevice, stream));
@@ -746,7 +746,7 @@ Program Listing for File merlin_hashtable.cuh
                                       cudaMemcpyHostToDevice, stream));
          }
    
-         insert_or_assign(count, d_keys, d_values, d_metas, stream);
+         insert_or_assign(count, d_keys, d_values, d_metas, stream, true);
          total_count += count;
    
          // Read next batch.
