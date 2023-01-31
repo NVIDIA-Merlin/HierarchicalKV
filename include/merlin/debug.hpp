@@ -63,7 +63,7 @@ inline void merlin_check_(bool cond, const Msg& msg, const char* file,
 }
 
 #ifdef MERLIN_CHECK
-#error Unexpected redfinition of CUDA_CHECK! Something is wrong.
+#error Unexpected redfinition of MERLIN_CHECK! Something is wrong.
 #endif
 
 #define MERLIN_CHECK(cond, msg)                                   \
