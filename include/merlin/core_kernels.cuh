@@ -34,6 +34,9 @@ namespace merlin {
  * in constant memory is supported. To close this function, please set
  * `TableOption::use_constant_memory` to `false`.
  */
+#ifndef HKV_GLOBAL_CONSTANT_TABLE_
+#define HKV_GLOBAL_CONSTANT_TABLE_
+
 constexpr int MAX_CONSTANT_TABLE = 64;
 __constant__ char
     c_table_[sizeof(Table<uint64_t, float, uint64_t>) * MAX_CONSTANT_TABLE];
@@ -58,6 +61,8 @@ void release_constant_table(int table_index) {
   if (table_index < 0 || table_index >= MAX_CONSTANT_TABLE) return;
   constant_table_flag = constant_table_flag & (~(1l << table_index));
 }
+
+#endif
 
 template <class M>
 __global__ void create_locks(M* __restrict mutex, const size_t start,
