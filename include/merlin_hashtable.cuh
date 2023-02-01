@@ -175,7 +175,7 @@ class HashTable {
       initialized_ = false;
       destroy_table<key_type, value_type, meta_type>(&table_);
       CUDA_CHECK(cudaFree(d_table_));
-      release_constant_table(c_table_index_);
+      release_constant_table<>(c_table_index_);
       dev_mem_pool_.reset();
       host_mem_pool_.reset();
     }
@@ -214,7 +214,7 @@ class HashTable {
                  "`max_hbm_for_vectors` is not 0!");
     CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
     if (options_.use_constant_memory && c_table_index_ == -1) {
-      c_table_index_ = allocate_constant_table();
+      c_table_index_ = allocate_constant_table<>();
     }
     sync_table_configuration();
 

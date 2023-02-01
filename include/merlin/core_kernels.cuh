@@ -30,16 +30,18 @@ namespace cg = cooperative_groups;
 namespace nv {
 namespace merlin {
 
-/* For improving performance consideration, allocating up to 32 table structures
+/* For improving performance consideration, allocating up to 64 table structures
  * in constant memory is supported. To close this function, please set
  * `TableOption::use_constant_memory` to `false`.
  */
 constexpr int MAX_CONSTANT_TABLE = 64;
+static std::mutex constant_table_mutex;
+static uint64_t constant_table_flag = 0;
+
 __constant__ char
     c_table_[sizeof(Table<uint64_t, float, uint64_t>) * MAX_CONSTANT_TABLE];
-std::mutex constant_table_mutex;
-uint64_t constant_table_flag = 0;
 
+template <class T = uint64_t>
 int allocate_constant_table() {
   std::lock_guard<std::mutex> guard(constant_table_mutex);
   if (constant_table_flag == std::numeric_limits<uint64_t>::max()) return -1;
@@ -53,6 +55,7 @@ int allocate_constant_table() {
   return table_index;
 }
 
+template <class T = uint64_t>
 void release_constant_table(int table_index) {
   std::lock_guard<std::mutex> guard(constant_table_mutex);
   if (table_index < 0 || table_index >= MAX_CONSTANT_TABLE) return;
