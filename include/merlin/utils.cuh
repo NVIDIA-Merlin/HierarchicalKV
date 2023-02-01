@@ -59,17 +59,6 @@ __inline__ __device__ signed char atomicExch(signed char* address,
   return old;
 }
 
-// TODO(jamesrong): this API will not confirm atomic, just for compiling
-// successfully with framework in the TensorFlow ecosystem.
-#ifdef GOOGLE_CUDA
-__inline__ __device__ Eigen::half atomicExch(Eigen::half* address,
-                                             Eigen::half val) {
-  Eigen::half old = *address;
-  *address = val;
-  return old;
-}
-#endif
-
 __inline__ __device__ int64_t atomicAdd(int64_t* address, const int64_t val) {
   return (int64_t)atomicAdd((unsigned long long*)address, val);
 }
