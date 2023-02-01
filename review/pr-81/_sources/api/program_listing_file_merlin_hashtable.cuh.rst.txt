@@ -31,6 +31,7 @@ Program Listing for File merlin_hashtable.cuh
    #include <thrust/device_vector.h>
    #include <thrust/execution_policy.h>
    #include <thrust/sort.h>
+   #include <atomic>
    #include <cstdint>
    #include <limits>
    #include <mutex>
@@ -56,11 +57,15 @@ Program Listing for File merlin_hashtable.cuh
      size_t max_capacity = 0;         
      size_t max_hbm_for_vectors = 0;  
      size_t max_bucket_size = 128;    
+     size_t dim = 64;                 
      float max_load_factor = 0.5f;    
-     int block_size = 1024;           
+     int block_size = 128;            
+     int io_block_size = 1024;        
      int device_id = 0;               
      bool io_by_cpu = false;  
      EvictStrategy evict_strategy = EvictStrategy::kLru;  
+     bool use_constant_memory =
+         true;  
      MemoryPoolOptions
          device_memory_pool;  
      MemoryPoolOptions
@@ -75,26 +80,17 @@ Program Listing for File merlin_hashtable.cuh
        const M& threshold  
    );
    
-   template <class K, class V, class M, size_t D>
+   template <class K, class V, class M = uint64_t>
    class HashTable {
     public:
-     struct Vector {
-       using value_type = V;
-       static constexpr size_t DIM = D;
-       value_type values[DIM];
-     };
-   
-    public:
      using size_type = size_t;
-     static constexpr size_type DIM = D;
      using key_type = K;
      using value_type = V;
-     using vector_type = Vector;
      using meta_type = M;
      using Pred = EraseIfPredict<key_type, meta_type>;
    
     private:
-     using TableCore = nv::merlin::Table<key_type, vector_type, meta_type, DIM>;
+     using TableCore = nv::merlin::Table<key_type, value_type, meta_type>;
      static constexpr unsigned int TILE_SIZE = 4;
    
      using DeviceMemoryPool = MemoryPool<DeviceAllocator<char>>;
@@ -112,13 +108,15 @@ Program Listing for File merlin_hashtable.cuh
      HashTable(){};
    
      ~HashTable() {
-       CUDA_CHECK(cudaDeviceSynchronize());
-   
        unlink_external_storage();
    
-       // Erase table.
        if (initialized_) {
-         destroy_table<key_type, vector_type, meta_type, DIM>(&table_);
+         CUDA_CHECK(cudaDeviceSynchronize());
+   
+         initialized_ = false;
+         destroy_table<key_type, value_type, meta_type>(&table_);
+         CUDA_CHECK(cudaFree(d_table_));
+         release_constant_table<>(c_table_index_);
          dev_mem_pool_.reset();
          host_mem_pool_.reset();
        }
@@ -131,9 +129,7 @@ Program Listing for File merlin_hashtable.cuh
      HashTable& operator=(HashTable&&) = delete;
    
     public:
-    public:
      void init(const HashTableOptions options) {
-       // Prevent double initialization.
        if (initialized_) {
          return;
        }
@@ -144,14 +140,19 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(cudaSetDevice(options_.device_id));
        CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
        shared_mem_size_ = deviceProp.sharedMemPerBlock;
-       create_table<key_type, vector_type, meta_type, DIM>(
-           &table_, options_.init_capacity, options_.max_capacity,
+       create_table<key_type, value_type, meta_type>(
+           &table_, options_.dim, options_.init_capacity, options_.max_capacity,
            options_.max_hbm_for_vectors, options_.max_bucket_size);
        options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
        reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
        MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
                     "[HierarchicalKV] `io_by_cpu` should not be true when "
                     "`max_hbm_for_vectors` is not 0!");
+       CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
+       if (options_.use_constant_memory && c_table_index_ == -1) {
+         c_table_index_ = allocate_constant_table<>();
+       }
+       sync_table_configuration();
    
        // Create memory pools.
        dev_mem_pool_ = std::make_unique<MemoryPool<DeviceAllocator<char>>>(
@@ -160,8 +161,8 @@ Program Listing for File merlin_hashtable.cuh
            options_.host_memory_pool);
    
        CUDA_CHECK(cudaDeviceSynchronize());
-       CudaCheckError();
        initialized_ = true;
+       CudaCheckError();
      }
    
      void insert_or_assign(const size_type n,
@@ -189,54 +190,37 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (is_fast_mode()) {
-         const size_t block_size = options_.block_size;
-         const size_t N = n * TILE_SIZE;
-         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+         using Selector =
+             SelectUpsertKernelWithIO<key_type, value_type, meta_type>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
    
-         if (metas == nullptr) {
-           upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, reinterpret_cast<const vector_type*>(values),
-                   table_->buckets, table_->buckets_size, table_->bucket_max_size,
-                   table_->buckets_num, N);
-         } else {
-           upsert_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, reinterpret_cast<const vector_type*>(values),
-                   metas, table_->buckets, table_->buckets_size,
-                   table_->bucket_max_size, table_->buckets_num, N);
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor();
          }
-       } else {
-         const size_t dev_ws_size = n * (sizeof(vector_type*) + sizeof(int));
-         auto dev_ws = dev_mem_pool_->get_workspace<1>(
-             dev_ws_size + (ext_store_ ? n * sizeof(key_type) : 0), stream);
-         auto d_dst = dev_ws.get<vector_type**>(0);
-         auto d_src_offset = reinterpret_cast<int*>(d_dst + n);
-         auto d_evicted_keys =
-             ext_store_ ? reinterpret_cast<key_type*>(d_src_offset + n) : nullptr;
    
-         CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
+         Selector::execute_kernel(load_factor, options_.block_size, stream, n,
+                                  c_table_index_, d_table_, keys, values, metas);
+       } else {
+         const size_type dev_ws_base_size{n * (sizeof(value_type*) + sizeof(int))};
+         const size_type dev_ws_size{dev_ws_base_size +
+                                     (ext_store_ ? n : 0) * sizeof(key_type)};
+         auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+         auto d_dst{dev_ws.get<value_type**>(0)};
+         auto d_src_offset{reinterpret_cast<int*>(d_dst + n)};
+         auto d_evicted_keys{reinterpret_cast<key_type*>(d_src_offset + n)};
+   
+         CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_base_size, stream));
    
          {
            const size_t block_size = options_.block_size;
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           if (metas == nullptr) {
-             upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-                 <<<grid_size, block_size, 0, stream>>>(
-                     table_, keys,
-                     /* d_evicted_keys, */ d_dst, table_->buckets,
-                     table_->buckets_size, table_->bucket_max_size,
-                     table_->buckets_num, d_src_offset, N);
-           } else {
-             upsert_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-                 <<<grid_size, block_size, 0, stream>>>(
-                     table_, keys,
-                     /* d_evicted_keys, */ d_dst, metas, table_->buckets,
-                     table_->buckets_size, table_->bucket_max_size,
-                     table_->buckets_num, d_src_offset, N);
-           }
+           upsert_kernel<key_type, value_type, meta_type, TILE_SIZE>
+               <<<grid_size, block_size, 0, stream>>>(
+                   d_table_, keys, ext_store_ ? d_evicted_keys : nullptr, d_dst,
+                   metas, d_src_offset, N);
          }
    
          if (ext_store_) {
@@ -255,29 +239,29 @@ Program Listing for File merlin_hashtable.cuh
          }
    
          if (options_.io_by_cpu) {
-           const size_t host_ws_size =
-               n * (sizeof(vector_type*) + sizeof(int) + sizeof(vector_type));
-           auto host_ws = host_mem_pool_->get_workspace<1>(host_ws_size, stream);
-           auto h_dst = host_ws.get<vector_type**>(0);
-           auto h_src_offset = reinterpret_cast<int*>(h_dst + n);
-           auto h_values = reinterpret_cast<vector_type*>(h_src_offset + n);
+           const size_type host_ws_size{dev_ws_base_size +
+                                        n * sizeof(value_type) * dim()};
+           auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
+           auto h_dst{host_ws.get<value_type**>(0)};
+           auto h_src_offset{reinterpret_cast<int*>(h_dst + n)};
+           auto h_values{reinterpret_cast<value_type*>(h_src_offset + n)};
    
-           CUDA_CHECK(cudaMemcpyAsync(h_dst, d_dst, dev_ws_size,
+           CUDA_CHECK(cudaMemcpyAsync(h_dst, d_dst, dev_ws_base_size,
                                       cudaMemcpyDeviceToHost, stream));
-           CUDA_CHECK(cudaMemcpyAsync(h_values, values, host_ws_size - dev_ws_size,
+           CUDA_CHECK(cudaMemcpyAsync(h_values, values,
+                                      host_ws_size - dev_ws_base_size,
                                       cudaMemcpyDeviceToHost, stream));
            CUDA_CHECK(cudaStreamSynchronize(stream));
    
-           write_by_cpu<vector_type>(h_dst, h_values, h_src_offset, n);
+           write_by_cpu<value_type>(h_dst, h_values, h_src_offset, dim(), n);
          } else {
-           const size_t block_size = options_.block_size;
-           const size_t N = n * DIM;
+           const size_t block_size = options_.io_block_size;
+           const size_t N = n * dim();
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           write_kernel<key_type, vector_type, meta_type, DIM>
-               <<<grid_size, block_size, 0, stream>>>(
-                   reinterpret_cast<const vector_type*>(values), d_dst,
-                   d_src_offset, N);
+           write_kernel<key_type, value_type, meta_type>
+               <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
+                                                      dim(), N);
          }
        }
    
@@ -309,12 +293,12 @@ Program Listing for File merlin_hashtable.cuh
          lock.lock();
        }
    
-       const size_t dev_ws_size =
-           n * (sizeof(vector_type*) + sizeof(int) + sizeof(bool));
-       auto dev_ws = dev_mem_pool_->get_workspace<1>(dev_ws_size, stream);
-       auto dst = dev_ws.get<vector_type**>(0);
-       auto src_offset = reinterpret_cast<int*>(dst + n);
-       auto founds = reinterpret_cast<bool*>(src_offset + n);
+       const size_type dev_ws_size{
+           n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
+       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+       auto dst{dev_ws.get<value_type**>(0)};
+       auto src_offset{reinterpret_cast<int*>(dst + n)};
+       auto founds{reinterpret_cast<bool*>(src_offset + n)};
    
        CUDA_CHECK(cudaMemsetAsync(dst, 0, dev_ws_size, stream));
    
@@ -323,19 +307,11 @@ Program Listing for File merlin_hashtable.cuh
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         if (metas == nullptr) {
-           accum_kernel<key_type, vector_type, meta_type, DIM>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, dst, accum_or_assigns, table_->buckets,
-                   table_->buckets_size, table_->bucket_max_size,
-                   table_->buckets_num, src_offset, founds, N);
-         } else {
-           accum_kernel<key_type, vector_type, meta_type, DIM>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, dst, metas, accum_or_assigns, table_->buckets,
-                   table_->buckets_size, table_->bucket_max_size,
-                   table_->buckets_num, src_offset, founds, N);
-         }
+         accum_kernel<key_type, value_type, meta_type>
+             <<<grid_size, block_size, 0, stream>>>(
+                 table_, keys, dst, metas, accum_or_assigns, table_->buckets,
+                 table_->buckets_size, table_->bucket_max_size,
+                 table_->buckets_num, src_offset, founds, N);
        }
    
        if (!is_fast_mode()) {
@@ -347,14 +323,14 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        {
-         const size_t block_size = options_.block_size;
-         const size_t N = n * DIM;
+         const size_t block_size = options_.io_block_size;
+         const size_t N = n * dim();
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         write_with_accum_kernel<key_type, vector_type, meta_type, DIM>
-             <<<grid_size, block_size, 0, stream>>>(
-                 reinterpret_cast<const vector_type*>(value_or_deltas), dst,
-                 accum_or_assigns, founds, src_offset, N);
+         write_with_accum_kernel<key_type, value_type, meta_type>
+             <<<grid_size, block_size, 0, stream>>>(value_or_deltas, dst,
+                                                    accum_or_assigns, founds,
+                                                    src_offset, dim(), N);
        }
    
        CudaCheckError();
@@ -377,20 +353,22 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (is_fast_mode()) {
-         const size_t block_size = options_.block_size;
-         const size_t N = n * TILE_SIZE;
-         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+         using Selector =
+             SelectLookupKernelWithIO<key_type, value_type, meta_type>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
    
-         lookup_kernel_with_io<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-             <<<grid_size, block_size, 0, stream>>>(
-                 table_, keys, reinterpret_cast<vector_type*>(values), metas,
-                 founds, table_->buckets, table_->buckets_size,
-                 table_->bucket_max_size, table_->buckets_num, N);
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor();
+         }
+         Selector::execute_kernel(load_factor, options_.block_size, stream, n,
+                                  c_table_index_, d_table_, keys, values, metas,
+                                  founds);
        } else {
-         const size_t dev_ws_size = n * (sizeof(vector_type*) + sizeof(int));
-         auto dev_ws = dev_mem_pool_->get_workspace<1>(dev_ws_size, stream);
-         auto src = dev_ws.get<vector_type**>(0);
-         auto dst_offset = reinterpret_cast<int*>(src + n);
+         const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
+         auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+         auto src{dev_ws.get<value_type**>(0)};
+         auto dst_offset{reinterpret_cast<int*>(src + n)};
    
          CUDA_CHECK(cudaMemsetAsync(src, 0, dev_ws_size, stream));
    
@@ -399,11 +377,9 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           lookup_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, keys, src, metas ? metas : nullptr, founds,
-                   table_->buckets, table_->buckets_size, table_->bucket_max_size,
-                   table_->buckets_num, dst_offset, N);
+           lookup_kernel<key_type, value_type, meta_type, TILE_SIZE>
+               <<<grid_size, block_size, 0, stream>>>(d_table_, keys, src, metas,
+                                                      founds, dst_offset, N);
          }
    
          {
@@ -416,14 +392,13 @@ Program Listing for File merlin_hashtable.cuh
          }
    
          {
-           const size_t block_size = options_.block_size;
-           const size_t N = n * DIM;
+           const size_t block_size = options_.io_block_size;
+           const size_t N = n * dim();
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           read_kernel<key_type, vector_type, meta_type, DIM>
-               <<<grid_size, block_size, 0, stream>>>(
-                   src, reinterpret_cast<vector_type*>(values), founds, dst_offset,
-                   N);
+           read_kernel<key_type, value_type, meta_type>
+               <<<grid_size, block_size, 0, stream>>>(src, values, founds,
+                                                      dst_offset, dim(), N);
          }
        }
    
@@ -440,12 +415,14 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
    
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+   
        {
          const size_t block_size = options_.block_size;
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         remove_kernel<key_type, vector_type, meta_type, DIM, TILE_SIZE>
+         remove_kernel<key_type, value_type, meta_type, TILE_SIZE>
              <<<grid_size, block_size, 0, stream>>>(
                  table_, keys, table_->buckets, table_->buckets_size,
                  table_->bucket_max_size, table_->buckets_num, N);
@@ -457,11 +434,10 @@ Program Listing for File merlin_hashtable.cuh
    
      size_type erase_if(const Pred& pred, const key_type& pattern,
                         const meta_type& threshold, cudaStream_t stream = 0) {
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       lock.lock();
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
-       auto dev_ws = dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream);
-       auto d_count = dev_ws.get<size_type*>(0);
+       auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
+       auto d_count{dev_ws.get<size_type*>(0)};
    
        CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
    
@@ -474,7 +450,7 @@ Program Listing for File merlin_hashtable.cuh
          const size_t N = table_->buckets_num;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         remove_kernel<key_type, vector_type, meta_type, DIM>
+         remove_kernel<key_type, value_type, meta_type>
              <<<grid_size, block_size, 0, stream>>>(
                  table_, h_pred, pattern, threshold, d_count, table_->buckets,
                  table_->buckets_size, table_->bucket_max_size,
@@ -500,7 +476,7 @@ Program Listing for File merlin_hashtable.cuh
        const size_t N = table_->buckets_num * table_->bucket_max_size;
        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-       clear_kernel<key_type, vector_type, meta_type, DIM>
+       clear_kernel<key_type, value_type, meta_type>
            <<<grid_size, block_size, 0, stream>>>(table_, N);
    
        CudaCheckError();
@@ -525,7 +501,8 @@ Program Listing for File merlin_hashtable.cuh
        n = std::min(table_->capacity - offset, n);
    
        const size_t meta_size = metas ? sizeof(meta_type) : 0;
-       const size_t kvm_size = sizeof(key_type) + sizeof(vector_type) + meta_size;
+       const size_t kvm_size =
+           sizeof(key_type) + sizeof(value_type) * dim() + meta_size;
        const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
        MERLIN_CHECK(
            (block_size > 0),
@@ -534,10 +511,9 @@ Program Listing for File merlin_hashtable.cuh
        const size_t shared_size = kvm_size * block_size;
        const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
    
-       dump_kernel<key_type, vector_type, meta_type, DIM>
+       dump_kernel<key_type, value_type, meta_type>
            <<<grid_size, block_size, shared_size, stream>>>(
-               table_, keys, reinterpret_cast<vector_type*>(values), metas, offset,
-               n, counter);
+               table_, keys, values, metas, offset, n, counter);
    
        CudaCheckError();
      }
@@ -547,11 +523,10 @@ Program Listing for File merlin_hashtable.cuh
                             value_type* values,          // (n, DIM)
                             meta_type* metas = nullptr,  // (n)
                             cudaStream_t stream = 0) const {
-       auto dev_ws = dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream);
-       auto d_counter = dev_ws.get<size_type*>(0);
+       auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
+       auto d_counter{dev_ws.get<size_type*>(0)};
    
        CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
-   
        export_batch(n, offset, d_counter, keys, values, metas, stream);
    
        size_type counter = 0;
@@ -580,7 +555,8 @@ Program Listing for File merlin_hashtable.cuh
        n = std::min(table_->capacity - offset, n);
    
        const size_t meta_size = metas ? sizeof(meta_type) : 0;
-       const size_t kvm_size = sizeof(key_type) + sizeof(vector_type) + meta_size;
+       const size_t kvm_size =
+           sizeof(key_type) + sizeof(value_type) * dim() + meta_size;
        const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
        MERLIN_CHECK(
            block_size > 0,
@@ -593,10 +569,9 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(cudaMemcpyFromSymbolAsync(&h_pred, pred, sizeof(Pred), 0,
                                             cudaMemcpyDeviceToHost, stream));
    
-       dump_kernel<key_type, vector_type, meta_type, DIM>
+       dump_kernel<key_type, value_type, meta_type>
            <<<grid_size, block_size, shared_size, stream>>>(
-               table_, h_pred, pattern, threshold, keys,
-               reinterpret_cast<vector_type*>(values), metas, offset, n,
+               table_, h_pred, pattern, threshold, keys, values, metas, offset, n,
                d_counter);
    
        CudaCheckError();
@@ -646,21 +621,19 @@ Program Listing for File merlin_hashtable.cuh
          while (capacity() < new_capacity &&
                 capacity() * 2 <= options_.max_capacity) {
            double_capacity(&table_);
+           CUDA_CHECK(cudaDeviceSynchronize());
+           sync_table_configuration();
    
            const size_t block_size = options_.block_size;
            const size_t N = TILE_SIZE * table_->buckets_num / 2;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           rehash_kernel_for_fast_mode<key_type, vector_type, meta_type, DIM,
-                                       TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   table_, table_->buckets, table_->buckets_size,
-                   table_->bucket_max_size, table_->buckets_num, N);
+           rehash_kernel_for_fast_mode<key_type, value_type, meta_type, TILE_SIZE>
+               <<<grid_size, block_size, 0, stream>>>(d_table_, N);
          }
          CUDA_CHECK(cudaDeviceSynchronize());
+         reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
        }
-   
-       reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
        CudaCheckError();
      }
    
@@ -668,133 +641,137 @@ Program Listing for File merlin_hashtable.cuh
        return static_cast<float>((size(stream) * 1.0) / (capacity() * 1.0));
      }
    
-     size_type save(BaseKVFile<K, V, M, DIM>* file,
-                    const size_t batch_size = 1L * 1024 * 1024,
+     size_type dim() const noexcept { return options_.dim; }
+   
+     size_type max_bucket_size() const noexcept {
+       return options_.max_bucket_size;
+     }
+   
+     size_type save(BaseKVFile<K, V, M>* file,
+                    const size_t max_workspace_size = 1L * 1024 * 1024,
                     cudaStream_t stream = 0) const {
-       MERLIN_CHECK(batch_size > 0,
-                    "[merlin-kv] batch_size <= 0, which is out of range! Please "
-                    "set a value > 0!");
+       const size_type tuple_size{sizeof(key_type) + sizeof(meta_type) +
+                                  sizeof(value_type) * dim()};
+       MERLIN_CHECK(max_workspace_size >= tuple_size,
+                    "[HierarchicalKV] max_workspace_size is smaller than a single "
+                    "`key + metadata + value` tuple! Please set a larger value!");
    
-       // Precalc some constants.
-       const size_t N = batch_size;
-   
-       const size_t kvm_size =
-           sizeof(key_type) + sizeof(vector_type) + sizeof(meta_type);
-       const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
+       const size_type block_size{
+           std::min(shared_mem_size_ / 2 / tuple_size, UINT64_C(1024))};
        MERLIN_CHECK(
-           block_size > 0,
-           "[merlin-kv] block_size <= 0, the K-V-M size may be too large!");
-       const size_t shared_size = kvm_size * block_size;
-       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+           (block_size > 0),
+           "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
    
-       // Request exclusive access.
+       // Request exclusive access (to make sure capacity won't change anymore).
        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
-       const size_type total_size = capacity();
+       const size_type total_size{capacity()};
+       const size_type n{std::min(max_workspace_size / tuple_size, total_size)};
+       const size_type shared_size{tuple_size * block_size};
+       const size_type grid_size{SAFE_GET_GRID_SIZE(n, block_size)};
    
-       // Grab temporary device workspace.
-       const size_t dev_ws_size = N * kvm_size + sizeof(size_type);
-       auto dev_ws = dev_mem_pool_->get_workspace<1>(dev_ws_size, stream);
-       auto d_keys = dev_ws.get<key_type*>(0);
-       auto d_vectors = reinterpret_cast<vector_type*>(d_keys + N);
-       auto d_metas = reinterpret_cast<meta_type*>(d_vectors + N);
-       auto d_count = reinterpret_cast<size_type*>(d_metas + N);
+       // Grab temporary device and host memory.
+       const size_type host_ws_size{n * tuple_size};
+       auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
+       auto h_keys{host_ws.get<key_type*>(0)};
+       auto h_metas{reinterpret_cast<meta_type*>(h_keys + n)};
+       auto h_values{reinterpret_cast<value_type*>(h_metas + n)};
    
-       // Grab enough host memory to hold batch data.
-       const size_t host_ws_size = N * kvm_size;
-       auto host_ws = host_mem_pool_->get_workspace<1>(host_ws_size, stream);
-       auto h_keys = host_ws.get<key_type*>(0);
-       auto h_values = reinterpret_cast<V*>(h_keys + N);
-       auto h_metas = reinterpret_cast<meta_type*>(h_values + N * DIM);
+       const size_type dev_ws_size{sizeof(size_type) + host_ws_size};
+       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+       auto d_count{dev_ws.get<size_type*>(0)};
+       auto d_keys{reinterpret_cast<key_type*>(d_count + 1)};
+       auto d_metas{reinterpret_cast<meta_type*>(d_keys + n)};
+       auto d_values{reinterpret_cast<value_type*>(d_metas + n)};
    
        // Step through table, dumping contents in batches.
-       size_type total_count = 0;
-       for (size_type offset = 0; offset < total_size; offset += batch_size) {
-         // Dump the next batch to workspace, and write it to the file.
+       size_type total_count{0};
+       for (size_type i{0}; i < total_size; i += n) {
+         // Dump the next batch to workspace, and then write it to the file.
          CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
    
-         dump_kernel<key_type, vector_type, meta_type, DIM>
+         dump_kernel<key_type, value_type, meta_type>
              <<<grid_size, block_size, shared_size, stream>>>(
-                 table_, d_keys, d_vectors, d_metas, offset, N, d_count);
+                 table_, d_keys, d_values, d_metas, i, std::min(total_size - i, n),
+                 d_count);
    
          size_type count;
          CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
                                     cudaMemcpyDeviceToHost, stream));
          CUDA_CHECK(cudaStreamSynchronize(stream));
    
-         if (count == N) {
+         if (count == n) {
            CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, host_ws_size,
                                       cudaMemcpyDeviceToHost, stream));
          } else {
            CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, sizeof(key_type) * count,
                                       cudaMemcpyDeviceToHost, stream));
-           CUDA_CHECK(cudaMemcpyAsync(h_values, d_vectors,
-                                      sizeof(vector_type) * count,
-                                      cudaMemcpyDeviceToHost, stream));
            CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(meta_type) * count,
+                                      cudaMemcpyDeviceToHost, stream));
+           CUDA_CHECK(cudaMemcpyAsync(h_values, d_values,
+                                      sizeof(value_type) * dim() * count,
                                       cudaMemcpyDeviceToHost, stream));
          }
    
          CUDA_CHECK(cudaStreamSynchronize(stream));
-   
-         file->write(count, h_keys, h_values, h_metas);
+         file->write(count, dim(), h_keys, h_values, h_metas);
          total_count += count;
        }
    
        return total_count;
      }
    
-     size_type load(BaseKVFile<K, V, M, DIM>* file,
-                    const size_t batch_size = 1L * 1024 * 1024,
+     size_type load(BaseKVFile<K, V, M>* file,
+                    const size_t max_workspace_size = 1L * 1024 * 1024,
                     cudaStream_t stream = 0) {
-       MERLIN_CHECK(batch_size > 0,
-                    "[merlin-kv] batch_size <= 0, which is out of range! Please "
-                    "set a value > 0!");
+       const size_type tuple_size{sizeof(key_type) + sizeof(meta_type) +
+                                  sizeof(value_type) * dim()};
+       MERLIN_CHECK(max_workspace_size >= tuple_size,
+                    "[HierarchicalKV] max_workspace_size is smaller than a single "
+                    "`key + metadata + value` tuple! Please set a larger value!");
    
-       // Precalc some constants.
-       const size_t n = batch_size;
-       const size_t ws_size =
-           n * (sizeof(key_type) + sizeof(value_type) + sizeof(meta_type));
+       const size_type n{max_workspace_size / tuple_size};
+       const size_type ws_size{n * tuple_size};
    
        // Grab enough host memory to hold batch data.
-       auto host_ws = host_mem_pool_->get_workspace<1>(ws_size, stream);
-       auto h_keys = host_ws.get<key_type*>(0);
-       auto h_values = reinterpret_cast<V*>(h_keys + n);
-       auto h_metas = reinterpret_cast<meta_type*>(h_values + n * DIM);
+       auto host_ws{host_mem_pool_->get_workspace<1>(ws_size, stream)};
+       auto h_keys{host_ws.get<key_type*>(0)};
+       auto h_metas{reinterpret_cast<meta_type*>(h_keys + n)};
+       auto h_values{reinterpret_cast<value_type*>(h_metas + n)};
    
        // Attempt a first read.
-       size_type count = file->read(batch_size, h_keys, h_values, h_metas);
+       size_type count{file->read(n, dim(), h_keys, h_values, h_metas)};
        if (count == 0) {
          return 0;
        }
    
        // Grab equal amount of device memory as temporary storage.
-       auto dev_ws = dev_mem_pool_->get_workspace<1>(ws_size, stream);
-       auto d_keys = dev_ws.get<key_type*>(0);
-       auto d_values = reinterpret_cast<value_type*>(d_keys + n);
-       auto d_metas = reinterpret_cast<meta_type*>(d_values + n);
+       auto dev_ws{dev_mem_pool_->get_workspace<1>(ws_size, stream)};
+       auto d_keys{dev_ws.get<key_type*>(0)};
+       auto d_metas{reinterpret_cast<meta_type*>(d_keys + n)};
+       auto d_values{reinterpret_cast<value_type*>(d_metas + n)};
    
-       size_type total_count = 0;
+       size_type total_count{0};
        do {
          if (count == n) {
-           CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, ws_size,
-                                      cudaMemcpyDeviceToHost, stream));
+           CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys, ws_size,
+                                      cudaMemcpyHostToDevice, stream));
          } else {
            CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys, sizeof(key_type) * count,
                                       cudaMemcpyHostToDevice, stream));
-           CUDA_CHECK(cudaMemcpyAsync(d_values, h_values,
-                                      sizeof(vector_type) * count,
-                                      cudaMemcpyHostToDevice, stream));
            CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas, sizeof(meta_type) * count,
+                                      cudaMemcpyHostToDevice, stream));
+           CUDA_CHECK(cudaMemcpyAsync(d_values, h_values,
+                                      sizeof(value_type) * dim() * count,
                                       cudaMemcpyHostToDevice, stream));
          }
    
-         insert_or_assign(count, d_keys, d_values, d_metas, stream);
+         insert_or_assign(count, d_keys, d_values, d_metas, stream, true);
          total_count += count;
    
          // Read next batch.
          CUDA_CHECK(cudaStreamSynchronize(stream));
-         count = file->read(batch_size, h_keys, h_values, h_metas);
+         count = file->read(n, dim(), h_keys, h_values, h_metas);
        } while (count > 0);
    
        return total_count;
@@ -803,7 +780,7 @@ Program Listing for File merlin_hashtable.cuh
      void link_external_storage(
          std::shared_ptr<external_storage_type>& ext_store) {
        MERLIN_CHECK(
-           ext_store->value_dim == DIM,
+           ext_store->value_dim == dim(),
            "Provided external storage value dimension is not incompatible!");
    
        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
@@ -851,14 +828,26 @@ Program Listing for File merlin_hashtable.cuh
        }
      }
    
+     inline void sync_table_configuration() {
+       CUDA_CHECK(
+           cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
+       if (c_table_index_ >= 0) {
+         CUDA_CHECK(cudaMemcpyToSymbol(c_table_, table_, sizeof(TableCore),
+                                       sizeof(TableCore) * c_table_index_,
+                                       cudaMemcpyDefault));
+       }
+     }
+   
     private:
      HashTableOptions options_;
      TableCore* table_ = nullptr;
+     TableCore* d_table_ = nullptr;
      size_t shared_mem_size_ = 0;
-     bool reach_max_capacity_ = false;
+     std::atomic_bool reach_max_capacity_{false};
      bool initialized_ = false;
      mutable std::shared_timed_mutex mutex_;
-   
+     const unsigned int kernel_select_interval_ = 7;
+     int c_table_index_ = -1;
      std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
      std::unique_ptr<HostMemoryPool> host_mem_pool_;
    
