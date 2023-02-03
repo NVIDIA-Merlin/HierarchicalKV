@@ -475,7 +475,6 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (offset >= table_->capacity) {
-         CUDA_CHECK(cudaMemsetAsync(counter, 0, sizeof(size_type), stream));
          return;
        }
        n = std::min(table_->capacity - offset, n);
