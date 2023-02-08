@@ -23,11 +23,6 @@
 namespace nv {
 namespace merlin {
 
-template <class M>
-struct Meta {
-  M val;
-};
-
 constexpr uint64_t EMPTY_KEY = UINT64_C(0xFFFFFFFFFFFFFFFF);
 constexpr uint64_t RECLAIM_KEY = UINT64_C(0xFFFFFFFFFFFFFFFE);
 constexpr uint64_t MAX_META = UINT64_C(0xFFFFFFFFFFFFFFFF);
@@ -36,23 +31,29 @@ constexpr uint64_t EMPTY_META = UINT64_C(0);
 template <class K>
 using AtomicKey = cuda::atomic<K, cuda::thread_scope_device>;
 
+template <class M>
+using AtomicMeta = cuda::atomic<M, cuda::thread_scope_device>;
+
+template <class T>
+using AtomicPos = cuda::atomic<T, cuda::thread_scope_device>;
+
 template <class K, class V, class M>
 struct Bucket {
-  AtomicKey<K>* keys;  // HBM
-  Meta<M>* metas;      // HBM
-  V* cache;            // HBM(optional)
-  V* vectors;          // Pinned memory or HBM
+  AtomicKey<K>* keys;    // HBM
+  AtomicMeta<M>* metas;  // HBM
+  V* cache;              // HBM(optional)
+  V* vectors;            // Pinned memory or HBM
 
   /* For upsert_kernel without user specified metas
      recording the current meta, the cur_meta will
      increment by 1 when a new inserting happens. */
-  M cur_meta;
+  AtomicMeta<M> cur_meta;
 
   /* min_meta and min_pos is for or upsert_kernel
      with user specified meta. They record the minimum
      meta and its pos in the bucket. */
-  M min_meta;
-  int min_pos;
+  AtomicMeta<M> min_meta;
+  AtomicPos<int> min_pos;
 };
 
 template <cuda::thread_scope Scope, class T = int>
@@ -178,6 +179,13 @@ enum class OccupyResult {
   OCCUPIED_EMPTY,  ///< New pair inserted successfully
   OCCUPIED_RECLAIMED,
   DUPLICATE,  ///< Insert did not succeed, key is already present,
+};
+
+enum class OverrideResult {
+  INITIAL,   ///< Initial status
+  CONTINUE,  ///< Override did not succeed, continue trying to override
+  SUCCESS,   ///< Override successfully
+  REFUSED,   ///< Override is refused.
 };
 
 }  // namespace merlin

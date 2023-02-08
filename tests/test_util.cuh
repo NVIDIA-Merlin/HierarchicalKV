@@ -206,4 +206,14 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
   return true;
 }
 
+template <typename T, std::size_t N>
+std::array<T, N> range(const T start) {
+  std::array<T, N> result;
+  size_t i = 0;
+  while (i < N) {
+    result[i] = start + i;
+    i++;
+  }
+  return result;
+}
 }  // namespace test_util
