@@ -18,6 +18,7 @@
 
 #include <cooperative_groups.h>
 #include <cooperative_groups/reduce.h>
+#include <cuda/barrier>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -92,6 +93,24 @@ __global__ void create_atomic_keys(Bucket<K, V, M>* __restrict buckets,
   }
 }
 
+template <class K, class V, class M>
+__global__ void create_atomic_metas(Bucket<K, V, M>* __restrict buckets,
+                                    const size_t start, const size_t end,
+                                    const size_t bucket_max_size) {
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+  if (start + tid < end) {
+    for (size_t i = 0; i < bucket_max_size; i++) {
+      new (&(buckets[start + tid].metas[i]))
+          AtomicMeta<M>{static_cast<M>(EMPTY_META)};
+    }
+    new (&(buckets[start + tid].cur_meta))
+        AtomicMeta<M>{static_cast<M>(EMPTY_META)};
+    new (&(buckets[start + tid].min_meta))
+        AtomicMeta<M>{static_cast<M>(EMPTY_META)};
+    new (&(buckets[start + tid].min_pos)) AtomicPos<int>{1};
+  }
+}
+
 /* 2GB per slice by default.*/
 constexpr size_t kDefaultBytesPerSlice = (8ul << 30);
 
@@ -150,7 +169,7 @@ void initialize_buckets(Table<K, V, M>** table, const size_t start,
     CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].keys),
                           (*table)->bucket_max_size * sizeof(AtomicKey<K>)));
     CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].metas),
-                          (*table)->bucket_max_size * sizeof(Meta<M>)));
+                          (*table)->bucket_max_size * sizeof(AtomicMeta<M>)));
   }
 
   {
@@ -165,6 +184,14 @@ void initialize_buckets(Table<K, V, M>** table, const size_t start,
     const size_t N = end - start + 1;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
     create_atomic_keys<K, V, M><<<grid_size, block_size>>>(
+        (*table)->buckets, start, end, (*table)->bucket_max_size);
+  }
+
+  {
+    const size_t block_size = 512;
+    const size_t N = end - start + 1;
+    const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+    create_atomic_metas<K, V, M><<<grid_size, block_size>>>(
         (*table)->buckets, start, end, (*table)->bucket_max_size);
   }
   CudaCheckError();
@@ -292,7 +319,7 @@ __forceinline__ __device__ void defragmentation_for_rehash(
   while (i < bucket_max_size) {
     key_idx = (remove_pos + i) & (bucket_max_size - 1);
     find_key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
-    if (find_key == EMPTY_KEY) {
+    if (find_key == static_cast<K>(EMPTY_KEY)) {
       break;
     }
     hashed_key = Murmur3HashDevice(find_key);
@@ -305,13 +332,16 @@ __forceinline__ __device__ void defragmentation_for_rehash(
       const K key =
           (*(bucket->keys + key_idx)).load(cuda::std::memory_order_relaxed);
       (*(bucket->keys + empty_pos)).store(key, cuda::std::memory_order_relaxed);
-      bucket->metas[empty_pos].val = bucket->metas[key_idx].val;
+      const M meta =
+          (*(bucket->metas + key_idx)).load(cuda::std::memory_order_relaxed);
+      (*(bucket->metas + empty_pos))
+          .store(meta, cuda::std::memory_order_relaxed);
       for (int j = 0; j < dim; j++) {
         bucket->vectors[empty_pos * dim + j] =
             bucket->vectors[key_idx * dim + j];
       }
       (*(bucket->keys + key_idx))
-          .store(EMPTY_KEY, cuda::std::memory_order_relaxed);
+          .store(static_cast<K>(EMPTY_KEY), cuda::std::memory_order_relaxed);
       empty_pos = key_idx;
       remove_pos = key_idx;
       i = 1;
@@ -330,18 +360,20 @@ __forceinline__ __device__ void refresh_bucket_meta(
 
   for (int i = g.thread_rank(); i < bucket_max_size; i += TILE_SIZE) {
     const K key = bucket->keys[i].load(cuda::std::memory_order_relaxed);
-    if (key == EMPTY_KEY) {
+    if (key == static_cast<K>(EMPTY_KEY) ||
+        key == static_cast<K>(RECLAIM_KEY)) {
       continue;
     }
-    if (bucket->metas[i].val < min_val) {
+    const M meta = bucket->metas[i].load(cuda::std::memory_order_acquire);
+    if (meta < min_val) {
       min_pos = i;
-      min_val = bucket->metas[i].val;
+      min_val = meta;
     }
   }
   M global_min_val = cg::reduce(g, min_val, cg::less<M>());
   if (min_val == global_min_val) {
-    bucket->min_pos = min_pos;
-    bucket->min_meta = min_val;
+    bucket->min_pos.store(min_pos, cuda::std::memory_order_release);
+    bucket->min_meta.store(min_val, cuda::std::memory_order_release);
   }
 }
 
@@ -352,6 +384,12 @@ __device__ __forceinline__ void copy_vector(
   for (auto i = g.thread_rank(); i < dim; i += g.size()) {
     dst[i] = src[i];
   }
+
+  //  cuda::barrier<cuda::thread_scope_device> bar;
+  //  init(&bar, 1);
+  //  cuda::memcpy_async(g, dst, src, dim * sizeof(V), bar);
+  //
+  //  bar.arrive_and_wait();
 }
 
 /* Write the N data from src to each address in *dst by using CPU threads,
@@ -412,7 +450,7 @@ __forceinline__ __device__ void move_key_to_new_bucket(
         (new_start_idx + tile_offset + rank) & (bucket_max_size - 1);
     const K current_key = (*(new_bucket->keys + key_offset))
                               .load(cuda::std::memory_order_relaxed);
-    empty_vote = g.ballot(current_key == EMPTY_KEY);
+    empty_vote = g.ballot(current_key == static_cast<K>(EMPTY_KEY));
     if (empty_vote) {
       src_lane = __ffs(empty_vote) - 1;
       key_pos =
@@ -420,7 +458,7 @@ __forceinline__ __device__ void move_key_to_new_bucket(
       local_size = buckets_size[new_bkt_idx];
       if (rank == src_lane) {
         new_bucket->keys[key_pos].store(key, cuda::std::memory_order_relaxed);
-        new_bucket->metas[key_pos].val = meta;
+        new_bucket->metas[key_pos].store(meta, cuda::std::memory_order_relaxed);
         atomicAdd(&(buckets_size[new_bkt_idx]), 1);
       }
       local_size = g.shfl(local_size, src_lane);
@@ -449,6 +487,7 @@ __global__ void rehash_kernel_for_fast_mode(
   size_t global_idx;
   uint32_t start_idx = 0;
   K target_key = 0;
+  M target_meta = 0;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     uint32_t bkt_idx = t / TILE_SIZE;
@@ -459,19 +498,22 @@ __global__ void rehash_kernel_for_fast_mode(
     while (key_idx < bucket_max_size) {
       key_idx = g.shfl(key_idx, 0);
       target_key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
-      if (target_key != EMPTY_KEY && target_key != RECLAIM_KEY) {
+      target_meta =
+          bucket->metas[key_idx].load(cuda::std::memory_order_relaxed);
+      if (target_key != static_cast<K>(EMPTY_KEY) &&
+          target_key != static_cast<K>(RECLAIM_KEY)) {
         K hashed_key = Murmur3HashDevice(target_key);
         global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
         uint32_t new_bkt_idx = global_idx / bucket_max_size;
         if (new_bkt_idx != bkt_idx) {
           start_idx = global_idx % bucket_max_size;
           move_key_to_new_bucket<K, V, M, TILE_SIZE>(
-              g, rank, target_key, bucket->metas[key_idx].val,
+              g, rank, target_key, target_meta,
               (bucket->vectors + key_idx * dim), buckets + new_bkt_idx,
               new_bkt_idx, start_idx, buckets_size, bucket_max_size,
               buckets_num, table->dim);
           if (rank == 0) {
-            bucket->keys[key_idx].store(EMPTY_KEY,
+            bucket->keys[key_idx].store(static_cast<K>(EMPTY_KEY),
                                         cuda::std::memory_order_relaxed);
             atomicSub(&(buckets_size[bkt_idx]), 1);
             defragmentation_for_rehash<K, V, M, TILE_SIZE>(
@@ -669,7 +711,7 @@ __device__ __forceinline__ unsigned find_in_bucket(
       return found_vote;
     }
 
-    if (g.any(current_key == EMPTY_KEY)) {
+    if (g.any(current_key == static_cast<K>(EMPTY_KEY))) {
       return 0;
     }
   }
@@ -714,15 +756,41 @@ __forceinline__ __device__ void update_meta(Bucket<K, V, M>* __restrict bucket,
                                             const int key_pos,
                                             const M* __restrict metas,
                                             const int key_idx) {
-  if (bucket->metas == nullptr) return;
   if (metas == nullptr) {
-    M cur_meta = bucket->cur_meta + 1;
-    bucket->cur_meta = cur_meta;
-    bucket->metas[key_pos].val = cur_meta;
+    M cur_meta = bucket->cur_meta.fetch_add(1) + 1;
+    bucket->metas[key_pos].store(cur_meta, cuda::std::memory_order_relaxed);
   } else {
-    bucket->metas[key_pos].val = metas[key_idx];
+    bucket->metas[key_pos].store(metas[key_idx],
+                                 cuda::std::memory_order_relaxed);
   }
   return;
+}
+
+template <class K, class V, class M>
+__forceinline__ __device__ OverrideResult try_override_min_meta(
+    Bucket<K, V, M>* __restrict bucket, const int key_pos, M min_meta,
+    const M* __restrict metas, const int key_idx) {
+  if (metas == nullptr) {
+    const M cur_meta = bucket->cur_meta.load(cuda::std::memory_order_relaxed);
+    if (bucket->metas[key_pos].compare_exchange_strong(
+            min_meta, cur_meta + 1, cuda::std::memory_order_relaxed)) {
+      bucket->cur_meta.fetch_add(1, cuda::std::memory_order_relaxed);
+      return OverrideResult::SUCCESS;
+    } else {
+      return OverrideResult::CONTINUE;
+    }
+  } else {
+    if (metas[key_idx] < min_meta) {
+      return OverrideResult::REFUSED;
+    }
+    if (bucket->metas[key_pos].compare_exchange_strong(
+            min_meta, metas[key_idx], cuda::std::memory_order_relaxed)) {
+      return OverrideResult::SUCCESS;
+    } else {
+      return OverrideResult::CONTINUE;
+    }
+  }
+  return OverrideResult::CONTINUE;
 }
 
 template <class K, class V, class M, uint32_t TILE_SIZE = 4>
@@ -757,9 +825,10 @@ __forceinline__ __device__ void upsert_kernel_with_io_core(
     bucket = get_key_position<K>(buckets, insert_key, bkt_idx, start_idx,
                                  buckets_num, bucket_max_size);
 
+    local_size = buckets_size[bkt_idx];
+
     found_vote = find_in_bucket<K, V, M, TILE_SIZE>(
         g, bucket->keys, insert_key, tile_offset, start_idx, bucket_max_size);
-
     if (found_vote) {
       src_lane = __ffs(found_vote) - 1;
       key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
@@ -778,7 +847,6 @@ __forceinline__ __device__ void upsert_kernel_with_io_core(
     }
 
     tile_offset = 0;
-    local_size = buckets_size[bkt_idx];
     OccupyResult occupy_result{OccupyResult::INITIAL};
 
     while (tile_offset < bucket_max_size && local_size < bucket_max_size) {
@@ -827,9 +895,9 @@ __forceinline__ __device__ void upsert_kernel_with_io_core(
               (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
           if (rank == src_lane) {
             update_meta(bucket, key_pos, metas, key_idx);
-            atomicAdd(&(buckets_size[bkt_idx]), 1);
+            local_size = atomicAdd(&(buckets_size[bkt_idx]), 1) + 1;
           }
-          local_size++;
+          local_size = g.shfl(local_size, src_lane);
 
           if (local_size >= bucket_max_size) {
             refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
@@ -848,20 +916,39 @@ __forceinline__ __device__ void upsert_kernel_with_io_core(
       tile_offset += TILE_SIZE;
     }
 
-    if (occupy_result == OccupyResult::CONTINUE) {
-      src_lane = (bucket->min_pos % TILE_SIZE);
-      key_pos = bucket->min_pos;
+    while (occupy_result == OccupyResult::CONTINUE ||
+           occupy_result == OccupyResult::INITIAL) {
+      key_pos = bucket->min_pos.load(cuda::std::memory_order_acquire);
+      src_lane = (key_pos % TILE_SIZE);
+      OverrideResult override_result{OverrideResult::INITIAL};
+
+      if (rank == src_lane) {
+        const M min_meta =
+            bucket->min_meta.load(cuda::std::memory_order_acquire);
+        override_result =
+            try_override_min_meta(bucket, key_pos, min_meta, metas, key_idx);
+      }
+      override_result = g.shfl(override_result, src_lane);
+      if (override_result == OverrideResult::REFUSED) break;
+
+      if (override_result == OverrideResult::CONTINUE) {
+        refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
+        continue;
+      }
+      // override_result == OverrideResult::SUCCESS
 
       if (rank == src_lane) {
         bucket->keys[key_pos].store(insert_key,
                                     cuda::std::memory_order_relaxed);
-        update_meta(bucket, key_pos, metas, key_idx);
       }
+
       refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
+
       lock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
       copy_vector<V, TILE_SIZE>(g, insert_value,
                                 bucket->vectors + key_pos * dim, dim);
       unlock<Mutex, TILE_SIZE, true>(g, table->locks[bkt_idx]);
+      break;
     }
   }
 }
@@ -1040,10 +1127,11 @@ __global__ void upsert_kernel(const Table<K, V, M>* __restrict table,
               (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
           if (rank == src_lane) {
             update_meta(bucket, key_pos, metas, key_idx);
-            atomicAdd(&(buckets_size[bkt_idx]), 1);
+            local_size = atomicAdd(&(buckets_size[bkt_idx]), 1) + 1;
             *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
           }
-          local_size++;
+          local_size = g.shfl(local_size, src_lane);
+          ;
 
           if (local_size >= bucket_max_size) {
             refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
@@ -1058,17 +1146,35 @@ __global__ void upsert_kernel(const Table<K, V, M>* __restrict table,
       tile_offset += TILE_SIZE;
     }
 
-    if (occupy_result == OccupyResult::CONTINUE) {
-      src_lane = (bucket->min_pos % TILE_SIZE);
-      key_pos = bucket->min_pos;
+    while (occupy_result == OccupyResult::CONTINUE ||
+           occupy_result == OccupyResult::INITIAL) {
+      key_pos = bucket->min_pos.load(cuda::std::memory_order_acquire);
+      src_lane = (key_pos % TILE_SIZE);
+      OverrideResult override_result{OverrideResult::INITIAL};
+
+      if (rank == src_lane) {
+        const M min_meta =
+            bucket->min_meta.load(cuda::std::memory_order_acquire);
+        override_result =
+            try_override_min_meta(bucket, key_pos, min_meta, metas, key_idx);
+      }
+      override_result = g.shfl(override_result, src_lane);
+      if (override_result == OverrideResult::REFUSED) break;
+
+      if (override_result == OverrideResult::CONTINUE) {
+        refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
+        continue;
+      }
+      // override_result == OverrideResult::SUCCESS
 
       if (rank == src_lane) {
         bucket->keys[key_pos].store(insert_key,
                                     cuda::std::memory_order_relaxed);
         *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-        update_meta(bucket, key_pos, metas, key_idx);
       }
+
       refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
+      break;
     }
   }
 }
@@ -1116,8 +1222,8 @@ __global__ void accum_kernel(
           (start_idx + tile_offset + rank) & (bucket_max_size - 1);
       K current_key =
           bucket->keys[key_offset].load(cuda::std::memory_order_relaxed);
-      found_or_empty_vote =
-          g.ballot(current_key == EMPTY_KEY || insert_key == current_key);
+      found_or_empty_vote = g.ballot(current_key == static_cast<K>(EMPTY_KEY) ||
+                                     insert_key == current_key);
       if (found_or_empty_vote) {
         src_lane = __ffs(found_or_empty_vote) - 1;
         key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
@@ -1203,7 +1309,8 @@ __forceinline__ __device__ void lookup_kernel_with_io_core(
 
       if (rank == 0) {
         if (metas != nullptr) {
-          *(metas + key_idx) = bucket->metas[key_pos].val;
+          *(metas + key_idx) =
+              bucket->metas[key_pos].load(cuda::std::memory_order_relaxed);
         }
         if (found != nullptr) {
           *(found + key_idx) = true;
@@ -1315,7 +1422,8 @@ __global__ void lookup_kernel(const Table<K, V, M>* __restrict table,
         *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
 
         if (metas != nullptr) {
-          *(metas + key_idx) = bucket->metas[key_pos].val;
+          *(metas + key_idx) =
+              bucket->metas[key_pos].load(cuda::std::memory_order_relaxed);
         }
         if (found != nullptr) {
           *(found + key_idx) = true;
@@ -1340,7 +1448,8 @@ __global__ void clear_kernel(Table<K, V, M>* __restrict table, size_t N) {
     int bkt_idx = t / bucket_max_size;
     Bucket<K, V, M>* bucket = &(table->buckets[bkt_idx]);
 
-    bucket->keys[key_idx].store(EMPTY_KEY, cuda::std::memory_order_relaxed);
+    bucket->keys[key_idx].store(static_cast<K>(EMPTY_KEY),
+                                cuda::std::memory_order_relaxed);
     if (key_idx == 0) {
       table->buckets_size[bkt_idx] = 0;
     }
@@ -1385,7 +1494,7 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
         break;
       }
 
-      if (g.any(current_key == EMPTY_KEY)) {
+      if (g.any(current_key == static_cast<K>(EMPTY_KEY))) {
         break;
       }
     }
@@ -1397,7 +1506,8 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
         const int key_pos =
             (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
         (*(bucket->keys + key_pos))
-            .store(RECLAIM_KEY, cuda::std::memory_order_relaxed);
+            .store(static_cast<K>(RECLAIM_KEY),
+                   cuda::std::memory_order_relaxed);
         atomicSub(&buckets_size[bkt_idx], 1);
       }
       break;
@@ -1425,16 +1535,18 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
     Bucket<K, V, M>* bucket = buckets + bkt_idx;
 
     K current_key = 0;
+    M current_meta = 0;
     uint32_t key_offset = 0;
     while (key_offset < bucket_max_size) {
       current_key =
           bucket->keys[key_offset].load(cuda::std::memory_order_relaxed);
-      if (current_key != EMPTY_KEY) {
-        if (pred(current_key, bucket->metas[key_offset].val, pattern,
-                 threshold)) {
+      current_meta =
+          bucket->metas[key_offset].load(cuda::std::memory_order_relaxed);
+      if (current_key != static_cast<K>(EMPTY_KEY)) {
+        if (pred(current_key, current_meta, pattern, threshold)) {
           atomicAdd(count, 1);
           key_pos = key_offset;
-          bucket->keys[key_pos].store(RECLAIM_KEY,
+          bucket->keys[key_pos].store(static_cast<K>(RECLAIM_KEY),
                                       cuda::std::memory_order_relaxed);
           atomicSub(&buckets_size[bkt_idx], 1);
         } else {
@@ -1476,7 +1588,8 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table, K* d_key,
     Bucket<K, V, M>* bucket = &(table->buckets[bkt_idx]);
     const K key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
 
-    if (key != EMPTY_KEY && key != RECLAIM_KEY) {
+    if (key != static_cast<K>(EMPTY_KEY) &&
+        key != static_cast<K>(RECLAIM_KEY)) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
       for (int i = 0; i < dim; i++) {
@@ -1484,7 +1597,8 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table, K* d_key,
             bucket->vectors[key_idx * dim + i];
       }
       if (d_meta != nullptr) {
-        block_result_meta[local_index] = bucket->metas[key_idx].val;
+        block_result_meta[local_index] =
+            bucket->metas[key_idx].load(cuda::std::memory_order_relaxed);
       }
     }
   }
@@ -1538,9 +1652,10 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table,
     Bucket<K, V, M>* bucket = &(table->buckets[bkt_idx]);
 
     const K key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
-    M meta = bucket->metas[key_idx].val;
+    M meta = bucket->metas[key_idx].load(cuda::std::memory_order_relaxed);
 
-    if (key != EMPTY_KEY && pred(key, meta, pattern, threshold)) {
+    if (key != static_cast<K>(EMPTY_KEY) &&
+        pred(key, meta, pattern, threshold)) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
       for (int i = 0; i < dim; i++) {
@@ -1548,7 +1663,7 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table,
                    bucket->vectors[key_idx * dim + i]);
       }
       if (d_meta != nullptr) {
-        block_result_meta[local_index] = bucket->metas[key_idx].val;
+        block_result_meta[local_index] = meta;
       }
     }
   }
