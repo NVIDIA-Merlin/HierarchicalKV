@@ -39,11 +39,15 @@
     <nav data-toggle="wy-nav-shift" class="wy-nav-side">
       <div class="wy-side-scroll">
         <div class="wy-side-nav-search" >
-            <a href="../index.html" class="icon icon-home"> Merlin Key-Value Storage
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Merlin Key-Value Storage
           </a>
 <div role="search">
   <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
-    <input type="text" name="q" placeholder="Search docs" />
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
     <input type="hidden" name="check_keywords" value="yes" />
     <input type="hidden" name="area" value="default" />
   </form>
@@ -69,7 +73,7 @@
         <div class="rst-content">
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
-      <li><a href="../index.html" class="icon icon-home"></a></li>
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
       <li class="breadcrumb-item active">Program Listing for File merlin_hashtable.cuh</li>
       <li class="wy-breadcrumbs-aside">
       </li>
@@ -271,8 +275,9 @@
 <span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">();</span>
 <span class="w">      </span><span class="p">}</span>
 
-<span class="w">      </span><span class="n">Selector</span><span class="o">::</span><span class="n">execute_kernel</span><span class="p">(</span><span class="n">load_factor</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span>
-<span class="w">                               </span><span class="n">c_table_index_</span><span class="p">,</span><span class="w"> </span><span class="n">d_table_</span><span class="p">,</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="n">metas</span><span class="p">);</span>
+<span class="w">      </span><span class="n">Selector</span><span class="o">::</span><span class="n">execute_kernel</span><span class="p">(</span>
+<span class="w">          </span><span class="n">load_factor</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">c_table_index_</span><span class="p">,</span><span class="w"> </span><span class="n">d_table_</span><span class="p">,</span>
+<span class="w">          </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="k">reinterpret_cast</span><span class="o">&lt;</span><span class="k">const</span><span class="w"> </span><span class="n">value_type</span><span class="o">*&gt;</span><span class="p">(</span><span class="n">values</span><span class="p">),</span><span class="w"> </span><span class="n">metas</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">else</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">dev_ws_base_size</span><span class="p">{</span><span class="n">n</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">value_type</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">))};</span>
 <span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">dev_ws_size</span><span class="p">{</span><span class="n">dev_ws_base_size</span><span class="w"> </span><span class="o">+</span>

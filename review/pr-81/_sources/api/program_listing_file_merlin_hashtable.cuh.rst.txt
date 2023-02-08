@@ -199,8 +199,9 @@ Program Listing for File merlin_hashtable.cuh
            load_factor = fast_load_factor();
          }
    
-         Selector::execute_kernel(load_factor, options_.block_size, stream, n,
-                                  c_table_index_, d_table_, keys, values, metas);
+         Selector::execute_kernel(
+             load_factor, options_.block_size, stream, n, c_table_index_, d_table_,
+             keys, reinterpret_cast<const value_type*>(values), metas);
        } else {
          const size_type dev_ws_base_size{n * (sizeof(value_type*) + sizeof(int))};
          const size_type dev_ws_size{dev_ws_base_size +
