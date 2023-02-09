@@ -212,6 +212,8 @@ Program Listing for File merlin_hashtable.cuh
          auto d_evicted_keys{reinterpret_cast<key_type*>(d_src_offset + n)};
    
          CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_base_size, stream));
+         CUDA_CHECK(cudaMemsetAsync(d_evicted_keys, 0xFF,
+                                    dev_ws_size - dev_ws_base_size, stream));
    
          {
            const size_t block_size = options_.block_size;
@@ -427,6 +429,10 @@ Program Listing for File merlin_hashtable.cuh
              <<<grid_size, block_size, 0, stream>>>(
                  table_, keys, table_->buckets, table_->buckets_size,
                  table_->bucket_max_size, table_->buckets_num, N);
+       }
+   
+       if (ext_store_) {
+         ext_store_->erase_async(*dev_mem_pool_, *host_mem_pool_, n, keys, stream);
        }
    
        CudaCheckError();
