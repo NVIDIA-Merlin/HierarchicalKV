@@ -361,7 +361,9 @@ class HashTable {
    *
    * If the target bucket is full, the keys with minimum meta will be
    * overwritten by new key unless the meta of the new key is even less than
-   * minimum meta of the target bucket.
+   * minimum meta of the target bucket. The overwritten key with minimum
+   * meta will be evicted, with its values and meta, to evicted_keys,
+   * evicted_values, evcted_metas seperately in compact format.
    *
    * @param n Number of key-value-meta tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
@@ -370,6 +372,13 @@ class HashTable {
    * shape (n, DIM).
    * @param metas The metas to insert on GPU-accessible memory with shape
    * (n).
+   * @param metas The metas to insert on GPU-accessible memory with shape
+   * (n).
+   * @params evicted_keys The output of keys replaced with minimum meta.
+   * @params evicted_values The output of values replaced with minimum meta on
+   * keys.
+   * @params evicted_metas The output of metas replaced with minimum meta on
+   * keys.
    * @parblock
    * The metas should be a `uint64_t` value. You can specify a value that
    * such as the timestamp of the key insertion, number of the key
@@ -428,10 +437,11 @@ class HashTable {
     size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
     const size_type dev_ws_size =
         n_offsets * sizeof(int64_t) + n * sizeof(bool) + sizeof(size_type);
+
     auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
     auto d_offsets{dev_ws.get<int64_t*>(0)};
-    auto d_masks = reinterpret_cast<bool*>(d_offsets + n_offsets);
-    auto dn_evicted = reinterpret_cast<size_type*>(d_masks + n);
+    auto dn_evicted = reinterpret_cast<size_type*>(d_offsets + n_offsets);
+    auto d_masks = reinterpret_cast<bool*>(dn_evicted + 1);
 
     size_type block_size = options_.block_size;
     size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
@@ -445,16 +455,14 @@ class HashTable {
 
     keys_not_empty<K>
         <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
-    CudaCheckError();
-
     size_type n_evicted = 0;
     gpu_boolean_mask<K, V, M, int64_t, TILE_SIZE>(
         grid_size, block_size, d_masks, n, dn_evicted, d_offsets, evicted_keys,
         evicted_values, evicted_metas, dim(), stream);
-    CudaCheckError();
     CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type),
                                cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    CudaCheckError();
     return n_evicted;
   }
 
