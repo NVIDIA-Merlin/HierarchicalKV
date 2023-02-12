@@ -133,6 +133,209 @@ void freeBufferOnDevice(void* ptr, cudaStream_t stream) {
   ptr = nullptr;
 }
 
+template <typename T, size_t DIM>
+struct ValueArray {
+ public:
+  T data[DIM];
+
+  __host__ __device__ T sum() {
+    T s = 0;
+    for (size_t i = 0; i < DIM; i++) {
+      s += data[i];
+    }
+  }
+
+  __host__ __device__ T operator[](size_t i) { return data[i]; }
+};
+
+template <typename T>
+struct HostAndDeviceBuffer {
+ public:
+  void Alloc(size_t n, cudaStream_t stream = 0) {
+    if (d_data) {
+      CUDA_FREE_POINTERS(stream, d_data);
+    }
+    if (h_data) {
+      free(h_data);
+      h_data = nullptr;
+    }
+    if (d_data) {
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      d_data = nullptr;
+    }
+    getBufferOnDevice(&d_data, n * sizeof(T), stream);
+    h_data = (T*)malloc(n * sizeof(T));
+    size_ = n;
+  }
+
+  ~HostAndDeviceBuffer() {
+    CUDA_CHECK(cudaDeviceSynchronize());
+    Free();
+    CUDA_CHECK(cudaDeviceSynchronize());
+  }
+
+  void Free(cudaStream_t stream = 0) {
+    if (d_data) {
+      CUDA_FREE_POINTERS(stream, d_data);
+    }
+    if (h_data) {
+      free(h_data);
+      h_data = nullptr;
+    }
+    if (d_data) {
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      d_data = nullptr;
+    }
+    size_ = 0;
+  }
+
+  void SetFromHost(const T* data, size_t n, cudaStream_t stream = 0) {
+    CUDA_CHECK(cudaMemcpyAsync(d_data, data, n * sizeof(T),
+                               cudaMemcpyHostToDevice, stream));
+    memcpy(h_data, data, n * sizeof(T));
+  }
+
+  void SetFromDevice(const T* data, size_t n, cudaStream_t stream = 0) {
+    CUDA_CHECK(cudaMemcpyAsync(d_data, data, n * sizeof(T),
+                               cudaMemcpyDeviceToDevice, stream));
+    CUDA_CHECK(cudaMemcpyAsync(h_data, data, n * sizeof(T),
+                               cudaMemcpyDeviceToHost, stream));
+  }
+
+  bool SetValueInRange(T start, T skip, size_t stripe,
+                       cudaStream_t stream = 0) {
+    if (!h_data || skip == 0 || stripe == 0 || size_ % stripe != 0) {
+      return false;
+    }
+
+    size_t n_stripe = size_ / stripe;
+    for (size_t i = 0; i < n_stripe; i++) {
+      T value = start + static_cast<T>(i) * skip;
+      for (size_t j = 0; j < stripe; j++) {
+        h_data[i * stripe + j] = value;
+      }
+    }
+    CUDA_CHECK(cudaMemcpyAsync(d_data, h_data, size_ * sizeof(T),
+                               cudaMemcpyHostToDevice, stream));
+    return true;
+  }
+
+  void ToZeros(cudaStream_t stream = 0) {
+    CUDA_CHECK(cudaMemsetAsync(d_data, 0, size_ * sizeof(T), stream));
+    memset(h_data, 0, size_ * sizeof(T));
+  }
+
+  void ToConst(const T val, cudaStream_t stream) {
+    for (size_t i = 0; i < size_; i++) {
+      h_data[i] = val;
+    }
+    CUDA_CHECK(cudaMemcpyAsync(d_data, h_data, size_ * sizeof(T),
+                               cudaMemcpyHostToDevice, stream));
+  }
+
+  void SyncData(bool h2d, cudaStream_t stream = 0) {
+    if (h2d) {
+      CUDA_CHECK(cudaMemcpyAsync(d_data, h_data, size_ * sizeof(T),
+                                 cudaMemcpyHostToDevice, stream));
+    } else {
+      CUDA_CHECK(cudaMemcpyAsync(h_data, d_data, size_ * sizeof(T),
+                                 cudaMemcpyDeviceToHost, stream));
+    }
+  }
+
+ public:
+  T* h_data = nullptr;
+  T* d_data = nullptr;
+  size_t size_ = 0;
+};
+
+template <typename K, typename V, typename M>
+struct KVMSBuffer {
+ public:
+  KVMSBuffer() : len_(0), dim_(0) {}
+
+  void Reserve(size_t n, size_t dim, cudaStream_t stream = 0) {
+    keys.Alloc(n, stream);
+    values.Alloc(n * dim, stream);
+    metas.Alloc(n, stream);
+    status.Alloc(n, stream);
+    len_ = n;
+    dim_ = dim;
+  }
+
+  ~KVMSBuffer() {
+    CUDA_CHECK(cudaDeviceSynchronize());
+    Free();
+    CUDA_CHECK(cudaDeviceSynchronize());
+  }
+
+  void Free(cudaStream_t stream = 0) {
+    keys.Free(stream);
+    values.Free(stream);
+    metas.Free(stream);
+    status.Free(stream);
+    len_ = 0;
+  }
+
+  size_t len() const { return len_; }
+  size_t dim() const { return dim_; }
+
+  void ToRange(size_t start, size_t skip = 1, cudaStream_t stream = 0) {
+    keys.SetValueInRange(static_cast<K>(start), static_cast<K>(skip), 1,
+                         stream);
+    values.SetValueInRange(static_cast<V>(start), static_cast<V>(skip), dim_,
+                           stream);
+    status.ToZeros(stream);
+  }
+
+  void ToZeros(cudaStream_t stream) {
+    keys.ToZeros(stream);
+    values.ToZeros(stream);
+    metas.ToZeros(stream);
+    status.ToZeros(stream);
+  }
+
+  void SetMeta(const M meta, cudaStream_t stream) {
+    metas.ToConst(meta, stream);
+  }
+
+  K* keys_ptr(bool on_device = true) {
+    if (on_device) {
+      return keys.d_data;
+    }
+    return keys.h_data;
+  }
+
+  V* values_ptr(bool on_device = true) {
+    if (on_device) {
+      return values.d_data;
+    }
+    return values.h_data;
+  }
+
+  M* metas_ptr(bool on_device = true) {
+    if (on_device) {
+      return metas.d_data;
+    }
+    return metas.h_data;
+  }
+
+  void SyncData(bool h2d, cudaStream_t stream = 0) {
+    keys.SyncData(h2d, stream);
+    values.SyncData(h2d, stream);
+    metas.SyncData(h2d, stream);
+    status.SyncData(h2d, stream);
+  }
+
+ public:
+  HostAndDeviceBuffer<K> keys;
+  HostAndDeviceBuffer<V> values;
+  HostAndDeviceBuffer<M> metas;
+  HostAndDeviceBuffer<bool> status;
+  size_t dim_;
+  size_t len_;
+};
+
 bool allTrueGpu(const bool* conds, size_t n, cudaStream_t stream) {
   int nfalse = 0;
   int* d_nfalse = nullptr;
