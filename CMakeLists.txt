@@ -96,9 +96,13 @@ target_compile_features(merlin_memory_pool_test PUBLIC cxx_std_14)
 set_target_properties(merlin_memory_pool_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(merlin_memory_pool_test gtest_main)
 
-# TODO(Lifann): remove this line after implementing all of the unit testing to gtest.
 set(CMAKE_BUILD_TYPE "Debug")
 add_executable(save_and_load_test tests/save_and_load_test.cc.cu)
 target_compile_features(save_and_load_test PUBLIC cxx_std_14)
 set_target_properties(save_and_load_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(save_and_load_test gtest_main)
+
+add_executable(insert_and_evict_test tests/insert_and_evict_test.cc.cu)
+target_compile_features(insert_and_evict_test PUBLIC cxx_std_14)
+set_target_properties(insert_and_evict_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(insert_and_evict_test gtest_main)
