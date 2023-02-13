@@ -255,13 +255,13 @@ Program Listing for File merlin_hashtable.cuh
      }
    
      size_type insert_and_evict(const size_type n,
-                           const key_type* keys,              // (n)
-                           const value_type* values,          // (n, DIM)
-                           const meta_type* metas,            // (n)
-                           key_type* evicted_keys,            // (n)
-                           value_type* evicted_values,        // (n, DIM)
-                           meta_type* evicted_metas,          // (n)
-                           cudaStream_t stream = 0) {
+                                const key_type* keys,        // (n)
+                                const value_type* values,    // (n, DIM)
+                                const meta_type* metas,      // (n)
+                                key_type* evicted_keys,      // (n)
+                                value_type* evicted_values,  // (n, DIM)
+                                meta_type* evicted_metas,    // (n)
+                                cudaStream_t stream = 0) {
        if (n == 0) {
          return 0;
        }
@@ -293,7 +293,8 @@ Program Listing for File merlin_hashtable.cuh
        // always use max tile to avoid data-deps as possible.
        const int TILE_SIZE = 32;
        size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
-       const size_type dev_ws_size = n_offsets * sizeof(int64_t) + n * sizeof(bool) + sizeof(size_type);
+       const size_type dev_ws_size =
+           n_offsets * sizeof(int64_t) + n * sizeof(bool) + sizeof(size_type);
        auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
        auto d_offsets{dev_ws.get<int64_t*>(0)};
        auto d_masks = reinterpret_cast<bool*>(d_offsets + n_offsets);
@@ -301,23 +302,26 @@ Program Listing for File merlin_hashtable.cuh
    
        size_type block_size = options_.block_size;
        size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
-       broadcast<K><<<grid_size, block_size, 0, stream>>>(evicted_keys, EMPTY_KEY, n);
+       broadcast<K>
+           <<<grid_size, block_size, 0, stream>>>(evicted_keys, EMPTY_KEY, n);
        CUDA_CHECK(cudaMemsetAsync(d_masks, 0, sizeof(bool) * n, stream));
    
-       Selector::execute_kernel(
-           load_factor, options_.block_size, stream, n, c_table_index_, d_table_,
-           keys, reinterpret_cast<const value_type*>(values), metas,
-           evicted_keys, evicted_values, evicted_metas);
+       Selector::execute_kernel(load_factor, options_.block_size, stream, n,
+                                c_table_index_, d_table_, keys,
+                                reinterpret_cast<const value_type*>(values), metas,
+                                evicted_keys, evicted_values, evicted_metas);
    
        CudaCheckError();
    
-       keys_not_empty<K><<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
+       keys_not_empty<K>
+           <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
    
        size_type n_evicted = 0;
-       gpu_boolean_mask<K, V, M, int64_t, TILE_SIZE>(grid_size, block_size, d_masks, n, dn_evicted,
-                        d_offsets, evicted_keys, evicted_values,
-                        evicted_metas, options_.dim, stream);
-       CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type), cudaMemcpyDeviceToHost, stream));
+       gpu_boolean_mask<K, V, M, int64_t, TILE_SIZE>(
+           grid_size, block_size, d_masks, n, dn_evicted, d_offsets, evicted_keys,
+           evicted_values, evicted_metas, options_.dim, stream);
+       CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type),
+                                  cudaMemcpyDeviceToHost, stream));
        CUDA_CHECK(cudaStreamSynchronize(stream));
        return n_evicted;
      }
@@ -888,4 +892,3 @@ Program Listing for File merlin_hashtable.cuh
    
    }  // namespace merlin
    }  // namespace nv
-   
