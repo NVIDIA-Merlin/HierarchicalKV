@@ -228,7 +228,35 @@ class HashTable {
     initialized_ = true;
     CudaCheckError();
   }
-
+  /**
+   * @brief Assign new key-value-meta tuples into the hash table.
+   * If the key doesn't exist, the operation on the key will be ignored.
+   *
+   * @param n Number of key-value-meta tuples to insert or assign.
+   * @param keys The keys to insert on GPU-accessible memory with shape
+   * (n).
+   * @param values The values to insert on GPU-accessible memory with
+   * shape (n, DIM).
+   * @param metas The metas to insert on GPU-accessible memory with shape
+   * (n).
+   * @parblock
+   * The metas should be a `uint64_t` value. You can specify a value that
+   * such as the timestamp of the key insertion, number of the key
+   * occurrences, or another value to perform a custom eviction strategy.
+   *
+   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * applied.
+   * @endparblock
+   *
+   * @param stream The CUDA stream that is used to execute the operation.
+   */
+  void assign(const size_type n,
+              const key_type* keys,              // (n)
+              const value_type* values,          // (n, DIM)
+              const meta_type* metas = nullptr,  // (n)
+              cudaStream_t stream = 0) {
+    return;
+  }
   /**
    * @brief Insert new key-value-meta tuples into the hash table.
    * If the key already exists, the values and metas are assigned new values.
@@ -462,7 +490,28 @@ class HashTable {
 
     CudaCheckError();
   }
-
+  /**
+   * @brief Searches the hash table for the specified keys.
+   *
+   * @note When a key is missing, the value in @p values and @p metas will be inserted.
+   *
+   * @param n The number of key-value-meta tuples to search or insert.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param values The values to search on GPU-accessible memory with
+   * shape (n, DIM).
+   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * @endparblock
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   */
+  void find_or_insert(const size_type n, const key_type* keys,  // (n)
+                      value_type* values,                       // (n * DIM)
+                      meta_type* metas = nullptr,               // (n)
+                      cudaStream_t stream = 0) const {
+    return;
+  }
   /**
    * @brief Searches the hash table for the specified keys.
    *
