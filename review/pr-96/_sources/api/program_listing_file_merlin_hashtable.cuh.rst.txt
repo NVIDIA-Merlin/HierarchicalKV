@@ -317,7 +317,7 @@ Program Listing for File merlin_hashtable.cuh
        size_type n_evicted = 0;
        gpu_boolean_mask<K, V, M, int64_t, TILE_SIZE>(
            grid_size, block_size, d_masks, n, dn_evicted, d_offsets, evicted_keys,
-           evicted_values, evicted_metas, options_.dim, stream);
+           evicted_values, evicted_metas, dim(), stream);
        CudaCheckError();
        CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type),
                                   cudaMemcpyDeviceToHost, stream));
