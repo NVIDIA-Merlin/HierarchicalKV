@@ -302,12 +302,12 @@ Program Listing for File merlin_hashtable.cuh
    
        size_type block_size = options_.block_size;
        size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
-       CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY), n * sizeof(K), stream));
+       CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY),
+                                  n * sizeof(K), stream));
        CUDA_CHECK(cudaMemsetAsync(d_masks, 0, sizeof(bool) * n, stream));
    
        Selector::execute_kernel(load_factor, options_.block_size, stream, n,
-                                c_table_index_, d_table_, keys,
-                                values, metas,
+                                c_table_index_, d_table_, keys, values, metas,
                                 evicted_keys, evicted_values, evicted_metas);
    
        keys_not_empty<K>
