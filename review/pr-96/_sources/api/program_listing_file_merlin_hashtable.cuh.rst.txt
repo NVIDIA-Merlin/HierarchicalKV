@@ -302,24 +302,23 @@ Program Listing for File merlin_hashtable.cuh
    
        size_type block_size = options_.block_size;
        size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
-       broadcast<K>
-           <<<grid_size, block_size, 0, stream>>>(evicted_keys, EMPTY_KEY, n);
+       CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY), n * sizeof(K), stream));
        CUDA_CHECK(cudaMemsetAsync(d_masks, 0, sizeof(bool) * n, stream));
    
        Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                 c_table_index_, d_table_, keys,
-                                reinterpret_cast<const value_type*>(values), metas,
+                                values, metas,
                                 evicted_keys, evicted_values, evicted_metas);
-   
-       CudaCheckError();
    
        keys_not_empty<K>
            <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
+       CudaCheckError();
    
        size_type n_evicted = 0;
        gpu_boolean_mask<K, V, M, int64_t, TILE_SIZE>(
            grid_size, block_size, d_masks, n, dn_evicted, d_offsets, evicted_keys,
            evicted_values, evicted_metas, options_.dim, stream);
+       CudaCheckError();
        CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type),
                                   cudaMemcpyDeviceToHost, stream));
        CUDA_CHECK(cudaStreamSynchronize(stream));
