@@ -111,8 +111,8 @@ __global__ void create_atomic_metas(Bucket<K, V, M>* __restrict buckets,
   }
 }
 
-/* 2GB per slice by default.*/
-constexpr size_t kDefaultBytesPerSlice = (8ul << 30);
+/* 1GB per slice by default.*/
+constexpr size_t kDefaultBytesPerSlice = (1ul << 30);
 
 /* Initialize the buckets with index from start to end. */
 template <class K, class V, class M>
