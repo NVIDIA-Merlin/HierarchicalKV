@@ -589,10 +589,10 @@ __global__ void write_kernel_new(const V* __restrict src, V** __restrict dst,
 
     if (dst[vec_index] != nullptr) {
       if (src_offset != nullptr) {
-        copy_vector<V, TILE_SIZE>(g, (src + src_offset[vec_index] * dim),
+        copy_vector_new<V, TILE_SIZE>(g, (src + src_offset[vec_index] * dim),
                                   dst[vec_index], dim);
       } else {
-        copy_vector<V, TILE_SIZE>(g, (src + vec_index * dim), dst[vec_index],
+        copy_vector_new<V, TILE_SIZE>(g, (src + vec_index * dim), dst[vec_index],
                                   dim);
       }
     }
