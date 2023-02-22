@@ -1809,7 +1809,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
   constexpr uint64_t BATCH_SIZE = 1024 * 1024ul;
   constexpr uint64_t STEPS = 128;
   constexpr uint64_t MAX_BUCKET_SIZE = 128;
-  constexpr uint64_t INIT_CAPACITY = BATCH_SIZE * 128;
+  constexpr uint64_t INIT_CAPACITY = BATCH_SIZE * STEPS;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t TEST_TIMES = 1;
   float expected_correct_rate = 0.964;
