@@ -184,7 +184,7 @@ Program Listing for File merlin_hashtable.cuh
          lock.lock();
        }
    
-       if (false) {
+       if (true) {
          using Selector =
              SelectUpsertKernelWithIO<key_type, value_type, meta_type>;
          static thread_local int step_counter = 0;
