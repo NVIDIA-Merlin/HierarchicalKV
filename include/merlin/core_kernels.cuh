@@ -1131,7 +1131,6 @@ __global__ void upsert_kernel(const Table<K, V, M>* __restrict table,
             *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
           }
           local_size = g.shfl(local_size, src_lane);
-          ;
 
           if (local_size >= bucket_max_size) {
             refresh_bucket_meta<K, V, M, TILE_SIZE>(g, bucket, bucket_max_size);
@@ -1166,7 +1165,6 @@ __global__ void upsert_kernel(const Table<K, V, M>* __restrict table,
         continue;
       }
       // override_result == OverrideResult::SUCCESS
-
       if (rank == src_lane) {
         bucket->keys[key_pos].store(insert_key,
                                     cuda::std::memory_order_relaxed);
@@ -1655,6 +1653,7 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table,
     M meta = bucket->metas[key_idx].load(cuda::std::memory_order_relaxed);
 
     if (key != static_cast<K>(EMPTY_KEY) &&
+        key != static_cast<K>(RECLAIM_KEY) &&
         pred(key, meta, pattern, threshold)) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;

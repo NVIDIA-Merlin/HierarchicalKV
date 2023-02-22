@@ -265,7 +265,6 @@ template <class P>
 void realloc(P* ptr, size_t old_size, size_t new_size) {
   // Truncate old_size to limit dowstream copy ops.
   old_size = std::min(old_size, new_size);
-
   // Alloc new buffer and copy at old data.
   char* new_ptr;
   CUDA_CHECK(cudaMalloc(&new_ptr, new_size));
