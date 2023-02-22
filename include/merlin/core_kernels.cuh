@@ -562,6 +562,43 @@ __global__ void write_kernel(const V* __restrict src, V** __restrict dst,
   }
 }
 
+template <class V, uint32_t TILE_SIZE = 4>
+__device__ __forceinline__ void copy_vector_new(
+    cg::thread_block_tile<TILE_SIZE> const& g, const V* src, V* dst,
+    const size_t dim) {
+  for (auto i = g.thread_rank(); i < dim; i += g.size()) {
+    dst[i] = src[i];
+  }
+
+  //    cuda::barrier<cuda::thread_scope_device> bar;
+  //    init(&bar, 1);
+  //    cuda::memcpy_async(g, dst, src, dim * sizeof(V), bar);
+  //
+  //    bar.arrive_and_wait();
+}
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void write_kernel_new(const V* __restrict src, V** __restrict dst,
+                                 const int* __restrict src_offset,
+                                 const size_t dim, const size_t N) {
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
+    int vec_index = int(t / TILE_SIZE);
+    //    int dim_index = t % dim;
+
+    if (dst[vec_index] != nullptr) {
+      if (src_offset != nullptr) {
+        copy_vector<V, TILE_SIZE>(g, (src + src_offset[vec_index] * dim),
+                                  dst[vec_index], dim);
+      } else {
+        copy_vector<V, TILE_SIZE>(g, (src + vec_index * dim), dst[vec_index],
+                                  dim);
+      }
+    }
+  }
+}
+
 /* Write the values of delta_or_val into the table. If the key[i] is already in
    the table indicted be @exists[i], a @delta_or_val[i] will be added to the the
    existing value. if the key not exists, the value @val_or_delta[i] will be

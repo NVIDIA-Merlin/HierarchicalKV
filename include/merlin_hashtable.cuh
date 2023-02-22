@@ -285,7 +285,7 @@ class HashTable {
       lock.lock();
     }
 
-    if (false) {
+    if (is_fast_mode()) {
       using Selector =
           SelectUpsertKernelWithIO<key_type, value_type, meta_type>;
       static thread_local int step_counter = 0;
@@ -342,10 +342,10 @@ class HashTable {
         write_by_cpu<value_type>(h_dst, h_values, h_src_offset, dim(), n);
       } else {
         const size_t block_size = options_.io_block_size;
-        const size_t N = n * dim();
+        const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        write_kernel<key_type, value_type, meta_type>
+        write_kernel_new<key_type, value_type, meta_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
                                                    dim(), N);
       }
