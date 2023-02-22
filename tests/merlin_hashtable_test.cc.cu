@@ -2025,8 +2025,8 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
 //}
 
 TEST(MerlinHashTableTest, test_evict_strategy_customized_correct_rate) {
-  //    test_evict_strategy_customized_correct_rate(16, true);
-  test_evict_strategy_customized_correct_rate(0, true);
+      test_evict_strategy_customized_correct_rate(16, true);
+//  test_evict_strategy_customized_correct_rate(0, true);
   //  test_evict_strategy_customized_correct_rate(16, false);
   //    test_evict_strategy_customized_correct_rate(0, false);
 }
