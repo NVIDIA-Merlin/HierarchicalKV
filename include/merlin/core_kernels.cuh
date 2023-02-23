@@ -566,15 +566,15 @@ template <class V, uint32_t TILE_SIZE = 4>
 __device__ __forceinline__ void copy_vector_new(
     cg::thread_block_tile<TILE_SIZE> const& g, const V* src, V* dst,
     const size_t dim) {
-//  for (auto i = g.thread_rank(); i < dim; i += g.size()) {
-//    dst[i] = src[i];
-//  }
+  //  for (auto i = g.thread_rank(); i < dim; i += g.size()) {
+  //    dst[i] = src[i];
+  //  }
 
-      cuda::barrier<cuda::thread_scope_device> bar;
-      init(&bar, 1);
-      cuda::memcpy_async(g, dst, src, dim * sizeof(V), bar);
+  cuda::barrier<cuda::thread_scope_device> bar;
+  init(&bar, 1);
+  cuda::memcpy_async(g, dst, src, dim * sizeof(V), bar);
 
-      bar.arrive_and_wait();
+  bar.arrive_and_wait();
 }
 template <class K, class V, class M, uint32_t TILE_SIZE = 4>
 __global__ void write_kernel_new(const V* __restrict src, V** __restrict dst,
@@ -590,10 +590,10 @@ __global__ void write_kernel_new(const V* __restrict src, V** __restrict dst,
     if (dst[vec_index] != nullptr) {
       if (src_offset != nullptr) {
         copy_vector_new<V, TILE_SIZE>(g, (src + src_offset[vec_index] * dim),
-                                  dst[vec_index], dim);
+                                      dst[vec_index], dim);
       } else {
-        copy_vector_new<V, TILE_SIZE>(g, (src + vec_index * dim), dst[vec_index],
-                                  dim);
+        copy_vector_new<V, TILE_SIZE>(g, (src + vec_index * dim),
+                                      dst[vec_index], dim);
       }
     }
   }
