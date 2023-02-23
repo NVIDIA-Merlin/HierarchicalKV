@@ -1914,7 +1914,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
             for (int j = 0; j < options.dim; j++) {
               ASSERT_EQ(h_vectors_temp[i * options.dim + j],
                         static_cast<V>(h_keys_temp[i] * 0.00001))
-                  << "i = " << i << ", dim = " << j
+                  << "*i = " << i << ", dim = " << j
                   << ", key = " << h_keys_temp[i]
                   << ", j + 1 = " << h_vectors_temp[i * options.dim + j + i];
             }
