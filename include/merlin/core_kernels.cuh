@@ -810,7 +810,7 @@ __forceinline__ __device__ OverrideResult try_override_min_meta(
   if (metas == nullptr) {
     const M cur_meta = bucket->cur_meta.load(cuda::std::memory_order_relaxed);
     if (bucket->metas[key_pos].compare_exchange_strong(
-            min_meta, cur_meta + 1, cuda::std::memory_order_relaxed)) {
+            min_meta, cur_meta + 1, cuda::std::memory_order_seq_cst)) {
       bucket->cur_meta.fetch_add(1, cuda::std::memory_order_relaxed);
       return OverrideResult::SUCCESS;
     } else {
@@ -821,7 +821,7 @@ __forceinline__ __device__ OverrideResult try_override_min_meta(
       return OverrideResult::REFUSED;
     }
     if (bucket->metas[key_pos].compare_exchange_strong(
-            min_meta, metas[key_idx], cuda::std::memory_order_relaxed)) {
+            min_meta, metas[key_idx], cuda::std::memory_order_seq_cst)) {
       return OverrideResult::SUCCESS;
     } else {
       return OverrideResult::CONTINUE;
