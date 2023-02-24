@@ -285,7 +285,7 @@ class HashTable {
       lock.lock();
     }
 
-    if (is_fast_mode()) {
+    if (true) {
       using Selector =
           SelectUpsertKernelWithIO<key_type, value_type, meta_type>;
       static thread_local int step_counter = 0;
