@@ -1853,6 +1853,9 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
   CUDA_CHECK(
       cudaMalloc(&d_vectors_temp, MAX_CAPACITY * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_founds_temp, MAX_CAPACITY * sizeof(bool)));
+  CUDA_CHECK(
+      cudaMalloc(&d_vectors_temp, MAX_CAPACITY * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMemset(d_founds_temp, 0x01, MAX_CAPACITY * sizeof(bool)));
 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
