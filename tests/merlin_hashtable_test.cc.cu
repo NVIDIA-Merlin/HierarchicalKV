@@ -1852,7 +1852,8 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
   CUDA_CHECK(cudaMalloc(&d_metas_temp, MAX_CAPACITY * sizeof(M)));
   CUDA_CHECK(
       cudaMalloc(&d_vectors_temp, MAX_CAPACITY * sizeof(V) * options.dim));
-  CUDA_CHECK(cudaMemset(d_vectors_temp, 0x01, MAX_CAPACITY * sizeof(V) * options.dim));
+  CUDA_CHECK(
+      cudaMemset(d_vectors_temp, 0x01, MAX_CAPACITY * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_founds_temp, MAX_CAPACITY * sizeof(bool)));
 
   cudaStream_t stream;
@@ -1891,36 +1892,40 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
         table->insert_or_assign(BATCH_SIZE, d_keys_temp, d_vectors_temp,
                                 d_metas_temp, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
-//        {
-//          size_t total_size = table->size(stream);
-//          CUDA_CHECK(cudaStreamSynchronize(stream));
-//          size_t dump_counter =
-//              table->export_batch(MAX_CAPACITY, 0, d_keys_temp, d_vectors_temp,
-//                                  d_metas_temp, stream);
-//          ASSERT_EQ(dump_counter, total_size);
-//
-//          CUDA_CHECK(cudaMemcpy(h_keys_temp, d_keys_temp,
-//                                MAX_CAPACITY * sizeof(K), cudaMemcpyDefault));
-//          CUDA_CHECK(cudaMemcpy(h_metas_temp, d_metas_temp,
-//                                MAX_CAPACITY * sizeof(M),
-//                                cudaMemcpyDeviceToHost));
-//          CUDA_CHECK(cudaMemset(h_vectors_temp, 0,
-//                                MAX_CAPACITY * sizeof(V) * options.dim));
-//          CUDA_CHECK(cudaMemcpy(h_vectors_temp, d_vectors_temp,
-//                                MAX_CAPACITY * sizeof(V) * options.dim,
-//                                cudaMemcpyDeviceToHost));
-//
-//          for (int i = 0; i < dump_counter; i++) {
-//            ASSERT_EQ(h_keys_temp[i], h_metas_temp[i]);
-//            for (int j = 0; j < options.dim; j++) {
-//              ASSERT_EQ(h_vectors_temp[i * options.dim + j],
-//                        static_cast<V>(h_keys_temp[i] * 0.00001))
-//                  << "*i = " << i << ", dim = " << j
-//                  << ", key = " << h_keys_temp[i]
-//                  << ", j + 1 = " << h_vectors_temp[i * options.dim + j + i];
-//            }
-//          }
-//        }
+        {
+          size_t total_size = table->size(stream);
+          CUDA_CHECK(cudaStreamSynchronize(stream));
+          size_t dump_counter =
+              table->export_batch(MAX_CAPACITY, 0, d_keys_temp,
+              d_vectors_temp,
+                                  d_metas_temp, stream);
+          ASSERT_EQ(dump_counter, total_size);
+
+          CUDA_CHECK(cudaMemcpy(h_keys_temp, d_keys_temp,
+                                MAX_CAPACITY * sizeof(K),
+                                cudaMemcpyDefault));
+          CUDA_CHECK(cudaMemcpy(h_metas_temp, d_metas_temp,
+                                MAX_CAPACITY * sizeof(M),
+                                cudaMemcpyDeviceToHost));
+          CUDA_CHECK(cudaMemset(h_vectors_temp, 0,
+                                MAX_CAPACITY * sizeof(V) *
+                                options.dim));
+          CUDA_CHECK(cudaMemcpy(h_vectors_temp, d_vectors_temp,
+                                MAX_CAPACITY * sizeof(V) *
+                                options.dim, cudaMemcpyDeviceToHost));
+
+          for (int i = 0; i < dump_counter; i++) {
+            ASSERT_EQ(h_keys_temp[i], h_metas_temp[i]);
+            for (int j = 0; j < options.dim; j++) {
+              ASSERT_EQ(h_vectors_temp[i * options.dim + j],
+                        static_cast<V>(h_keys_temp[i] * 0.00001))
+                  << "*i = " << i << ", dim = " << j
+                  << ", key = " << h_keys_temp[i]
+                  << ", j + 1 = " << h_vectors_temp[i * options.dim +
+                  j + i];
+            }
+          }
+        }
       }
 
       size_t total_size = table->size(stream);
