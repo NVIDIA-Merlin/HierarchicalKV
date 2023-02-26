@@ -35,8 +35,6 @@ Includes
 
 - ``merlin/flexible_buffer.cuh``
 
-- ``merlin/memory_pool.cuh``
-
 - ``merlin/types.cuh``
 
 - ``merlin/utils.cuh``
