@@ -30,6 +30,12 @@
 #include "merlin/utils.cuh"
 #include "merlin_hashtable.cuh"
 
+#define UNEQUAL_EXPR(expr1, expr2)                             \
+  {                                                            \
+    std::cout << __FILE__ << ":" << __LINE__ << ":Unequal\n"   \
+              << "\t\t" << #expr1 << " != " << #expr2 << "\n"; \
+  }
+
 #define MERLIN_EXPECT_TRUE(cond, msg)                                    \
   if (!cond) {                                                           \
     fprintf(stderr, "[ERROR] %s at %s : %d\n", msg, __FILE__, __LINE__); \
@@ -111,6 +117,31 @@ void create_random_keys(K* h_keys, M* h_metas, int KEY_NUM) {
   }
 }
 
+template <class K, class M, class V, size_t DIM = 16>
+void create_random_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM) {
+  std::unordered_set<K> numbers;
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<K> distr;
+  int i = 0;
+
+  while (numbers.size() < KEY_NUM) {
+    numbers.insert(distr(eng));
+  }
+  for (const K num : numbers) {
+    h_keys[i] = num;
+    if (h_metas != nullptr) {
+      h_metas[i] = num;
+    }
+    if (h_vectors != nullptr) {
+      for (size_t j = 0; j < DIM; j++) {
+        h_vectors[i * DIM + j] = static_cast<float>(num * 0.00001);
+      }
+    }
+    i++;
+  }
+}
+
 inline uint64_t Murmur3HashHost(const uint64_t& key) {
   uint64_t k = key;
   k ^= k >> 33;
@@ -119,6 +150,57 @@ inline uint64_t Murmur3HashHost(const uint64_t& key) {
   k *= UINT64_C(0xc4ceb9fe1a85ec53);
   k ^= k >> 33;
   return k;
+}
+
+template <class K, class M, class V, size_t DIM = 16>
+void create_continuous_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM,
+                            K start = 1) {
+  for (K i = 0; i < KEY_NUM; i++) {
+    h_keys[i] = start + static_cast<K>(i);
+    h_metas[i] = h_keys[i];
+    if (h_vectors != nullptr) {
+      for (size_t j = 0; j < DIM; j++) {
+        h_vectors[i * DIM + j] = static_cast<float>(h_keys[i] * 0.00001);
+      }
+    }
+  }
+}
+
+template <class K, class M, class V, size_t DIM = 16>
+void create_keys_in_one_buckets(K* h_keys, M* h_metas, V* h_vectors,
+                                int KEY_NUM, int capacity,
+                                int bucket_max_size = 128, int bucket_idx = 0,
+                                K min = 0,
+                                K max = static_cast<K>(0xFFFFFFFFFFFFFFFD)) {
+  std::unordered_set<K> numbers;
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<K> distr;
+  K candidate;
+  K hashed_key;
+  size_t global_idx;
+  size_t bkt_idx;
+  int i = 0;
+
+  while (numbers.size() < KEY_NUM) {
+    candidate = (distr(eng) % (max - min)) + min;
+    hashed_key = Murmur3HashHost(candidate);
+    global_idx = hashed_key & (capacity - 1);
+    bkt_idx = global_idx / bucket_max_size;
+    if (bkt_idx == bucket_idx) {
+      numbers.insert(candidate);
+    }
+  }
+  for (const K num : numbers) {
+    h_keys[i] = num;
+    if (h_metas != nullptr) {
+      h_metas[i] = num;
+    }
+    for (size_t j = 0; j < DIM; j++) {
+      *(h_vectors + i * DIM + j) = static_cast<float>(num * 0.00001);
+    }
+    i++;
+  }
 }
 
 template <typename T>
