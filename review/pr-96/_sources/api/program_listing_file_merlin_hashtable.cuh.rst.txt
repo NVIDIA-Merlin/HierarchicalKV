@@ -295,10 +295,11 @@ Program Listing for File merlin_hashtable.cuh
        size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
        const size_type dev_ws_size =
            n_offsets * sizeof(int64_t) + n * sizeof(bool) + sizeof(size_type);
+   
        auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
        auto d_offsets{dev_ws.get<int64_t*>(0)};
-       auto d_masks = reinterpret_cast<bool*>(d_offsets + n_offsets);
-       auto dn_evicted = reinterpret_cast<size_type*>(d_masks + n);
+       auto dn_evicted = reinterpret_cast<size_type*>(d_offsets + n_offsets);
+       auto d_masks = reinterpret_cast<bool*>(dn_evicted + 1);
    
        size_type block_size = options_.block_size;
        size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
