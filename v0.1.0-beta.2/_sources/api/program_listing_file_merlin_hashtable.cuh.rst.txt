@@ -37,6 +37,7 @@ Program Listing for File merlin_hashtable.cuh
    #include <mutex>
    #include <shared_mutex>
    #include <type_traits>
+   #include "merlin/array_kernels.cuh"
    #include "merlin/core_kernels.cuh"
    #include "merlin/flexible_buffer.cuh"
    #include "merlin/memory_pool.cuh"
@@ -251,6 +252,76 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        CudaCheckError();
+     }
+   
+     size_type insert_and_evict(const size_type n,
+                                const key_type* keys,        // (n)
+                                const value_type* values,    // (n, DIM)
+                                const meta_type* metas,      // (n)
+                                key_type* evicted_keys,      // (n)
+                                value_type* evicted_values,  // (n, DIM)
+                                meta_type* evicted_metas,    // (n)
+                                cudaStream_t stream = 0) {
+       if (n == 0) {
+         return 0;
+       }
+   
+       while (!reach_max_capacity_ &&
+              fast_load_factor(n) > options_.max_load_factor) {
+         reserve(capacity() * 2);
+       }
+   
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+       if (!reach_max_capacity_) {
+         lock.lock();
+       }
+   
+       // TODO: Currently only need eviction when using HashTable as HBM cache.
+       if (!is_fast_mode()) {
+         throw std::runtime_error("Only allow insert_and_evict in pure HBM mode.");
+       }
+   
+       using Selector =
+           SelectUpsertAndEvictKernelWithIO<key_type, value_type, meta_type>;
+       static thread_local int step_counter = 0;
+       static thread_local float load_factor = 0.0;
+   
+       if (((step_counter++) % kernel_select_interval_) == 0) {
+         load_factor = fast_load_factor();
+       }
+   
+       // always use max tile to avoid data-deps as possible.
+       const int TILE_SIZE = 32;
+       size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
+       const size_type dev_ws_size =
+           n_offsets * sizeof(int64_t) + n * sizeof(bool) + sizeof(size_type);
+   
+       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+       auto d_offsets{dev_ws.get<int64_t*>(0)};
+       auto dn_evicted = reinterpret_cast<size_type*>(d_offsets + n_offsets);
+       auto d_masks = reinterpret_cast<bool*>(dn_evicted + 1);
+   
+       size_type block_size = options_.block_size;
+       size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
+       CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY),
+                                  n * sizeof(K), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_masks, 0, sizeof(bool) * n, stream));
+   
+       Selector::execute_kernel(load_factor, options_.block_size, stream, n,
+                                c_table_index_, d_table_, keys, values, metas,
+                                evicted_keys, evicted_values, evicted_metas);
+   
+       keys_not_empty<K>
+           <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
+       size_type n_evicted = 0;
+       gpu_boolean_mask<K, V, M, int64_t, TILE_SIZE>(
+           grid_size, block_size, d_masks, n, dn_evicted, d_offsets, evicted_keys,
+           evicted_values, evicted_metas, dim(), stream);
+       CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type),
+                                  cudaMemcpyDeviceToHost, stream));
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
+       return n_evicted;
      }
    
      void accum_or_assign(const size_type n,
