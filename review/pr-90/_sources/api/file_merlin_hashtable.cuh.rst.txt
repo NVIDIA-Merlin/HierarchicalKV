@@ -31,6 +31,8 @@ Includes
 
 - ``limits``
 
+- ``merlin/array_kernels.cuh``
+
 - ``merlin/core_kernels.cuh``
 
 - ``merlin/flexible_buffer.cuh``
