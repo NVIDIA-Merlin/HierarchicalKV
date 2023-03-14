@@ -56,7 +56,8 @@ template <class K, class M>
 __device__ Table::Pred ExportIfPred = export_if_pred<K, M>;
 
 void test_basic(size_t max_hbm_for_vectors) {
-  constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
+  constexpr uint64_t BUCKET_MAX_SIZE = 128;
+  constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL - (128 + 1);
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
   constexpr uint64_t TEST_TIMES = 1;
@@ -71,6 +72,7 @@ void test_basic(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
@@ -113,6 +115,9 @@ void test_basic(size_t max_hbm_for_vectors) {
   for (int i = 0; i < TEST_TIMES; i++) {
     std::unique_ptr<Table> table = std::make_unique<Table>();
     table->init(options);
+
+    ASSERT_EQ(table->bucket_count(),
+              524287);  // 1 + (INIT_CAPACITY / options.bucket_max_size)
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ(total_size, 0);
@@ -748,7 +753,7 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
 
 void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
-  constexpr uint64_t INIT_CAPACITY = 4 * 1024;
+  constexpr uint64_t INIT_CAPACITY = 4 * 1024 - BUCKET_MAX_SIZE - 1;
   constexpr uint64_t MAX_CAPACITY = 16 * 1024 * INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 256;
   constexpr uint64_t THREAD_N = 8;
@@ -767,6 +772,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
 
   std::shared_ptr<Table> table = std::make_shared<Table>();
   table->init(options);
+  ASSERT_EQ(table->bucket_count(), 32);
 
   auto worker_function = [&table, KEY_NUM, options](int task_n) {
     K* h_keys;
@@ -790,7 +796,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
 
-    while (table->capacity() < MAX_CAPACITY) {
+    while (table->capacity() * 2 < MAX_CAPACITY) {
       test_util::create_random_keys<K, M, V, DIM>(h_keys, nullptr, h_vectors,
                                                   KEY_NUM);
       CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
@@ -862,7 +868,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
   for (auto& th : threads) {
     th.join();
   }
-  ASSERT_EQ(table->capacity(), MAX_CAPACITY);
+  ASSERT_GE(table->capacity() * 2, MAX_CAPACITY);
 }
 
 void test_export_batch_if(size_t max_hbm_for_vectors) {
@@ -1586,6 +1592,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   for (int i = 0; i < TEST_TIMES; i++) {
     std::unique_ptr<Table> table = std::make_unique<Table>();
     table->init(options);
+    ASSERT_EQ(table->bucket_count(), BUCKET_NUM);
 
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
