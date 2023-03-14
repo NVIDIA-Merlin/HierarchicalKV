@@ -259,7 +259,7 @@ class HashTable {
    *
    * @param ignore_evict_strategy A boolean option indicating whether if
    * the insert_or_assign ignores the evict strategy of table with current
-   * metas anyway. If true, it does not check whether the metas confroms to
+   * metas anyway. If true, it does not check whether the metas conforms to
    * the evict strategy. If false, it requires the metas follow the evict
    * strategy of table.
    */
@@ -1279,6 +1279,13 @@ class HashTable {
   size_type max_bucket_size() const noexcept {
     return options_.max_bucket_size;
   }
+
+  /**
+   * @brief Returns the number of buckets in the table.
+   *
+   * @return The number of buckets in the table.
+   */
+  size_type bucket_count() const noexcept { return table_->buckets_num; }
 
   /**
    * @brief Save keys, vectors, metas in table to file or files.

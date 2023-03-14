@@ -236,15 +236,23 @@ void create_table(Table<K, V, M>** table, const size_t dim,
   CUDA_CHECK(cudaMemset(*table, 0, sizeof(Table<K, V, M>)));
   (*table)->dim = dim;
   (*table)->bucket_max_size = bucket_max_size;
-  (*table)->max_size = max_size;
+  (*table)->max_size = std::max(init_size, max_size);
   (*table)->tile_size = tile_size;
   (*table)->is_pure_hbm = true;
   (*table)->bytes_per_slice = get_slice_size<K, V, M>(table);
 
-  (*table)->buckets_num = 1;
-  while ((*table)->buckets_num * (*table)->bucket_max_size < init_size) {
-    (*table)->buckets_num *= 2;
+  // The bucket number will be the minimum needed for saving memory if no
+  // rehash.
+  if ((init_size * 2) > (*table)->max_size) {
+    (*table)->buckets_num =
+        1 + (((*table)->max_size - 1) / (*table)->bucket_max_size);
+  } else {
+    (*table)->buckets_num = 1;
+    while ((*table)->buckets_num * (*table)->bucket_max_size < init_size) {
+      (*table)->buckets_num *= 2;
+    }
   }
+
   (*table)->capacity = (*table)->buckets_num * (*table)->bucket_max_size;
   (*table)->max_hbm_for_vectors = max_hbm_for_vectors;
   (*table)->remaining_hbm_for_vectors = max_hbm_for_vectors;
@@ -341,7 +349,7 @@ __forceinline__ __device__ void defragmentation_for_rehash(
       break;
     }
     hashed_key = Murmur3HashDevice(find_key);
-    global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+    global_idx = hashed_key % (buckets_num * bucket_max_size);
     start_idx = global_idx % bucket_max_size;
 
     if ((start_idx <= empty_pos && empty_pos < key_idx) ||
@@ -526,7 +534,7 @@ __global__ void rehash_kernel_for_fast_mode(
       if (target_key != static_cast<K>(EMPTY_KEY) &&
           target_key != static_cast<K>(RECLAIM_KEY)) {
         K hashed_key = Murmur3HashDevice(target_key);
-        global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+        global_idx = hashed_key % (buckets_num * bucket_max_size);
         uint32_t new_bkt_idx = global_idx / bucket_max_size;
         if (new_bkt_idx != bkt_idx) {
           start_idx = global_idx % bucket_max_size;
@@ -768,7 +776,7 @@ __forceinline__ __device__ Bucket<K, V, M>* get_key_position(
     Bucket<K, V, M>* __restrict buckets, const K key, size_t& bkt_idx,
     size_t& start_idx, const size_t buckets_num, const size_t bucket_max_size) {
   uint32_t hashed_key = Murmur3HashDevice(key);
-  size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+  size_t global_idx = hashed_key % (buckets_num * bucket_max_size);
   bkt_idx = global_idx / bucket_max_size;
   start_idx = global_idx % bucket_max_size;
   return buckets + bkt_idx;
@@ -1506,7 +1514,7 @@ __global__ void accum_kernel(
     size_t key_idx = t / TILE_SIZE;
     K insert_key = *(keys + key_idx);
     K hashed_key = Murmur3HashDevice(insert_key);
-    size_t global_idx = hashed_key & (buckets_num * bucket_max_size - 1);
+    size_t global_idx = hashed_key % (buckets_num * bucket_max_size);
     size_t bkt_idx = global_idx / bucket_max_size;
     size_t start_idx = global_idx % bucket_max_size;
 
