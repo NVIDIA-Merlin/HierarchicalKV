@@ -148,7 +148,7 @@ __forceinline__ __device__ bool export_if_pred(const K& key, M& meta,
 template <class K, class M>
 __device__ Table::Pred ExportIfPred = export_if_pred<K, M>;
 
-void test_basic(size_t max_hbm_for_vectors, bool use_constant_memory) {
+void test_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -166,7 +166,6 @@ void test_basic(size_t max_hbm_for_vectors, bool use_constant_memory) {
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
@@ -352,8 +351,7 @@ void test_basic(size_t max_hbm_for_vectors, bool use_constant_memory) {
   CudaCheckError();
 }
 
-void test_basic_when_full(size_t max_hbm_for_vectors,
-                          bool use_constant_memory) {
+void test_basic_when_full(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_CAPACITY = 1 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -371,7 +369,6 @@ void test_basic_when_full(size_t max_hbm_for_vectors,
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
@@ -455,7 +452,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors,
   CudaCheckError();
 }
 
-void test_erase_if_pred(size_t max_hbm_for_vectors, bool use_constant_memory) {
+void test_erase_if_pred(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 128UL;
@@ -474,7 +471,6 @@ void test_erase_if_pred(size_t max_hbm_for_vectors, bool use_constant_memory) {
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
@@ -579,7 +575,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors, bool use_constant_memory) {
   CudaCheckError();
 }
 
-void test_rehash(size_t max_hbm_for_vectors, bool use_constant_memory) {
+void test_rehash(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = BUCKET_MAX_SIZE;
   constexpr uint64_t MAX_CAPACITY = 4 * INIT_CAPACITY;
@@ -598,7 +594,6 @@ void test_rehash(size_t max_hbm_for_vectors, bool use_constant_memory) {
   options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
@@ -710,8 +705,7 @@ void test_rehash(size_t max_hbm_for_vectors, bool use_constant_memory) {
   CudaCheckError();
 }
 
-void test_rehash_on_big_batch(size_t max_hbm_for_vectors,
-                              bool use_constant_memory) {
+void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_CAPACITY = 1024;
   constexpr uint64_t MAX_CAPACITY = 16 * 1024;
   constexpr uint64_t INIT_KEY_NUM = 1024;
@@ -730,7 +724,6 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors,
   options.max_load_factor = 0.6;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
@@ -843,8 +836,7 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors,
   CudaCheckError();
 }
 
-void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors,
-                                          bool use_constant_memory) {
+void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = 4 * 1024;
   constexpr uint64_t MAX_CAPACITY = 16 * 1024 * INIT_CAPACITY;
@@ -862,7 +854,6 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors,
   options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kLru;
-  options.use_constant_memory = use_constant_memory;
 
   std::shared_ptr<Table> table = std::make_shared<Table>();
   table->init(options);
@@ -963,8 +954,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors,
   ASSERT_EQ(table->capacity(), MAX_CAPACITY);
 }
 
-void test_export_batch_if(size_t max_hbm_for_vectors,
-                          bool use_constant_memory) {
+void test_export_batch_if(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 128UL;
@@ -983,7 +973,6 @@ void test_export_batch_if(size_t max_hbm_for_vectors,
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
@@ -1123,7 +1112,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors,
   CudaCheckError();
 }
 
-void test_basic_for_cpu_io(bool use_constant_memory) {
+void test_basic_for_cpu_io() {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -1142,7 +1131,6 @@ void test_basic_for_cpu_io(bool use_constant_memory) {
   options.max_hbm_for_vectors = nv::merlin::GB(0);
   options.io_by_cpu = true;
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
@@ -1260,8 +1248,7 @@ void test_basic_for_cpu_io(bool use_constant_memory) {
   CudaCheckError();
 }
 
-void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
-                                   bool use_constant_memory) {
+void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -1278,7 +1265,6 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kLru;
-  options.use_constant_memory = use_constant_memory;
 
   std::array<K, BASE_KEY_NUM> h_keys_base;
   std::array<M, BASE_KEY_NUM> h_metas_base;
@@ -1433,8 +1419,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
-                                          bool use_constant_memory) {
+void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -1451,7 +1436,6 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   std::array<K, BASE_KEY_NUM> h_keys_base;
   std::array<M, BASE_KEY_NUM> h_metas_base;
@@ -1604,8 +1588,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
-                                             bool use_constant_memory) {
+void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -1622,7 +1605,6 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   std::array<K, BASE_KEY_NUM> h_keys_base;
   std::array<M, BASE_KEY_NUM> h_metas_base;
@@ -1804,8 +1786,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
-                                                 bool use_constant_memory) {
+void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   constexpr uint64_t BATCH_SIZE = 1024 * 1024ul;
   constexpr uint64_t STEPS = 128;
   constexpr uint64_t MAX_BUCKET_SIZE = 128;
@@ -1823,7 +1804,6 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
   options.max_bucket_size = MAX_BUCKET_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
-  options.use_constant_memory = use_constant_memory;
 
   K* h_keys_base;
   M* h_metas_base;
@@ -1945,81 +1925,56 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors,
   CudaCheckError();
 }
 TEST(MerlinHashTableTest, test_basic) {
-  test_basic(16, true);
-  test_basic(0, true);
-  test_basic(16, false);
-  test_basic(0, false);
+  test_basic(16);
+  test_basic(0);
 }
 TEST(MerlinHashTableTest, test_basic_when_full) {
-  test_basic_when_full(16, true);
-  test_basic_when_full(0, true);
-  test_basic_when_full(16, false);
-  test_basic_when_full(0, false);
+  test_basic_when_full(16);
+  test_basic_when_full(0);
 }
 TEST(MerlinHashTableTest, test_erase_if_pred) {
-  test_erase_if_pred(16, true);
-  test_erase_if_pred(0, true);
-  test_erase_if_pred(16, false);
-  test_erase_if_pred(0, false);
+  test_erase_if_pred(16);
+  test_erase_if_pred(0);
 }
 TEST(MerlinHashTableTest, test_rehash) {
-  test_rehash(16, true);
-  test_rehash(0, true);
-  test_rehash(16, false);
-  test_rehash(0, false);
+  test_rehash(16);
+  test_rehash(0);
 }
 TEST(MerlinHashTableTest, test_rehash_on_big_batch) {
-  test_rehash_on_big_batch(16, true);
-  test_rehash_on_big_batch(0, true);
-  test_rehash_on_big_batch(16, false);
-  test_rehash_on_big_batch(0, false);
+  test_rehash_on_big_batch(16);
+  test_rehash_on_big_batch(0);
 }
 TEST(MerlinHashTableTest, test_dynamic_rehash_on_multi_threads) {
-  test_dynamic_rehash_on_multi_threads(16, true);
-  test_dynamic_rehash_on_multi_threads(0, true);
-  test_dynamic_rehash_on_multi_threads(16, false);
-  test_dynamic_rehash_on_multi_threads(0, false);
+  test_dynamic_rehash_on_multi_threads(16);
+  test_dynamic_rehash_on_multi_threads(0);
 }
 TEST(MerlinHashTableTest, test_export_batch_if) {
-  test_export_batch_if(16, true);
-  test_export_batch_if(0, true);
-  test_export_batch_if(16, false);
-  test_export_batch_if(0, false);
+  test_export_batch_if(16);
+  test_export_batch_if(0);
 }
-TEST(MerlinHashTableTest, test_basic_for_cpu_io) {
-  test_basic_for_cpu_io(true);
-  test_basic_for_cpu_io(false);
-}
+TEST(MerlinHashTableTest, test_basic_for_cpu_io) { test_basic_for_cpu_io(); }
 
 TEST(MerlinHashTableTest, test_evict_strategy_lru_basic) {
-  test_evict_strategy_lru_basic(16, true);
-  test_evict_strategy_lru_basic(0, true);
-  test_evict_strategy_lru_basic(16, false);
-  test_evict_strategy_lru_basic(0, false);
+  test_evict_strategy_lru_basic(16);
+  test_evict_strategy_lru_basic(0);
 }
 
 TEST(MerlinHashTableTest, test_evict_strategy_customized_basic) {
-  test_evict_strategy_customized_basic(16, true);
-  test_evict_strategy_customized_basic(0, true);
-  test_evict_strategy_customized_basic(16, false);
-  test_evict_strategy_customized_basic(0, false);
+  test_evict_strategy_customized_basic(16);
+  test_evict_strategy_customized_basic(0);
 }
 
 TEST(MerlinHashTableTest, test_evict_strategy_customized_advanced) {
-  test_evict_strategy_customized_advanced(16, true);
-  test_evict_strategy_customized_advanced(0, true);
-  test_evict_strategy_customized_advanced(16, false);
-  test_evict_strategy_customized_advanced(0, false);
+  test_evict_strategy_customized_advanced(16);
+  test_evict_strategy_customized_advanced(0);
 }
 
 TEST(MerlinHashTableTest, test_evict_strategy_customized_correct_rate) {
   // TODO(rhdong): after blossom CI issue is resolved, the skip logic.
   const bool skip_hmem_check = (nullptr != std::getenv("IS_BLOSSOM_CI"));
-  test_evict_strategy_customized_correct_rate(16, true);
-  test_evict_strategy_customized_advanced(16, false);
+  test_evict_strategy_customized_advanced(16);
   if (!skip_hmem_check) {
-    test_evict_strategy_customized_advanced(0, true);
-    test_evict_strategy_customized_advanced(0, false);
+    test_evict_strategy_customized_advanced(0);
   } else {
     std::cout << "The HMEM check is skipped in blossom CI!" << std::endl;
   }

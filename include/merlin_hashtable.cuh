@@ -68,8 +68,7 @@ struct HashTableOptions {
   int device_id = 0;               ///< The ID of device.
   bool io_by_cpu = false;  ///< The flag indicating if the CPU handles IO.
   EvictStrategy evict_strategy = EvictStrategy::kLru;  ///< The evict strategy.
-  bool use_constant_memory =
-      true;  ///< The flag indicating if speedup by using constant memory.
+  bool use_constant_memory = false;                    ///< reserved
   MemoryPoolOptions
       device_memory_pool;  ///< Configuration options for device memory pool.
   MemoryPoolOptions
@@ -176,7 +175,6 @@ class HashTable {
       initialized_ = false;
       destroy_table<key_type, value_type, meta_type>(&table_);
       CUDA_CHECK(cudaFree(d_table_));
-      release_constant_table<>(c_table_index_);
       dev_mem_pool_.reset();
       host_mem_pool_.reset();
     }
@@ -214,9 +212,7 @@ class HashTable {
                  "[HierarchicalKV] `io_by_cpu` should not be true when "
                  "`max_hbm_for_vectors` is not 0!");
     CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
-    if (options_.use_constant_memory && c_table_index_ == -1) {
-      c_table_index_ = allocate_constant_table<>();
-    }
+
     sync_table_configuration();
 
     // Create memory pools.
