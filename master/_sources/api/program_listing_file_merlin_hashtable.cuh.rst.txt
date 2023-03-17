@@ -61,7 +61,7 @@ Program Listing for File merlin_hashtable.cuh
      float max_load_factor = 0.5f;    
      int block_size = 128;            
      int io_block_size = 1024;        
-     int device_id = 0;               
+     int device_id = -1;              
      bool io_by_cpu = false;  
      EvictStrategy evict_strategy = EvictStrategy::kLru;  
      bool use_constant_memory = false;                    
@@ -129,10 +129,15 @@ Program Listing for File merlin_hashtable.cuh
        }
        options_ = options;
    
+       if (options_.device_id >= 0) {
+         CUDA_CHECK(cudaSetDevice(options_.device_id));
+       } else {
+         CUDA_CHECK(cudaGetDevice(&(options_.device_id)));
+       }
+   
        // Construct table.
        cudaDeviceProp deviceProp;
-       CUDA_CHECK(cudaSetDevice(options_.device_id));
-       CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
+       CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
        shared_mem_size_ = deviceProp.sharedMemPerBlock;
        create_table<key_type, value_type, meta_type>(
            &table_, options_.dim, options_.init_capacity, options_.max_capacity,
