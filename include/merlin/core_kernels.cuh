@@ -111,9 +111,6 @@ __global__ void create_atomic_metas(Bucket<K, V, M>* __restrict buckets,
   }
 }
 
-/* 1GB per slice by default.*/
-constexpr size_t kDefaultBytesPerSlice = (1ul << 30);
-
 /* Initialize the buckets with index from start to end. */
 template <class K, class V, class M>
 void initialize_buckets(Table<K, V, M>** table, const size_t start,
@@ -197,6 +194,28 @@ void initialize_buckets(Table<K, V, M>** table, const size_t start,
   CudaCheckError();
 }
 
+template <class K, class V, class M>
+size_t get_slice_size(Table<K, V, M>** table) {
+  const size_t min_slice_size =
+      (*table)->bucket_max_size * sizeof(V) * (*table)->dim;
+  const size_t max_table_size = (*table)->max_size * sizeof(V) * (*table)->dim;
+  size_t slice_size = 0;
+
+  if (max_table_size >= GB(16)) {
+    slice_size = GB(2);
+  } else if (max_table_size >= GB(2)) {
+    slice_size = MB(128);
+  } else if (max_table_size >= MB(128)) {
+    slice_size = MB(16);
+  } else if (max_table_size >= MB(16)) {
+    slice_size = MB(1);
+  } else {
+    slice_size = min_slice_size;
+  }
+
+  return std::max(min_slice_size, slice_size);
+}
+
 /* Initialize a Table struct.
 
    K: The key type
@@ -212,16 +231,15 @@ void create_table(Table<K, V, M>** table, const size_t dim,
                   const size_t max_size = std::numeric_limits<size_t>::max(),
                   const size_t max_hbm_for_vectors = 0,
                   const size_t bucket_max_size = 128,
-                  const size_t tile_size = 32, const bool primary = true,
-                  const size_t bytes_per_slice = kDefaultBytesPerSlice) {
+                  const size_t tile_size = 32, const bool primary = true) {
   CUDA_CHECK(cudaMallocManaged((void**)table, sizeof(Table<K, V, M>)));
   CUDA_CHECK(cudaMemset(*table, 0, sizeof(Table<K, V, M>)));
   (*table)->dim = dim;
   (*table)->bucket_max_size = bucket_max_size;
-  (*table)->bytes_per_slice = bytes_per_slice;
   (*table)->max_size = max_size;
   (*table)->tile_size = tile_size;
   (*table)->is_pure_hbm = true;
+  (*table)->bytes_per_slice = get_slice_size<K, V, M>(table);
 
   (*table)->buckets_num = 1;
   while ((*table)->buckets_num * (*table)->bucket_max_size < init_size) {
