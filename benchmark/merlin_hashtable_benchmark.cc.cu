@@ -173,7 +173,6 @@ void test_main(const size_t dim,
   float cur_load_factor = table->load_factor();
   auto diff_insert_or_assign = benchmark::Timer<double>();
   auto diff_find = benchmark::Timer<double>();
-  auto diff_erase = benchmark::Timer<double>();
   auto diff_find_or_insert = benchmark::Timer<double>();
   auto diff_assign = benchmark::Timer<double>();
 
@@ -217,12 +216,6 @@ void test_main(const size_t dim,
     CUDA_CHECK(cudaStreamSynchronize(stream));
     diff_find_or_insert.end();
 
-    start_export = std::chrono::steady_clock::now();
-    table->export_batch(key_num_per_op, 0, d_keys_out, d_vectors, d_metas, stream);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    end_export = std::chrono::steady_clock::now();
-    diff_export = end_export - start_export;
-
     cur_load_factor = table->load_factor(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     if (start == 0) {
@@ -231,11 +224,10 @@ void test_main(const size_t dim,
     start += (key_num_per_op * (1.0 - hitrate));
   }
 
-  diff_erase.start();
   table->erase(key_num_per_op, d_keys, stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
-  diff_erase.end();
 
+  int32_t capacity = static_cast<int32_t>(init_capacity / (1024 * 1024));
   size_t hmem4values =
       init_capacity * options.dim * sizeof(V) / (1024 * 1024 * 1024);
   hmem4values = hmem4values < hbm4values ? 0 : (hmem4values - hbm4values);
@@ -243,23 +235,20 @@ void test_main(const size_t dim,
                                 diff_insert_or_assign.getResult() /
                                 (1024 * 1024 * 1024.0);
   float find_tput =
-      key_num_per_op / diff_find.getResult() / (1024 * 1024 * 1024.0);
-  float erase_tput =
-      key_num_per_op / diff_erase.getResult() / (1024 * 1024 * 1024.0);
+      key_num_per_op / diff_find.getResult() / (1024 * 1024 * 1024.0f);
   float find_or_insert_tput =
-      key_num_per_op / diff_find_or_insert.getResult() / (1024 * 1024 * 1024.0);
+      key_num_per_op / diff_find_or_insert.getResult() / (1024 * 1024 * 1024.0f);
   float assign_tput =
-      key_num_per_op / diff_assign.getResult() / (1024 * 1024 * 1024.0);
+      key_num_per_op / diff_assign.getResult() / (1024 * 1024 * 1024.0f);
 
   cout << "|" << rep(1) << setw(3) << setfill(' ') << options.dim << " "
-       << "|" << rep(1) << setw(11) << setfill(' ') << init_capacity << " "
+       << "|" << rep(15) << setw(5) << setfill(' ') << capacity << " "
+       << "|" << rep(9) << setw(3) << setfill(' ') << hbm4values << " /"
+       << setw(3) << setfill(' ') << hmem4values << " "
        << "|" << rep(8) << fixed << setprecision(2) << load_factor << " "
-       << "|" << rep(5) << setw(3) << setfill(' ') << hbm4values << " "
-       << "|" << rep(6) << setw(3) << setfill(' ') << hmem4values << " "
        << "|" << rep(12) << fixed << setprecision(3) << insert_or_assign_tput
        << " "
        << "|" << rep(2) << fixed << setprecision(3) << find_tput << " "
-       << "|" << rep(2) << fixed << setprecision(3) << erase_tput << " "
        << "|" << rep(10) << fixed << setprecision(3) << find_or_insert_tput
        << " "
        << "|" << rep(2) << fixed << setprecision(3) << assign_tput << " |"
@@ -286,34 +275,26 @@ void test_main(const size_t dim,
 void print_title() {
   cout << endl
        << "| dim "
-       << "|    capacity "
+       << "| Capacity<br>(M-KVs) "
+       << "| HBM/HMEM<br>(GB) "
        << "| load_factor "
-       << "| HBM(GB) "
-       << "| HMEM(GB) "
        << "| insert_or_assign "
        << "|   find "
-       << "|  erase "
        << "| find_or_insert "
        << "| assign |" << endl;
   cout << "|----:"
-       //<< "| capacity "
-       << "|------------:"
+       //<< "| Capacity<br>(M-KVs) "
+       << "|:-------------------:"
+       //<< "| HBM/HMEM<br>(GB) "
+       << "|:----------------:"
        //<< "| load_factor "
        << "|------------:"
-       //<< "| HBM(GB) "
-       << "|--------:"
-       //<< "| HMEM(GB) "
-       << "|---------:"
        //<< "| insert_or_assign "
-       << "|-----------------:"
+       << "|:----------------:"
        //<< "|  find "
        << "|-------:"
-       //<< "|  export "
-       << "|-------:"
-       //<< "| erase "
-       << "|-------:"
        //<< "| find_or_insert "
-       << "|---------------:"
+       << "|:--------------:"
        //<< "| assign "
        << "|-------:|" << endl;
 }

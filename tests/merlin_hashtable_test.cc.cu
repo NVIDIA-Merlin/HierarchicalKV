@@ -2214,9 +2214,9 @@ TEST(MerlinHashTableTest, test_evict_strategy_customized_advanced) {
 TEST(MerlinHashTableTest, test_evict_strategy_customized_correct_rate) {
   // TODO(rhdong): after blossom CI issue is resolved, the skip logic.
   const bool skip_hmem_check = (nullptr != std::getenv("IS_BLOSSOM_CI"));
-  test_evict_strategy_customized_advanced(16);
+  test_evict_strategy_customized_correct_rate(16);
   if (!skip_hmem_check) {
-    test_evict_strategy_customized_advanced(0);
+    test_evict_strategy_customized_correct_rate(0);
   } else {
     std::cout << "The HMEM check is skipped in blossom CI!" << std::endl;
   }
