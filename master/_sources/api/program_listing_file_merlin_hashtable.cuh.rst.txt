@@ -550,20 +550,15 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (offset >= table_->capacity) {
-         CUDA_CHECK(cudaMemsetAsync(counter, 0, sizeof(size_type), stream));
          return;
        }
        n = std::min(table_->capacity - offset, n);
    
-       const size_t meta_size = metas ? sizeof(meta_type) : 0;
-       const size_t kvm_size =
-           sizeof(key_type) + sizeof(value_type) * dim() + meta_size;
-       const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
-       MERLIN_CHECK(
-           (block_size > 0),
-           "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
+       size_type shared_size;
+       size_type block_size;
+       std::tie(shared_size, block_size) =
+           dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
    
-       const size_t shared_size = kvm_size * block_size;
        const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
    
        dump_kernel<key_type, value_type, meta_type>
@@ -711,18 +706,16 @@ Program Listing for File merlin_hashtable.cuh
                     "[HierarchicalKV] max_workspace_size is smaller than a single "
                     "`key + metadata + value` tuple! Please set a larger value!");
    
-       const size_type block_size{
-           std::min(shared_mem_size_ / 2 / tuple_size, UINT64_C(1024))};
-       MERLIN_CHECK(
-           (block_size > 0),
-           "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
+       size_type shared_size;
+       size_type block_size;
+       std::tie(shared_size, block_size) =
+           dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
    
        // Request exclusive access (to make sure capacity won't change anymore).
        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        const size_type total_size{capacity()};
        const size_type n{std::min(max_workspace_size / tuple_size, total_size)};
-       const size_type shared_size{tuple_size * block_size};
        const size_type grid_size{SAFE_GET_GRID_SIZE(n, block_size)};
    
        // Grab temporary device and host memory.
