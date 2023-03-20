@@ -1841,21 +1841,32 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
 
 /* Dump with meta. */
 template <class K, class V, class M>
+inline std::tuple<size_t, size_t> dump_kernel_shared_memory_size(
+    const size_t available_shared_memory) {
+  const size_t block_size{std::min(
+      available_shared_memory / 2 / sizeof(KVM<K, V, M>), UINT64_C(1024))};
+  MERLIN_CHECK(
+      block_size > 0,
+      "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
+
+  return {block_size * sizeof(KVM<K, V, M>), block_size};
+}
+
+template <class K, class V, class M>
 __global__ void dump_kernel(const Table<K, V, M>* __restrict table, K* d_key,
                             V* __restrict d_val, M* __restrict d_meta,
                             const size_t offset, const size_t search_length,
                             size_t* d_dump_counter) {
   extern __shared__ unsigned char s[];
-  const size_t bucket_max_size = table->bucket_max_size;
-  const size_t dim = table->dim;
-  K* smem = (K*)s;
-  K* block_result_key = smem;
-  V* block_result_val = (V*)&(smem[blockDim.x]);
-  M* block_result_meta = (M*)&(block_result_val[blockDim.x * dim]);
+  KVM<K, V, M>* const block_tuples{reinterpret_cast<KVM<K, V, M>*>(s)};
+
+  const size_t bucket_max_size{table->bucket_max_size};
+  const size_t dim{table->dim};
+
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
 
-  const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+  const size_t tid{blockIdx.x * blockDim.x + threadIdx.x};
 
   if (threadIdx.x == 0) {
     block_acc = 0;
@@ -1863,23 +1874,17 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table, K* d_key,
   __syncthreads();
 
   if (tid < search_length) {
-    int bkt_idx = (tid + offset) / bucket_max_size;
-    int key_idx = (tid + offset) % bucket_max_size;
-    Bucket<K, V, M>* bucket = &(table->buckets[bkt_idx]);
-    const K key = bucket->keys[key_idx].load(cuda::std::memory_order_relaxed);
+    Bucket<K, V, M>* const bucket{
+        &table->buckets[(tid + offset) / bucket_max_size]};
 
-    if (key != static_cast<K>(EMPTY_KEY) &&
-        key != static_cast<K>(RECLAIM_KEY)) {
-      size_t local_index = atomicAdd(&block_acc, 1);
-      block_result_key[local_index] = key;
-      for (int i = 0; i < dim; i++) {
-        block_result_val[local_index * dim + i] =
-            bucket->vectors[key_idx * dim + i];
-      }
-      if (d_meta != nullptr) {
-        block_result_meta[local_index] =
-            bucket->metas[key_idx].load(cuda::std::memory_order_relaxed);
-      }
+    const int key_idx{static_cast<int>((tid + offset) % bucket_max_size)};
+    const K key{bucket->keys[key_idx].load(cuda::std::memory_order_relaxed)};
+
+    if (key != EMPTY_KEY && key != RECLAIM_KEY) {
+      size_t local_index{atomicAdd(&block_acc, 1)};
+      block_tuples[local_index] = {
+          key, &bucket->vectors[key_idx * dim],
+          bucket->metas[key_idx].load(cuda::std::memory_order_relaxed)};
     }
   }
   __syncthreads();
@@ -1890,13 +1895,15 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table, K* d_key,
   __syncthreads();
 
   if (threadIdx.x < block_acc) {
-    d_key[global_acc + threadIdx.x] = block_result_key[threadIdx.x];
-    for (int i = 0; i < dim; i++) {
-      d_val[(global_acc + threadIdx.x) * dim + i] =
-          block_result_val[threadIdx.x * dim + i];
+    const KVM<K, V, M>& tuple{block_tuples[threadIdx.x]};
+
+    const size_t j{global_acc + threadIdx.x};
+    d_key[j] = tuple.key;
+    for (int i{0}; i < dim; ++i) {
+      d_val[j * dim + i] = tuple.value[i];
     }
     if (d_meta != nullptr) {
-      d_meta[global_acc + threadIdx.x] = block_result_meta[threadIdx.x];
+      d_meta[j] = tuple.meta;
     }
   }
 }

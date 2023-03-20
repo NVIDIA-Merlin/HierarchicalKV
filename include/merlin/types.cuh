@@ -23,6 +23,16 @@
 namespace nv {
 namespace merlin {
 
+/**
+ * Shorthand for a Key-Value-Meta tuple.
+ */
+template <class K, class V, class M>
+struct KVM {
+  K key;
+  V* value;
+  M meta;
+};
+
 constexpr uint64_t EMPTY_KEY = UINT64_C(0xFFFFFFFFFFFFFFFF);
 constexpr uint64_t RECLAIM_KEY = UINT64_C(0xFFFFFFFFFFFFFFFE);
 constexpr uint64_t MAX_META = UINT64_C(0xFFFFFFFFFFFFFFFF);
