@@ -61,11 +61,10 @@ Program Listing for File merlin_hashtable.cuh
      float max_load_factor = 0.5f;    
      int block_size = 128;            
      int io_block_size = 1024;        
-     int device_id = 0;               
+     int device_id = -1;              
      bool io_by_cpu = false;  
      EvictStrategy evict_strategy = EvictStrategy::kLru;  
-     bool use_constant_memory =
-         true;  
+     bool use_constant_memory = false;                    
      MemoryPoolOptions
          device_memory_pool;  
      MemoryPoolOptions
@@ -112,7 +111,6 @@ Program Listing for File merlin_hashtable.cuh
          initialized_ = false;
          destroy_table<key_type, value_type, meta_type>(&table_);
          CUDA_CHECK(cudaFree(d_table_));
-         release_constant_table<>(c_table_index_);
          dev_mem_pool_.reset();
          host_mem_pool_.reset();
        }
@@ -131,10 +129,15 @@ Program Listing for File merlin_hashtable.cuh
        }
        options_ = options;
    
+       if (options_.device_id >= 0) {
+         CUDA_CHECK(cudaSetDevice(options_.device_id));
+       } else {
+         CUDA_CHECK(cudaGetDevice(&(options_.device_id)));
+       }
+   
        // Construct table.
        cudaDeviceProp deviceProp;
-       CUDA_CHECK(cudaSetDevice(options_.device_id));
-       CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, 0));
+       CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
        shared_mem_size_ = deviceProp.sharedMemPerBlock;
        create_table<key_type, value_type, meta_type>(
            &table_, options_.dim, options_.init_capacity, options_.max_capacity,
@@ -145,9 +148,7 @@ Program Listing for File merlin_hashtable.cuh
                     "[HierarchicalKV] `io_by_cpu` should not be true when "
                     "`max_hbm_for_vectors` is not 0!");
        CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
-       if (options_.use_constant_memory && c_table_index_ == -1) {
-         c_table_index_ = allocate_constant_table<>();
-       }
+   
        sync_table_configuration();
    
        // Create memory pools.
@@ -301,11 +302,14 @@ Program Listing for File merlin_hashtable.cuh
        auto dn_evicted = reinterpret_cast<size_type*>(d_offsets + n_offsets);
        auto d_masks = reinterpret_cast<bool*>(dn_evicted + 1);
    
+       CUDA_CHECK(cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t)));
+       CUDA_CHECK(cudaMemsetAsync(dn_evicted, 0, sizeof(size_type), stream));
+       CUDA_CHECK(cudaMemsetAsync(d_masks, 0, n * sizeof(bool), stream));
+   
        size_type block_size = options_.block_size;
        size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
        CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY),
                                   n * sizeof(K), stream));
-       CUDA_CHECK(cudaMemsetAsync(d_masks, 0, sizeof(bool) * n, stream));
    
        Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                 c_table_index_, d_table_, keys, values, metas,
