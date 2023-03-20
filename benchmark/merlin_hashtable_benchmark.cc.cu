@@ -123,6 +123,7 @@ void test_main(const size_t dim,
   V* d_def_val;
   V** d_vectors_ptr;
   bool* d_found;
+  K* d_keys_out;
 
   CUDA_CHECK(cudaMalloc(&d_keys, key_num_per_op * sizeof(K)));
   CUDA_CHECK(cudaMalloc(&d_metas, key_num_per_op * sizeof(M)));
@@ -130,6 +131,7 @@ void test_main(const size_t dim,
   CUDA_CHECK(cudaMalloc(&d_def_val, key_num_per_op * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
   CUDA_CHECK(cudaMalloc(&d_found, key_num_per_op * sizeof(bool)));
+  CUDA_CHECK(cudaMalloc(&d_keys_out, key_num_per_op * sizeof(K)));
 
   CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
                         cudaMemcpyHostToDevice));
@@ -152,10 +154,13 @@ void test_main(const size_t dim,
   auto end_insert_or_assign = std::chrono::steady_clock::now();
   auto start_find = std::chrono::steady_clock::now();
   auto end_find = std::chrono::steady_clock::now();
+  auto start_export = std::chrono::steady_clock::now();
+  auto end_export = std::chrono::steady_clock::now();
   auto start_erase = std::chrono::steady_clock::now();
   auto end_erase = std::chrono::steady_clock::now();
   std::chrono::duration<double> diff_insert_or_assign;
   std::chrono::duration<double> diff_find;
+  std::chrono::duration<double> diff_export;
   std::chrono::duration<double> diff_erase;
 
   while (cur_load_factor < load_factor) {
@@ -166,19 +171,23 @@ void test_main(const size_t dim,
                           cudaMemcpyHostToDevice));
 
     start_insert_or_assign = std::chrono::steady_clock::now();
-    table->insert_or_assign(key_num_per_op, d_keys,
-                            reinterpret_cast<float*>(d_vectors), d_metas,
-                            stream);
+    table->insert_or_assign(key_num_per_op, d_keys, d_vectors, d_metas, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     end_insert_or_assign = std::chrono::steady_clock::now();
     diff_insert_or_assign = (end_insert_or_assign - start_insert_or_assign);
 
     start_find = std::chrono::steady_clock::now();
-    table->find(key_num_per_op, d_keys, reinterpret_cast<float*>(d_vectors),
-                d_found, nullptr, stream);
+    table->find(key_num_per_op, d_keys, d_vectors,
+                d_found, d_metas, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     end_find = std::chrono::steady_clock::now();
     diff_find = end_find - start_find;
+
+    start_export = std::chrono::steady_clock::now();
+    table->export_batch(key_num_per_op, 0, d_keys_out, d_vectors, d_metas, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    end_export = std::chrono::steady_clock::now();
+    diff_export = end_export - start_export;
 
     cur_load_factor = table->load_factor(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -195,11 +204,12 @@ void test_main(const size_t dim,
   diff_erase = end_erase - start_erase;
 
   size_t hmem4values =
-      init_capacity * options.dim * sizeof(float) / (1024 * 1024 * 1024);
+      init_capacity * options.dim * sizeof(V) / (1024 * 1024 * 1024);
   hmem4values = hmem4values < hbm4values ? 0 : (hmem4values - hbm4values);
   float insert_tput =
       key_num_per_op / diff_insert_or_assign.count() / (1024 * 1024 * 1024.0);
   float find_tput = key_num_per_op / diff_find.count() / (1024 * 1024 * 1024.0);
+  float export_tput = key_num_per_op / diff_export.count() / (1024 * 1024 * 1024.0);
   float erase_tput =
       key_num_per_op / diff_erase.count() / (1024 * 1024 * 1024.0);
 
@@ -210,6 +220,7 @@ void test_main(const size_t dim,
        << "|" << rep(6) << setw(3) << setfill(' ') << hmem4values << " "
        << "|" << rep(2) << fixed << setprecision(3) << insert_tput << " "
        << "|" << rep(2) << fixed << setprecision(3) << find_tput << " "
+       << "|" << rep(2) << fixed << setprecision(3) << export_tput << " "
        << "|" << rep(2) << fixed << setprecision(3) << erase_tput << " |"
        << endl;
 
@@ -240,6 +251,7 @@ void print_title() {
        << "| HMEM(GB) "
        << "| insert "
        << "|   find "
+       << "| export "
        << "|  erase |" << endl;
   cout << "|----:"
        //<< "| capacity "
@@ -253,6 +265,8 @@ void print_title() {
        //<< "| insert "
        << "|-------:"
        //<< "|  find "
+       << "|-------:"
+       //<< "|  export "
        << "|-------:"
        //<< "| erase "
        << "|-------:|" << endl;
