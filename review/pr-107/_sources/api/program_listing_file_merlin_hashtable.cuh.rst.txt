@@ -396,6 +396,192 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
+     void find_or_insert(const size_type n, const key_type* keys,  // (n)
+                         value_type* values,                       // (n * DIM)
+                         meta_type* metas = nullptr,               // (n)
+                         cudaStream_t stream = 0,
+                         bool ignore_evict_strategy = false) {
+       if (n == 0) {
+         return;
+       }
+   
+       while (!reach_max_capacity_ &&
+              fast_load_factor(n) > options_.max_load_factor) {
+         reserve(capacity() * 2);
+       }
+   
+       if (!ignore_evict_strategy) {
+         check_evict_strategy(metas);
+       }
+   
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+       if (!reach_max_capacity_) {
+         lock.lock();
+       }
+   
+       if (is_fast_mode()) {
+         using Selector =
+             SelectFindOrInsertKernelWithIO<key_type, value_type, meta_type>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
+   
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor();
+         }
+         Selector::execute_kernel(load_factor, options_.block_size, stream, n,
+                                  c_table_index_, d_table_, keys, values, metas);
+       } else {
+         const size_type dev_ws_size{
+             n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
+         auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+         auto d_table_value_addrs{dev_ws.get<value_type**>(0)};
+         auto param_key_index{reinterpret_cast<int*>(d_table_value_addrs + n)};
+         auto founds{reinterpret_cast<bool*>(param_key_index + n)};
+   
+         CUDA_CHECK(cudaMemsetAsync(d_table_value_addrs, 0, dev_ws_size, stream));
+   
+         {
+           const size_t block_size = options_.block_size;
+           const size_t N = n * TILE_SIZE;
+           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+   
+           find_or_insert_kernel<key_type, value_type, meta_type, TILE_SIZE>
+               <<<grid_size, block_size, 0, stream>>>(d_table_, keys,
+                                                      d_table_value_addrs, metas,
+                                                      founds, param_key_index, N);
+         }
+   
+         {
+           thrust::device_ptr<uintptr_t> table_value_ptr(
+               reinterpret_cast<uintptr_t*>(d_table_value_addrs));
+           thrust::device_ptr<int> param_key_index_ptr(param_key_index);
+   
+           thrust::sort_by_key(thrust_par.on(stream), table_value_ptr,
+                               table_value_ptr + n, param_key_index_ptr,
+                               thrust::less<uintptr_t>());
+         }
+   
+         if (options_.io_by_cpu) {
+           const size_type host_ws_size{
+               dev_ws_size + n * (sizeof(bool) + sizeof(value_type) * dim())};
+           auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
+           auto h_table_value_addrs{host_ws.get<value_type**>(0)};
+           auto h_param_key_index{reinterpret_cast<int*>(h_table_value_addrs + n)};
+           auto h_founds{reinterpret_cast<bool*>(h_param_key_index + n)};
+           auto h_param_values{reinterpret_cast<value_type*>(h_founds + n)};
+   
+           CUDA_CHECK(cudaMemcpyAsync(h_table_value_addrs, d_table_value_addrs,
+                                      dev_ws_size, cudaMemcpyDeviceToHost,
+                                      stream));
+           CUDA_CHECK(cudaMemcpyAsync(h_founds, founds, n * sizeof(bool),
+                                      cudaMemcpyDeviceToHost, stream));
+           CUDA_CHECK(cudaMemcpyAsync(h_param_values, values,
+                                      n * sizeof(value_type) * dim(),
+                                      cudaMemcpyDeviceToHost, stream));
+           CUDA_CHECK(cudaStreamSynchronize(stream));
+   
+           read_or_write_by_cpu<value_type>(h_table_value_addrs, h_param_values,
+                                            h_param_key_index, h_founds, dim(), n);
+           CUDA_CHECK(cudaMemcpyAsync(values, h_param_values,
+                                      n * sizeof(value_type) * dim(),
+                                      cudaMemcpyHostToDevice, stream));
+         } else {
+           const size_t block_size = options_.io_block_size;
+           const size_t N = n * dim();
+           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+   
+           read_or_write_kernel<key_type, value_type, meta_type>
+               <<<grid_size, block_size, 0, stream>>>(
+                   d_table_value_addrs, values, founds, param_key_index, dim(), N);
+         }
+       }
+   
+       CudaCheckError();
+     }
+   
+     void assign(const size_type n,
+                 const key_type* keys,              // (n)
+                 const value_type* values,          // (n, DIM)
+                 const meta_type* metas = nullptr,  // (n)
+                 cudaStream_t stream = 0) {
+       if (n == 0) {
+         return;
+       }
+   
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+       if (!reach_max_capacity_) {
+         lock.lock();
+       }
+   
+       if (is_fast_mode()) {
+         using Selector =
+             SelectUpdateKernelWithIO<key_type, value_type, meta_type>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
+   
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor();
+         }
+   
+         Selector::execute_kernel(
+             load_factor, options_.block_size, stream, n, c_table_index_,
+             reinterpret_cast<const TableCore*>(d_table_), keys, values, metas);
+       } else {
+         const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
+         auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+         auto d_dst{dev_ws.get<value_type**>(0)};
+         auto d_src_offset{reinterpret_cast<int*>(d_dst + n)};
+   
+         CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
+   
+         {
+           const size_t block_size = options_.block_size;
+           const size_t N = n * TILE_SIZE;
+           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+   
+           update_kernel<key_type, value_type, meta_type, TILE_SIZE>
+               <<<grid_size, block_size, 0, stream>>>(d_table_, keys, d_dst, metas,
+                                                      d_src_offset, N);
+         }
+   
+         {
+           thrust::device_ptr<uintptr_t> d_dst_ptr(
+               reinterpret_cast<uintptr_t*>(d_dst));
+           thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
+   
+           thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + n,
+                               d_src_offset_ptr, thrust::less<uintptr_t>());
+         }
+   
+         if (options_.io_by_cpu) {
+           const size_type host_ws_size{dev_ws_size +
+                                        n * sizeof(value_type) * dim()};
+           auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
+           auto h_dst{host_ws.get<value_type**>(0)};
+           auto h_src_offset{reinterpret_cast<int*>(h_dst + n)};
+           auto h_values{reinterpret_cast<value_type*>(h_src_offset + n)};
+   
+           CUDA_CHECK(cudaMemcpyAsync(h_dst, d_dst, dev_ws_size,
+                                      cudaMemcpyDeviceToHost, stream));
+           CUDA_CHECK(cudaMemcpyAsync(h_values, values, host_ws_size - dev_ws_size,
+                                      cudaMemcpyDeviceToHost, stream));
+           CUDA_CHECK(cudaStreamSynchronize(stream));
+   
+           write_by_cpu<value_type>(h_dst, h_values, h_src_offset, dim(), n);
+         } else {
+           const size_t block_size = options_.io_block_size;
+           const size_t N = n * dim();
+           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+   
+           write_kernel<key_type, value_type, meta_type>
+               <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
+                                                      dim(), N);
+         }
+       }
+   
+       CudaCheckError();
+     }
+   
      void find(const size_type n, const key_type* keys,  // (n)
                value_type* values,                       // (n, DIM)
                bool* founds,                             // (n)
@@ -550,20 +736,15 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        if (offset >= table_->capacity) {
-         CUDA_CHECK(cudaMemsetAsync(counter, 0, sizeof(size_type), stream));
          return;
        }
        n = std::min(table_->capacity - offset, n);
    
-       const size_t meta_size = metas ? sizeof(meta_type) : 0;
-       const size_t kvm_size =
-           sizeof(key_type) + sizeof(value_type) * dim() + meta_size;
-       const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
-       MERLIN_CHECK(
-           (block_size > 0),
-           "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
+       size_type shared_size;
+       size_type block_size;
+       std::tie(shared_size, block_size) =
+           dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
    
-       const size_t shared_size = kvm_size * block_size;
        const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
    
        dump_kernel<key_type, value_type, meta_type>
@@ -711,18 +892,16 @@ Program Listing for File merlin_hashtable.cuh
                     "[HierarchicalKV] max_workspace_size is smaller than a single "
                     "`key + metadata + value` tuple! Please set a larger value!");
    
-       const size_type block_size{
-           std::min(shared_mem_size_ / 2 / tuple_size, UINT64_C(1024))};
-       MERLIN_CHECK(
-           (block_size > 0),
-           "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
+       size_type shared_size;
+       size_type block_size;
+       std::tie(shared_size, block_size) =
+           dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
    
        // Request exclusive access (to make sure capacity won't change anymore).
        std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        const size_type total_size{capacity()};
        const size_type n{std::min(max_workspace_size / tuple_size, total_size)};
-       const size_type shared_size{tuple_size * block_size};
        const size_type grid_size{SAFE_GET_GRID_SIZE(n, block_size)};
    
        // Grab temporary device and host memory.
