@@ -173,10 +173,10 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <div class="section" id="benchmark-performance-w-i-p">
 <h2>Benchmark &amp; Performance(W.I.P)<a class="headerlink" href="#benchmark-performance-w-i-p" title="Permalink to this headline"></a></h2>
 <ul class="simple">
-<li><p>GPU: 1 x NVIDIA A100-PCIE-80GB: 8.0</p></li>
+<li><p>GPU: 1 x NVIDIA A100 80GB PCIe: 8.0</p></li>
 <li><p>Key Type = uint64_t</p></li>
 <li><p>Value Type = float32 * {dim}</p></li>
-<li><p>Key-Values per OP = 1,048,576</p></li>
+<li><p>Key-Values per OP = 1048576</p></li>
 <li><p><em><strong>Throughput Unit: Billion-KV/second</strong></em></p></li>
 </ul>
 <div class="section" id="on-pure-hbm-mode">
@@ -184,123 +184,123 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <table class="colwidths-auto docutils align-default">
 <thead>
 <tr class="row-odd"><th class="text-right head"><p>dim</p></th>
-<th class="text-right head"><p>capacity</p></th>
+<th class="text-center head"><p>Capacity<br>(M-KVs)</p></th>
+<th class="text-center head"><p>HBM/HMEM<br>(GB)</p></th>
 <th class="text-right head"><p>load_factor</p></th>
-<th class="text-right head"><p>HBM(GB)</p></th>
-<th class="text-right head"><p>HMEM(GB)</p></th>
-<th class="text-right head"><p>insert</p></th>
+<th class="text-center head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-right head"><p>erase</p></th>
+<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>4</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>32 /  0</p></td>
 <td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>32</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>1.620</p></td>
-<td class="text-right"><p>3.156</p></td>
-<td class="text-right"><p>4.026</p></td>
+<td class="text-center"><p>1.481</p></td>
+<td class="text-right"><p>2.799</p></td>
+<td class="text-center"><p>1.440</p></td>
+<td class="text-right"><p>1.816</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>4</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>32 /  0</p></td>
 <td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>32</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>1.052</p></td>
-<td class="text-right"><p>2.159</p></td>
-<td class="text-right"><p>2.901</p></td>
+<td class="text-center"><p>0.872</p></td>
+<td class="text-right"><p>1.749</p></td>
+<td class="text-center"><p>0.784</p></td>
+<td class="text-right"><p>1.217</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>4</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>32 /  0</p></td>
 <td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>32</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.225</p></td>
-<td class="text-right"><p>0.891</p></td>
-<td class="text-right"><p>0.805</p></td>
+<td class="text-center"><p>0.190</p></td>
+<td class="text-right"><p>0.671</p></td>
+<td class="text-center"><p>0.267</p></td>
+<td class="text-right"><p>0.248</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>16</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 /  0</p></td>
 <td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>1.402</p></td>
-<td class="text-right"><p>2.237</p></td>
-<td class="text-right"><p>4.219</p></td>
+<td class="text-center"><p>1.221</p></td>
+<td class="text-right"><p>2.020</p></td>
+<td class="text-center"><p>1.100</p></td>
+<td class="text-right"><p>1.453</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>16</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 /  0</p></td>
 <td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.999</p></td>
-<td class="text-right"><p>1.636</p></td>
-<td class="text-right"><p>2.863</p></td>
+<td class="text-center"><p>0.795</p></td>
+<td class="text-right"><p>1.299</p></td>
+<td class="text-center"><p>0.712</p></td>
+<td class="text-right"><p>0.968</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>16</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 /  0</p></td>
 <td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.224</p></td>
-<td class="text-right"><p>0.856</p></td>
-<td class="text-right"><p>0.819</p></td>
+<td class="text-center"><p>0.190</p></td>
+<td class="text-right"><p>0.647</p></td>
+<td class="text-center"><p>0.266</p></td>
+<td class="text-right"><p>0.247</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 /  0</p></td>
 <td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.686</p></td>
-<td class="text-right"><p>0.859</p></td>
-<td class="text-right"><p>4.200</p></td>
+<td class="text-center"><p>0.685</p></td>
+<td class="text-right"><p>0.922</p></td>
+<td class="text-center"><p>0.694</p></td>
+<td class="text-right"><p>0.736</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 /  0</p></td>
 <td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.637</p></td>
-<td class="text-right"><p>0.705</p></td>
-<td class="text-right"><p>2.911</p></td>
+<td class="text-center"><p>0.573</p></td>
+<td class="text-right"><p>0.683</p></td>
+<td class="text-center"><p>0.517</p></td>
+<td class="text-right"><p>0.554</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>67108864</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 /  0</p></td>
 <td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.205</p></td>
-<td class="text-right"><p>0.718</p></td>
-<td class="text-right"><p>0.804</p></td>
+<td class="text-center"><p>0.174</p></td>
+<td class="text-right"><p>0.548</p></td>
+<td class="text-center"><p>0.237</p></td>
+<td class="text-right"><p>0.234</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>134217728</p></td>
+<td class="text-center"><p>128</p></td>
+<td class="text-center"><p>64 /  0</p></td>
 <td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>64</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.403</p></td>
-<td class="text-right"><p>0.472</p></td>
-<td class="text-right"><p>3.783</p></td>
+<td class="text-center"><p>0.411</p></td>
+<td class="text-right"><p>0.527</p></td>
+<td class="text-center"><p>0.428</p></td>
+<td class="text-right"><p>0.423</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>134217728</p></td>
+<td class="text-center"><p>128</p></td>
+<td class="text-center"><p>64 /  0</p></td>
 <td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>64</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.445</p></td>
-<td class="text-right"><p>0.425</p></td>
-<td class="text-right"><p>2.684</p></td>
+<td class="text-center"><p>0.388</p></td>
+<td class="text-right"><p>0.413</p></td>
+<td class="text-center"><p>0.363</p></td>
+<td class="text-right"><p>0.345</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>134217728</p></td>
+<td class="text-center"><p>128</p></td>
+<td class="text-center"><p>64 /  0</p></td>
 <td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>64</p></td>
-<td class="text-right"><p>0</p></td>
-<td class="text-right"><p>0.183</p></td>
-<td class="text-right"><p>0.557</p></td>
-<td class="text-right"><p>0.766</p></td>
+<td class="text-center"><p>0.157</p></td>
+<td class="text-right"><p>0.447</p></td>
+<td class="text-center"><p>0.211</p></td>
+<td class="text-right"><p>0.213</p></td>
 </tr>
 </tbody>
 </table>
@@ -310,123 +310,123 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <table class="colwidths-auto docutils align-default">
 <thead>
 <tr class="row-odd"><th class="text-right head"><p>dim</p></th>
-<th class="text-right head"><p>capacity</p></th>
+<th class="text-center head"><p>Capacity<br>(M-KVs)</p></th>
+<th class="text-center head"><p>HBM/HMEM<br>(GB)</p></th>
 <th class="text-right head"><p>load_factor</p></th>
-<th class="text-right head"><p>HBM(GB)</p></th>
-<th class="text-right head"><p>HMEM(GB)</p></th>
-<th class="text-right head"><p>insert</p></th>
+<th class="text-center head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-right head"><p>erase</p></th>
+<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>134217728</p></td>
+<td class="text-center"><p>128</p></td>
+<td class="text-center"><p>16 / 16</p></td>
 <td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.105</p></td>
-<td class="text-right"><p>0.125</p></td>
-<td class="text-right"><p>3.620</p></td>
+<td class="text-center"><p>0.086</p></td>
+<td class="text-right"><p>0.082</p></td>
+<td class="text-center"><p>0.119</p></td>
+<td class="text-right"><p>0.086</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>134217728</p></td>
+<td class="text-center"><p>128</p></td>
+<td class="text-center"><p>16 / 16</p></td>
 <td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.107</p></td>
-<td class="text-right"><p>0.123</p></td>
-<td class="text-right"><p>2.610</p></td>
+<td class="text-center"><p>0.083</p></td>
+<td class="text-right"><p>0.081</p></td>
+<td class="text-center"><p>0.113</p></td>
+<td class="text-right"><p>0.085</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>134217728</p></td>
+<td class="text-center"><p>128</p></td>
+<td class="text-center"><p>16 / 16</p></td>
 <td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.073</p></td>
-<td class="text-right"><p>0.112</p></td>
-<td class="text-right"><p>0.770</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>1073741824</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>56</p></td>
-<td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.037</p></td>
-<td class="text-right"><p>0.042</p></td>
-<td class="text-right"><p>2.362</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>1073741824</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>56</p></td>
-<td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.037</p></td>
-<td class="text-right"><p>0.042</p></td>
-<td class="text-right"><p>2.106</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-right"><p>1073741824</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>56</p></td>
-<td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.031</p></td>
-<td class="text-right"><p>0.040</p></td>
-<td class="text-right"><p>0.727</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>67108864</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.064</p></td>
-<td class="text-right"><p>0.072</p></td>
-<td class="text-right"><p>4.039</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>67108864</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>0.069</p></td>
-<td class="text-right"><p>0.071</p></td>
-<td class="text-right"><p>2.834</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>67108864</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>16</p></td>
-<td class="text-right"><p>16</p></td>
+<td class="text-center"><p>0.064</p></td>
+<td class="text-right"><p>0.076</p></td>
+<td class="text-center"><p>0.072</p></td>
 <td class="text-right"><p>0.052</p></td>
-<td class="text-right"><p>0.067</p></td>
-<td class="text-right"><p>0.805</p></td>
 </tr>
-<tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>536870912</p></td>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-center"><p>1024</p></td>
+<td class="text-center"><p>56 /200</p></td>
 <td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>56</p></td>
-<td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.037</p></td>
+<td class="text-center"><p>0.038</p></td>
 <td class="text-right"><p>0.042</p></td>
-<td class="text-right"><p>2.866</p></td>
+<td class="text-center"><p>0.034</p></td>
+<td class="text-right"><p>0.039</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>64</p></td>
+<td class="text-center"><p>1024</p></td>
+<td class="text-center"><p>56 /200</p></td>
+<td class="text-right"><p>0.75</p></td>
+<td class="text-center"><p>0.038</p></td>
+<td class="text-right"><p>0.042</p></td>
+<td class="text-center"><p>0.034</p></td>
+<td class="text-right"><p>0.038</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>64</p></td>
+<td class="text-center"><p>1024</p></td>
+<td class="text-center"><p>56 /200</p></td>
+<td class="text-right"><p>1.00</p></td>
+<td class="text-center"><p>0.033</p></td>
+<td class="text-right"><p>0.041</p></td>
+<td class="text-center"><p>0.029</p></td>
+<td class="text-right"><p>0.030</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>536870912</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>56</p></td>
-<td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.038</p></td>
-<td class="text-right"><p>0.043</p></td>
-<td class="text-right"><p>2.225</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 / 16</p></td>
+<td class="text-right"><p>0.50</p></td>
+<td class="text-center"><p>0.045</p></td>
+<td class="text-right"><p>0.042</p></td>
+<td class="text-center"><p>0.064</p></td>
+<td class="text-right"><p>0.045</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-right"><p>536870912</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 / 16</p></td>
+<td class="text-right"><p>0.75</p></td>
+<td class="text-center"><p>0.044</p></td>
+<td class="text-right"><p>0.042</p></td>
+<td class="text-center"><p>0.062</p></td>
+<td class="text-right"><p>0.042</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-center"><p>64</p></td>
+<td class="text-center"><p>16 / 16</p></td>
 <td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>56</p></td>
-<td class="text-right"><p>200</p></td>
-<td class="text-right"><p>0.033</p></td>
+<td class="text-center"><p>0.038</p></td>
 <td class="text-right"><p>0.041</p></td>
-<td class="text-right"><p>0.734</p></td>
+<td class="text-center"><p>0.048</p></td>
+<td class="text-right"><p>0.034</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>128</p></td>
+<td class="text-center"><p>512</p></td>
+<td class="text-center"><p>56 /200</p></td>
+<td class="text-right"><p>0.50</p></td>
+<td class="text-center"><p>0.029</p></td>
+<td class="text-right"><p>0.028</p></td>
+<td class="text-center"><p>0.042</p></td>
+<td class="text-right"><p>0.029</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>128</p></td>
+<td class="text-center"><p>512</p></td>
+<td class="text-center"><p>56 /200</p></td>
+<td class="text-right"><p>0.75</p></td>
+<td class="text-center"><p>0.029</p></td>
+<td class="text-right"><p>0.028</p></td>
+<td class="text-center"><p>0.041</p></td>
+<td class="text-right"><p>0.029</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>128</p></td>
+<td class="text-center"><p>512</p></td>
+<td class="text-center"><p>56 /200</p></td>
+<td class="text-right"><p>1.00</p></td>
+<td class="text-center"><p>0.026</p></td>
+<td class="text-right"><p>0.027</p></td>
+<td class="text-center"><p>0.034</p></td>
+<td class="text-right"><p>0.024</p></td>
 </tr>
 </tbody>
 </table>
