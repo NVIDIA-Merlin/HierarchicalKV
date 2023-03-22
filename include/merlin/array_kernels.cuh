@@ -72,17 +72,23 @@ __global__ void gpu_select_kvm_kernel(const bool* masks, size_t n,
   }
   unsigned int vote = g.ballot(is_existed);
   unsigned int r_vote = __brev(vote) >> (32 - TILE_SIZE);
+  K empty_key = (K)EMPTY_KEY;
 
   if (tid < n) {
     r_vote = r_vote >> (TILE_SIZE - rank - 1);
     if (masks[tid]) {
       int prefix_n = __popc(r_vote) - 1;
       Tidx bias = offsets[tid / TILE_SIZE] + static_cast<Tidx>(prefix_n);
-      keys[bias] = keys[tid];
+
+      K target_key = 0;
+      while (target_key != empty_key) {
+        target_key = atomicCAS(keys + bias, empty_key, keys[tid]);
+      }
       if (metas) metas[bias] = metas[tid];
       for (size_t j = 0; j < dim; j++) {
         values[dim * bias + j] = values[dim * tid + j];
       }
+      atomicExch(keys + tid, empty_key);
     }
   }
 }
