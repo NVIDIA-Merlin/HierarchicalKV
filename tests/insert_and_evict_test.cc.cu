@@ -53,8 +53,8 @@ void test_insert_and_evict() {
 
   // numeric setting
   const size_t U = 2llu << 18;
-  const size_t M = U >> 2;
-  const size_t N = U >> 2 + 17;  // Add a prime to test the non-aligned case.
+  const size_t M = (U >> 1);
+  const size_t N = (U >> 1) + 17;  // Add a prime to test the non-aligned case.
 
   opt.max_capacity = U;
   opt.init_capacity = init_capacity;
@@ -86,6 +86,7 @@ void test_insert_and_evict() {
       evict_buffer.metas_ptr(), stream);
   size_t table_size_m = table->size(stream);
   buffer.SyncData(/*h2d=*/false, stream);
+  evict_buffer.SyncData(/*h2d=*/false, stream);
   ASSERT_EQ(n_evicted + table_size_m, M);
   for (size_t i = 0; i < n_evicted; i++) {
     test_util::ValueArray<f32, dim>* vec =
@@ -106,6 +107,7 @@ void test_insert_and_evict() {
       evict_buffer.metas_ptr(), stream);
   size_t table_size_n = table->size(stream);
   buffer.SyncData(/*h2d=*/false, stream);
+  evict_buffer.SyncData(/*h2d=*/false, stream);
   ASSERT_EQ(table_size_m + N, table_size_n + n_evicted);
   for (size_t i = 0; i < n_evicted; i++) {
     test_util::ValueArray<f32, dim>* vec =
