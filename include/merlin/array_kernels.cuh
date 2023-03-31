@@ -80,6 +80,8 @@ __global__ void gpu_select_kvm_kernel(const bool* masks, size_t n,
       int prefix_n = __popc(r_vote) - 1;
       Tidx bias = offsets[tid / TILE_SIZE] + static_cast<Tidx>(prefix_n);
 
+      if (bias == tid) return;
+
       K target_key = 0;
       while (target_key != empty_key) {
         target_key = atomicCAS(keys + bias, empty_key, keys[tid]);

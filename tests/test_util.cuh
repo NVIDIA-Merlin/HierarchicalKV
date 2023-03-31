@@ -118,7 +118,8 @@ void create_random_keys(K* h_keys, M* h_metas, int KEY_NUM) {
 }
 
 template <class K, class M, class V, size_t DIM = 16>
-void create_random_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM) {
+void create_random_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM,
+                        size_t range = std::numeric_limits<uint64_t>::max()) {
   std::unordered_set<K> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
@@ -126,7 +127,7 @@ void create_random_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM) {
   int i = 0;
 
   while (numbers.size() < KEY_NUM) {
-    numbers.insert(distr(eng));
+    numbers.insert(distr(eng) % range);
   }
   for (const K num : numbers) {
     h_keys[i] = num;

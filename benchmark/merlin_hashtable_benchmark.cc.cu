@@ -236,8 +236,8 @@ void test_main(const size_t dim,
                                 (1024 * 1024 * 1024.0);
   float find_tput =
       key_num_per_op / diff_find.getResult() / (1024 * 1024 * 1024.0f);
-  float find_or_insert_tput =
-      key_num_per_op / diff_find_or_insert.getResult() / (1024 * 1024 * 1024.0f);
+  float find_or_insert_tput = key_num_per_op / diff_find_or_insert.getResult() /
+                              (1024 * 1024 * 1024.0f);
   float assign_tput =
       key_num_per_op / diff_assign.getResult() / (1024 * 1024 * 1024.0f);
 
