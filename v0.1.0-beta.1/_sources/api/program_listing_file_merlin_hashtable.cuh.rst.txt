@@ -883,6 +883,8 @@ Program Listing for File merlin_hashtable.cuh
        return options_.max_bucket_size;
      }
    
+     size_type bucket_count() const noexcept { return table_->buckets_num; }
+   
      size_type save(BaseKVFile<K, V, M>* file,
                     const size_t max_workspace_size = 1L * 1024 * 1024,
                     cudaStream_t stream = 0) const {

@@ -184,7 +184,7 @@
 <p>The <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
-<li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current metas anyway. If true, it does not check whether the metas confroms to the evict strategy. If false, it requires the metas follow the evict strategy of table. </p></li>
+<li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current metas anyway. If true, it does not check whether the metas conforms to the evict strategy. If false, it requires the metas follow the evict strategy of table. </p></li>
 </ul>
 </dd>
 </dl>
@@ -512,6 +512,17 @@
 <dl class="field-list simple">
 <dt class="field-odd">Returns</dt>
 <dd class="field-odd"><p>The length of each bucket. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin9HashTable12bucket_countEv">
+<span id="_CPPv3NK2nv6merlin9HashTable12bucket_countEv"></span><span id="_CPPv2NK2nv6merlin9HashTable12bucket_countEv"></span><span id="nv::merlin::HashTable::bucket_countC"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a6ee1d8d528d8a9409832e0eb78db2fb9"></span><em class="property"><span class="pre">inline</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">bucket_count</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <em class="property"><span class="pre">noexcept</span></em><a class="headerlink" href="#_CPPv4NK2nv6merlin9HashTable12bucket_countEv" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns the number of buckets in the table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>The number of buckets in the table. </p>
 </dd>
 </dl>
 </dd></dl>
