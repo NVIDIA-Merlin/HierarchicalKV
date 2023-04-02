@@ -15,11 +15,11 @@
  */
 
 #include <assert.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
 #include <iomanip>
 #include <iostream>
 #include <limits>
@@ -38,6 +38,8 @@ using std::setfill;
 using std::setprecision;
 using std::setw;
 
+const float EPSILON = 0.001f;
+
 using namespace nv::merlin;
 
 inline uint64_t getTimestamp() {
@@ -45,6 +47,24 @@ inline uint64_t getTimestamp() {
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
+
+enum class API_Select {
+  find = 0,
+  insert_or_assign = 1,
+  find_or_insert = 2,
+  assign = 3,
+  insert_and_evict = 4,
+};
+
+enum class Hit_Mode {
+  random = 0,
+  last_insert = 1,
+};
+
+enum class Test_Mode {
+  pure_hbm = 0,
+  hybrid = 1,
+};
 
 template <class K, class M>
 void create_random_keys(K* h_keys, M* h_metas, const int key_num_per_op) {
@@ -76,12 +96,44 @@ void create_continuous_keys(K* h_keys, M* h_metas, const int key_num_per_op,
 }
 
 template <typename K, typename M>
-void set_partial_key(K* h_keys, M* h_metas, const int key_num_per_op,
-                     const float hitrate = 0.6f) {
-  static K unique_value = std::numeric_limits<K>::max();
-  int start = key_num_per_op * (1.0 - hitrate);
-  for (int i = start; i < key_num_per_op; i++) {
-    h_keys[i] = unique_value--;
+void create_keys_for_hitrate(K* h_keys, M* h_metas, const int key_num_per_op,
+                             const float hitrate = 0.6f,
+                             const Hit_Mode hit_mode = Hit_Mode::last_insert,
+                             const K end = 0, const bool reset = false) {
+  int divide = static_cast<int>(key_num_per_op * hitrate);
+  if (Hit_Mode::random == hit_mode) {
+    std::random_device rd;
+    std::mt19937_64 eng(rd());
+    K existed_max = end == 0 ? 1 : (end - 1);
+    std::uniform_int_distribution<K> distr(0, existed_max);
+
+    if (existed_max < divide) {
+      std::cout << "# Can not generate enough keys for hit!";
+      exit(-1);
+    }
+    std::unordered_set<K> numbers;
+    while (numbers.size() < divide) {
+      numbers.insert(distr(eng));
+    }
+    int i = 0;
+    for (auto existed_value : numbers) {
+      h_keys[i] = existed_value;
+      h_metas[i] = getTimestamp();
+      i++;
+    }
+  } else {
+    // else keep its original value, but update metas
+    for (int i = 0; i < divide; i++) {
+      h_metas[i] = getTimestamp();
+    }
+  }
+
+  static K new_value = std::numeric_limits<K>::max();
+  if (reset) {
+    new_value = std::numeric_limits<K>::max();
+  }
+  for (int i = divide; i < key_num_per_op; i++) {
+    h_keys[i] = new_value--;
     h_metas[i] = getTimestamp();
   }
 }
@@ -93,11 +145,10 @@ void refresh_metas(M* h_metas, const int key_num_per_op) {
   }
 }
 
-void test_main(const size_t dim,
-               const size_t init_capacity = 64 * 1024 * 1024UL,
-               const size_t key_num_per_op = 1 * 1024 * 1024UL,
-               const size_t hbm4values = 16, const float load_factor = 1.0f,
-               const float hitrate = 0.6f, const bool io_by_cpu = false) {
+float test_one_api(const API_Select api, const size_t dim,
+                   const size_t init_capacity, const size_t key_num_per_op,
+                   const size_t hbm4values, const float load_factor,
+                   const float hitrate = 0.6f, const bool io_by_cpu = false) {
   using K = uint64_t;
   using M = uint64_t;
   using V = float;
@@ -109,7 +160,7 @@ void test_main(const size_t dim,
   CUDA_CHECK(cudaMemGetInfo(&free, &total));
 
   if (free / (1 << 30) < hbm4values) {
-    return;
+    return 0.0f;
   }
 
   K* h_keys;
@@ -146,6 +197,9 @@ void test_main(const size_t dim,
   bool* d_found;
   K* d_keys_out;
 
+  K* d_evict_keys;
+  M* d_evict_metas;
+
   CUDA_CHECK(cudaMalloc(&d_keys, key_num_per_op * sizeof(K)));
   CUDA_CHECK(cudaMalloc(&d_metas, key_num_per_op * sizeof(M)));
   CUDA_CHECK(cudaMalloc(&d_vectors, key_num_per_op * sizeof(V) * options.dim));
@@ -154,10 +208,8 @@ void test_main(const size_t dim,
   CUDA_CHECK(cudaMalloc(&d_found, key_num_per_op * sizeof(bool)));
   CUDA_CHECK(cudaMalloc(&d_keys_out, key_num_per_op * sizeof(K)));
 
-  CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
-                        cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
-                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMalloc(&d_evict_keys, key_num_per_op * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_evict_metas, key_num_per_op * sizeof(M)));
 
   CUDA_CHECK(
       cudaMemset(d_vectors, 1, key_num_per_op * sizeof(V) * options.dim));
@@ -169,90 +221,99 @@ void test_main(const size_t dim,
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
 
+  // initialize insert
+  // step 1, no need to load load_factor
+  uint64_t key_num_init = static_cast<uint64_t>(init_capacity * load_factor);
+  const float target_load_factor = key_num_init * 1.0f / init_capacity;
+  uint64_t key_num_remain = key_num_init % key_num_per_op == 0
+                                ? key_num_per_op
+                                : key_num_init % key_num_per_op;
+  int32_t loop_num_init = (key_num_init + key_num_per_op - 1) / key_num_per_op;
+
   K start = 0UL;
-  float cur_load_factor = table->load_factor(stream);
-  auto diff_insert_or_assign = benchmark::Timer<double>();
-  auto diff_find = benchmark::Timer<double>();
-  auto diff_find_or_insert = benchmark::Timer<double>();
-  auto diff_assign = benchmark::Timer<double>();
-
-  while (cur_load_factor < load_factor) {
-    create_continuous_keys<K, M>(h_keys, h_metas, key_num_per_op, start);
-    CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
+  for (int i = 0; i < loop_num_init; i++) {
+    uint64_t key_num_cur_insert =
+        i == loop_num_init - 1 ? key_num_remain : key_num_per_op;
+    create_continuous_keys<K, M>(h_keys, h_metas, key_num_cur_insert, start);
+    CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_cur_insert * sizeof(K),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_cur_insert * sizeof(M),
                           cudaMemcpyHostToDevice));
-
-    diff_insert_or_assign.start();
-    table->insert_or_assign(key_num_per_op, d_keys,
-                            reinterpret_cast<float*>(d_vectors), d_metas,
+    table->insert_or_assign(key_num_cur_insert, d_keys, d_vectors, d_metas,
                             stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    diff_insert_or_assign.end();
-
-    diff_find.start();
-    table->find(key_num_per_op, d_keys, reinterpret_cast<float*>(d_vectors),
-                d_found, nullptr, stream);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    diff_find.end();
-
-    refresh_metas<M>(h_metas, key_num_per_op);
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
+    start += key_num_cur_insert;
+  }
+  // step 2
+  float real_load_factor = table->load_factor(stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  while (target_load_factor - real_load_factor > EPSILON) {
+    auto key_num_append = static_cast<int64_t>(
+        (target_load_factor - real_load_factor) * init_capacity);
+    if (key_num_append <= 0) break;
+    key_num_append =
+        std::min(static_cast<int64_t>(key_num_per_op), key_num_append);
+    create_continuous_keys<K, M>(h_keys, h_metas, key_num_append, start);
+    CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_append * sizeof(K),
                           cudaMemcpyHostToDevice));
-    diff_assign.start();
-    table->assign(key_num_per_op, d_keys, reinterpret_cast<float*>(d_def_val),
-                  d_metas, stream);
-    CUDA_CHECK(cudaStreamSynchronize(stream));
-    diff_assign.end();
-
-    set_partial_key<K, M>(h_keys, h_metas, key_num_per_op, hitrate);
-    CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
+    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_append * sizeof(M),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
-                          cudaMemcpyHostToDevice));
-    diff_find_or_insert.start();
-    table->find_or_insert(key_num_per_op, d_keys,
-                          reinterpret_cast<float*>(d_vectors), d_metas, stream);
+    table->insert_or_assign(key_num_append, d_keys, d_vectors, d_metas, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    diff_find_or_insert.end();
-
-    cur_load_factor = table->load_factor(stream);
+    start += key_num_append;
+    real_load_factor = table->load_factor(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-    if (start == 0) {
-      table->erase(key_num_per_op, d_keys, stream);  // warmup for erase kernel.
-    }
-    start += (key_num_per_op * (1.0 - hitrate));
   }
 
-  table->erase(key_num_per_op, d_keys, stream);
-  CUDA_CHECK(cudaStreamSynchronize(stream));
-
-  int32_t capacity = static_cast<int32_t>(init_capacity / (1024 * 1024));
-  size_t hmem4values =
-      init_capacity * options.dim * sizeof(V) / (1024 * 1024 * 1024);
-  hmem4values = hmem4values < hbm4values ? 0 : (hmem4values - hbm4values);
-  float insert_or_assign_tput = key_num_per_op /
-                                diff_insert_or_assign.getResult() /
-                                (1024 * 1024 * 1024.0);
-  float find_tput =
-      key_num_per_op / diff_find.getResult() / (1024 * 1024 * 1024.0f);
-  float find_or_insert_tput = key_num_per_op / diff_find_or_insert.getResult() /
-                              (1024 * 1024 * 1024.0f);
-  float assign_tput =
-      key_num_per_op / diff_assign.getResult() / (1024 * 1024 * 1024.0f);
-
-  cout << "|" << rep(1) << setw(3) << setfill(' ') << options.dim << " "
-       << "|" << rep(15) << setw(5) << setfill(' ') << capacity << " "
-       << "|" << rep(9) << setw(3) << setfill(' ') << hbm4values << " /"
-       << setw(3) << setfill(' ') << hmem4values << " "
-       << "|" << rep(8) << fixed << setprecision(2) << load_factor << " "
-       << "|" << rep(12) << fixed << setprecision(3) << insert_or_assign_tput
-       << " "
-       << "|" << rep(2) << fixed << setprecision(3) << find_tput << " "
-       << "|" << rep(10) << fixed << setprecision(3) << find_or_insert_tput
-       << " "
-       << "|" << rep(2) << fixed << setprecision(3) << assign_tput << " |"
-       << endl;
+  create_keys_for_hitrate<K, M>(h_keys, h_metas, key_num_per_op, hitrate,
+                                Hit_Mode::last_insert, start, true /*reset*/);
+  CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
+                        cudaMemcpyHostToDevice));
+  auto timer = benchmark::Timer<double>();
+  switch (api) {
+    case API_Select::find: {
+      timer.start();
+      table->find(key_num_per_op, d_keys, d_vectors, d_found, d_metas, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      break;
+    }
+    case API_Select::insert_or_assign: {
+      timer.start();
+      table->insert_or_assign(key_num_per_op, d_keys, d_vectors, d_metas,
+                              stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      break;
+    }
+    case API_Select::find_or_insert: {
+      timer.start();
+      table->find_or_insert(key_num_per_op, d_keys, d_vectors, d_metas, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      break;
+    }
+    case API_Select::assign: {
+      timer.start();
+      table->assign(key_num_per_op, d_keys, d_def_val, d_metas, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      break;
+    }
+    case API_Select::insert_and_evict: {
+      timer.start();
+      table->insert_and_evict(key_num_per_op, d_keys, d_vectors, d_metas,
+                              d_evict_keys, d_def_val, d_evict_metas, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      break;
+    }
+    default: {
+      std::cout << "[Unsupport API]\n";
+    }
+  }
 
   CUDA_CHECK(cudaStreamDestroy(stream));
 
@@ -266,37 +327,98 @@ void test_main(const size_t dim,
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
   CUDA_CHECK(cudaFree(d_found));
+  CUDA_CHECK(cudaFree(d_evict_keys));
+  CUDA_CHECK(cudaFree(d_evict_metas));
 
   CudaCheckError();
 
-  return;
+  float througput =
+      key_num_per_op / timer.getResult() / (1024 * 1024 * 1024.0f);
+  return througput;
 }
+
+static Test_Mode test_mode = Test_Mode::pure_hbm;
 
 void print_title() {
   cout << endl
-       << "| dim "
-       << "| Capacity<br>(M-KVs) "
-       << "| HBM/HMEM<br>(GB) "
        << "| load_factor "
        << "| insert_or_assign "
        << "|   find "
        << "| find_or_insert "
-       << "| assign |" << endl;
-  cout << "|----:"
-       //<< "| Capacity<br>(M-KVs) "
-       << "|:-------------------:"
-       //<< "| HBM/HMEM<br>(GB) "
-       << "|:----------------:"
-       //<< "| load_factor "
-       << "|------------:"
+       << "| assign ";
+  if (Test_Mode::pure_hbm == test_mode) {
+    cout << "| insert_and_evict ";
+  }
+  cout << "|\n";
+
+  //<< "| load_factor "
+  cout << "|------------:"
        //<< "| insert_or_assign "
        << "|:----------------:"
-       //<< "|  find "
+       //<< "|   find "
        << "|-------:"
        //<< "| find_or_insert "
        << "|:--------------:"
        //<< "| assign "
-       << "|-------:|" << endl;
+       << "|-------:";
+  if (Test_Mode::pure_hbm == test_mode) {
+    //<< "| insert_and_evict "
+    cout << "|:----------------:";
+  }
+  cout << "|\n";
+}
+
+void test_main(const size_t dim,
+               const size_t init_capacity = 64 * 1024 * 1024UL,
+               const size_t key_num_per_op = 1 * 1024 * 1024UL,
+               const size_t hbm4values = 16, const float load_factor = 1.0f) {
+  std::cout << "|" << rep(8) << fixed << setprecision(2) << load_factor << " ";
+  std::vector<API_Select> apis{
+      API_Select::insert_or_assign,
+      API_Select::find,
+      API_Select::find_or_insert,
+      API_Select::assign,
+  };
+  if (Test_Mode::pure_hbm == test_mode) {
+    apis.push_back(API_Select::insert_and_evict);
+  }
+  for (auto api : apis) {
+    // There is a sampling of load_factor after several times call to target
+    // API. Two consecutive calls can avoid the impact of sampling.
+    auto res1 = test_one_api(api, dim, init_capacity, key_num_per_op,
+                             hbm4values, load_factor);
+    auto res2 = test_one_api(api, dim, init_capacity, key_num_per_op,
+                             hbm4values, load_factor);
+    auto res = std::max(res1, res2);
+    std::cout << "|";
+    switch (api) {
+      case API_Select::find: {
+        std::cout << rep(2);
+        break;
+      }
+      case API_Select::insert_or_assign: {
+        std::cout << rep(12);
+        break;
+      }
+      case API_Select::find_or_insert: {
+        std::cout << rep(10);
+        break;
+      }
+      case API_Select::assign: {
+        std::cout << rep(2);
+        break;
+      }
+      case API_Select::insert_and_evict: {
+        std::cout << rep(12);
+        break;
+      }
+      default: {
+        std::cout << "[Unsupport API]";
+      }
+    }
+    std::cout << fixed << setprecision(3) << res << " ";
+  }
+  std::cout << "|\n";
 }
 
 int main() {
@@ -312,44 +434,47 @@ int main() {
        << "* Value Type = float32 * {dim}" << endl
        << "* Key-Values per OP = " << key_num_per_op << endl
        << "* ***Throughput Unit: Billion-KV/second***" << endl
-       << endl
-       << "### On pure HBM mode: " << endl;
-  print_title();
+       << endl;
+  auto print_configuration = [](const size_t dim, const size_t init_capacity,
+                                const size_t hbm4values) {
+    using V = float;
+    int32_t capacity = static_cast<int32_t>(init_capacity / (1024 * 1024));
+    size_t hmem4values = init_capacity * dim * sizeof(V) / (1024 * 1024 * 1024);
+    hmem4values = hmem4values < hbm4values ? 0 : (hmem4values - hbm4values);
+    cout << "\n* dim = " << dim << "\n"
+         << "* capacity = " << capacity << " Million-KV\n"
+         << "* HBM = " << hbm4values << " GB\n"
+         << "* HMEM = " << hmem4values << " GB\n";
+  };
   try {
+    test_mode = Test_Mode::pure_hbm;
+    cout << "### On pure HBM mode: " << endl;
+    print_configuration(4, 64 * 1024 * 1024UL, 32);
+    print_title();
     test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.50f);
     test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.75f);
     test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 1.00f);
 
-    test_main(16, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
-    test_main(16, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
-    test_main(16, 64 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
-
+    print_configuration(64, 64 * 1024 * 1024UL, 16);
+    print_title();
     test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
     test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
     test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
-
-    test_main(128, 128 * 1024 * 1024UL, key_num_per_op, 64, 0.50f);
-    test_main(128, 128 * 1024 * 1024UL, key_num_per_op, 64, 0.75f);
-    test_main(128, 128 * 1024 * 1024UL, key_num_per_op, 64, 1.00f);
     cout << endl;
 
     cout << "### On HBM+HMEM hybrid mode: " << endl;
+    test_mode = Test_Mode::hybrid;
+    print_configuration(64, 128 * 1024 * 1024UL, 16);
     print_title();
     test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
     test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
     test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
 
+    print_configuration(64, 1024 * 1024 * 1024UL, 56);
+    print_title();
     test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 0.50f);
     test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 0.75f);
     test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 1.00f);
-
-    test_main(128, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
-    test_main(128, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
-    test_main(128, 64 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
-
-    test_main(128, 512 * 1024 * 1024UL, key_num_per_op, 56, 0.50f);
-    test_main(128, 512 * 1024 * 1024UL, key_num_per_op, 56, 0.75f);
-    test_main(128, 512 * 1024 * 1024UL, key_num_per_op, 56, 1.00f);
     cout << endl;
 
     CUDA_CHECK(cudaDeviceSynchronize());
