@@ -57,6 +57,7 @@ and also open for public contributions, bug fixes, and documentation. [[Contribu
 
 Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
+### with cmake
 ```shell
 git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 cd HierarchicalKV && mkdir -p build && cd build
@@ -71,6 +72,17 @@ For Benchmark:
 For Unit Test:
 ```shell
 ./merlin_hashtable_test
+```
+
+### with bazel
+```shell
+git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+cd HierarchicalKV && bazel build --config=cuda //...
+```
+
+For Benchmark:
+```shell
+./benchmark_util
 ```
 
 Your environment must meet the following requirements:

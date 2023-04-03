@@ -1,0 +1,19 @@
+build -c opt
+build --copt -O3
+build --copt -pthread
+build --linkopt -pthread
+build --linkopt -ldl
+build --incompatible_linkopts_to_linklibs
+build --copt -g --strip=never
+build --experimental_repo_remote_exec
+
+# This config refers to building CUDA kernels with nvcc.
+build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
+
+# CUDA options
+build:cuda --action_env GCC_HOST_COMPILER_PATH="/opt/rh/devtoolset-9/root/usr/bin/gcc"
+build:cuda --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda"
+build:cuda --action_env CUDA_VERSION="11"
+build:cuda --action_env CUDNN_VERSION="8"
+build:cuda --action_env CUDNN_INSTALL_PATH="/usr/local/cuda"
+build:cuda --action_env CUDA_COMPUTE_CAPABILITIES="7.5"
