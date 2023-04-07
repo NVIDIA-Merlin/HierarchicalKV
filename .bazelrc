@@ -7,6 +7,10 @@ build --incompatible_linkopts_to_linklibs
 build --copt -g --strip=never
 build --experimental_repo_remote_exec
 
+# By default, build HKV in C++ 17 mode.
+build --cxxopt=-std=c++17
+build --host_cxxopt=-std=c++17
+
 # This config refers to building CUDA kernels with nvcc.
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 
