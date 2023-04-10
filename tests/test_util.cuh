@@ -502,4 +502,38 @@ std::array<T, N> range(const T start) {
   }
   return result;
 }
+
+template <class T>
+class HostBuffer {
+ public:
+  HostBuffer(const size_t size = 1) : ptr_(nullptr) {
+    if (!ptr_) {
+      size_ = size;
+      ptr_ = reinterpret_cast<T*>(malloc(sizeof(T) * size_));
+    }
+  }
+  ~HostBuffer() {
+    try {
+      if (!ptr_) free(ptr_);
+    } catch (const nv::merlin::CudaException& e) {
+      cerr << "[HierarchicalKV] Failed to free HostBuffer!" << endl;
+    }
+  }
+
+  __inline__ T* alloc_or_reuse(const size_t size = 0) {
+    if (size > size_) {
+      free(ptr_);
+      size_ = size;
+      reinterpret_cast<T*>(malloc(sizeof(T) * size_));
+    }
+    return ptr_;
+  }
+
+  __inline__ T* ptr() { return ptr_; }
+
+ private:
+  T* ptr_;
+  size_t size_;
+};
+
 }  // namespace test_util

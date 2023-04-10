@@ -1725,27 +1725,18 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
-  K* h_keys_base;
-  M* h_metas_base;
-  V* h_vectors_base;
+  K* h_keys_base = test_util::HostBuffer<K>(BATCH_SIZE).ptr();
+  M* h_metas_base = test_util::HostBuffer<M>(BATCH_SIZE).ptr();
+  V* h_vectors_base = test_util::HostBuffer<V>(BATCH_SIZE * options.dim).ptr();
 
-  K* h_keys_temp;
-  M* h_metas_temp;
-  V* h_vectors_temp;
+  K* h_keys_temp = test_util::HostBuffer<K>(MAX_CAPACITY).ptr();
+  M* h_metas_temp = test_util::HostBuffer<M>(MAX_CAPACITY).ptr();
+  V* h_vectors_temp =
+      test_util::HostBuffer<V>(MAX_CAPACITY * options.dim).ptr();
 
   K* d_keys_temp;
   M* d_metas_temp = nullptr;
   V* d_vectors_temp;
-
-  CUDA_CHECK(cudaMallocHost(&h_keys_base, BATCH_SIZE * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas_base, BATCH_SIZE * sizeof(M)));
-  CUDA_CHECK(
-      cudaMallocHost(&h_vectors_base, BATCH_SIZE * sizeof(V) * options.dim));
-
-  CUDA_CHECK(cudaMallocHost(&h_keys_temp, MAX_CAPACITY * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas_temp, MAX_CAPACITY * sizeof(M)));
-  CUDA_CHECK(
-      cudaMallocHost(&h_vectors_temp, MAX_CAPACITY * sizeof(V) * options.dim));
 
   CUDA_CHECK(cudaMalloc(&d_keys_temp, MAX_CAPACITY * sizeof(K)));
   CUDA_CHECK(cudaMalloc(&d_metas_temp, MAX_CAPACITY * sizeof(M)));
@@ -1827,14 +1818,6 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
     }
   }
   CUDA_CHECK(cudaStreamDestroy(stream));
-
-  CUDA_CHECK(cudaFreeHost(h_keys_base));
-  CUDA_CHECK(cudaFreeHost(h_metas_base));
-  CUDA_CHECK(cudaFreeHost(h_vectors_base));
-
-  CUDA_CHECK(cudaFreeHost(h_keys_temp));
-  CUDA_CHECK(cudaFreeHost(h_metas_temp));
-  CUDA_CHECK(cudaFreeHost(h_vectors_temp));
 
   CUDA_CHECK(cudaFree(d_keys_temp));
   CUDA_CHECK(cudaFree(d_metas_temp));

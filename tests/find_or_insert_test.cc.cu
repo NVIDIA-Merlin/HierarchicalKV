@@ -1737,27 +1737,18 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
-  K* h_keys_base;
-  M* h_metas_base;
-  V* h_vectors_base;
+  K* h_keys_base = test_util::HostBuffer<K>(BATCH_SIZE).ptr();
+  M* h_metas_base = test_util::HostBuffer<M>(BATCH_SIZE).ptr();
+  V* h_vectors_base = test_util::HostBuffer<V>(BATCH_SIZE * options.dim).ptr();
 
-  K* h_keys_temp;
-  M* h_metas_temp;
-  V* h_vectors_temp;
+  K* h_keys_temp = test_util::HostBuffer<K>(MAX_CAPACITY).ptr();
+  M* h_metas_temp = test_util::HostBuffer<M>(MAX_CAPACITY).ptr();
+  V* h_vectors_temp =
+      test_util::HostBuffer<V>(MAX_CAPACITY * options.dim).ptr();
 
   K* d_keys_temp;
   M* d_metas_temp = nullptr;
   V* d_vectors_temp;
-
-  CUDA_CHECK(cudaMallocHost(&h_keys_base, BATCH_SIZE * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas_base, BATCH_SIZE * sizeof(M)));
-  CUDA_CHECK(
-      cudaMallocHost(&h_vectors_base, BATCH_SIZE * sizeof(V) * options.dim));
-
-  CUDA_CHECK(cudaMallocHost(&h_keys_temp, MAX_CAPACITY * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas_temp, MAX_CAPACITY * sizeof(M)));
-  CUDA_CHECK(
-      cudaMallocHost(&h_vectors_temp, MAX_CAPACITY * sizeof(V) * options.dim));
 
   CUDA_CHECK(cudaMalloc(&d_keys_temp, MAX_CAPACITY * sizeof(K)));
   CUDA_CHECK(cudaMalloc(&d_metas_temp, MAX_CAPACITY * sizeof(M)));
@@ -1813,26 +1804,29 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
           MAX_CAPACITY, 0, d_keys_temp, d_vectors_temp, d_metas_temp, stream);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp, d_keys_temp, MAX_CAPACITY * sizeof(K),
-                            cudaMemcpyDefault));
+                            cudaMemcpyDeviceToHost));
       CUDA_CHECK(cudaMemcpy(h_metas_temp, d_metas_temp,
-                            MAX_CAPACITY * sizeof(M), cudaMemcpyDefault));
+                            MAX_CAPACITY * sizeof(M), cudaMemcpyDeviceToHost));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp, d_vectors_temp,
                             MAX_CAPACITY * sizeof(V) * options.dim,
-                            cudaMemcpyDefault));
+                            cudaMemcpyDeviceToHost));
 
       size_t bigger_meta_counter = 0;
       K max_key = 0;
-
+      size_t values_error_counter = 0;
       for (int i = 0; i < dump_counter; i++) {
         ASSERT_EQ(h_keys_temp[i], h_metas_temp[i]);
         max_key = std::max(max_key, h_keys_temp[i]);
         if (h_metas_temp[i] >= expected_min_key) bigger_meta_counter++;
         for (int j = 0; j < options.dim; j++) {
-          ASSERT_EQ(h_vectors_temp[i * options.dim + j],
-                    static_cast<float>(h_keys_temp[i] * 0.00001));
+          if (h_vectors_temp[i * options.dim + j] !=
+              static_cast<float>(h_keys_temp[i] * 0.00001)) {
+            values_error_counter++;
+          }
         }
       }
 
+      ASSERT_EQ(values_error_counter, 0);
       float correct_rate = (bigger_meta_counter * 1.0) / MAX_CAPACITY;
       std::cout << std::setprecision(3) << "[Round " << r << "]"
                 << "correct_rate=" << correct_rate << std::endl;
@@ -1841,14 +1835,6 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
     }
   }
   CUDA_CHECK(cudaStreamDestroy(stream));
-
-  CUDA_CHECK(cudaFreeHost(h_keys_base));
-  CUDA_CHECK(cudaFreeHost(h_metas_base));
-  CUDA_CHECK(cudaFreeHost(h_vectors_base));
-
-  CUDA_CHECK(cudaFreeHost(h_keys_temp));
-  CUDA_CHECK(cudaFreeHost(h_metas_temp));
-  CUDA_CHECK(cudaFreeHost(h_vectors_temp));
 
   CUDA_CHECK(cudaFree(d_keys_temp));
   CUDA_CHECK(cudaFree(d_metas_temp));
@@ -2274,8 +2260,8 @@ void CheckFindOrInsertValues(Table* table, K* keys, V* values, M* metas,
     }
   }
   ASSERT_EQ(value_diff_cnt, 0);
-  std::cout << "Check find_or_insert behavior got value_diff_cnt: "
-            << value_diff_cnt
+  std::cout << "Check find_or_insert behavior got "
+            << "value_diff_cnt: " << value_diff_cnt
             << ", while table_size_before: " << table_size_before
             << ", while table_size_after: " << table_size_after
             << ", while len: " << len << std::endl;
