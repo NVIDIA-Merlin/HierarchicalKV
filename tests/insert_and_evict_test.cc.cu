@@ -266,6 +266,13 @@ void CheckInsertAndEvict(Table* table, K* keys, V* values, M* metas,
       }
     }
   }
+  std::cout << "Check insert_and_evict behavior got "
+            << "key_miss_cnt: " << key_miss_cnt
+            << ", value_diff_cnt: " << value_diff_cnt
+            << ", while table_size_before: " << table_size_before
+            << ", while table_size_after: " << table_size_after
+            << ", while len: " << len << std::endl;
+
   ASSERT_EQ(key_miss_cnt, 0);
   ASSERT_EQ(value_diff_cnt, 0);
 
