@@ -151,6 +151,8 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="section" id="how-to-build">
 <h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
 <p>Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
+<div class="section" id="with-cmake">
+<h3>with cmake<a class="headerlink" href="#with-cmake" title="Permalink to this headline"></a></h3>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 <span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
 cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-Dsm<span class="o">=</span><span class="m">80</span><span class="w"> </span>..<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>-j
@@ -164,11 +166,23 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_test
 </pre></div>
 </div>
+</div>
+<div class="section" id="with-bazel">
+<h3>with bazel<a class="headerlink" href="#with-bazel" title="Permalink to this headline"></a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>bazel<span class="w"> </span>build<span class="w"> </span>--config<span class="o">=</span>cuda<span class="w"> </span>//...
+</pre></div>
+</div>
+<p>For Benchmark:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./benchmark_util
+</pre></div>
+</div>
 <p>Your environment must meet the following requirements:</p>
 <ul class="simple">
 <li><p>CUDA version &gt;= 11.2</p></li>
 <li><p>NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0</p></li>
 </ul>
+</div>
 </div>
 <div class="section" id="benchmark-performance-w-i-p">
 <h2>Benchmark &amp; Performance(W.I.P)<a class="headerlink" href="#benchmark-performance-w-i-p" title="Permalink to this headline"></a></h2>
