@@ -274,8 +274,8 @@ class HashTable {
     }
 
     while (!reach_max_capacity_ &&
-           fast_load_factor(n) > options_.max_load_factor) {
-      reserve(capacity() * 2);
+           fast_load_factor(n, stream) > options_.max_load_factor) {
+      reserve(capacity() * 2, stream);
     }
 
     if (!ignore_evict_strategy) {
@@ -294,7 +294,7 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor();
+        load_factor = fast_load_factor(0, stream);
       }
 
       Selector::execute_kernel(
@@ -410,8 +410,8 @@ class HashTable {
     }
 
     while (!reach_max_capacity_ &&
-           fast_load_factor(n) > options_.max_load_factor) {
-      reserve(capacity() * 2);
+           fast_load_factor(n, stream) > options_.max_load_factor) {
+      reserve(capacity() * 2, stream);
     }
 
     std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
@@ -430,7 +430,7 @@ class HashTable {
     static thread_local float load_factor = 0.0;
 
     if (((step_counter++) % kernel_select_interval_) == 0) {
-      load_factor = fast_load_factor();
+      load_factor = fast_load_factor(0, stream);
     }
 
     // always use max tile to avoid data-deps as possible.
@@ -523,8 +523,8 @@ class HashTable {
     }
 
     while (!reach_max_capacity_ &&
-           fast_load_factor(n) > options_.max_load_factor) {
-      reserve(capacity() * 2);
+           fast_load_factor(n, stream) > options_.max_load_factor) {
+      reserve(capacity() * 2, stream);
     }
 
     if (!ignore_evict_strategy) {
@@ -605,8 +605,8 @@ class HashTable {
     }
 
     while (!reach_max_capacity_ &&
-           fast_load_factor(n) > options_.max_load_factor) {
-      reserve(capacity() * 2);
+           fast_load_factor(n, stream) > options_.max_load_factor) {
+      reserve(capacity() * 2, stream);
     }
 
     if (!ignore_evict_strategy) {
@@ -625,7 +625,7 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor();
+        load_factor = fast_load_factor(0, stream);
       }
       Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                c_table_index_, d_table_, keys, values, metas);
@@ -741,7 +741,7 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor();
+        load_factor = fast_load_factor(0, stream);
       }
 
       Selector::execute_kernel(
@@ -844,7 +844,7 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor();
+        load_factor = fast_load_factor(0, stream);
       }
       Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                c_table_index_, d_table_, keys, values, metas,
