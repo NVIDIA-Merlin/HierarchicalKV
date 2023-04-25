@@ -1265,6 +1265,26 @@ class HashTable {
   }
 
   /**
+   * @brief Set max_capacity of the table.
+   *
+   * @param new_max_capacity The new expecting max_capacity. It must be power
+   * of 2. Otherwise it will raise an error. 
+   */
+  void set_max_capacity(size_type new_max_capacity) {
+    if (!is_power(2, new_max_capacity)) {
+      throw std::invalid_argument("None power-of-2 new_max_capacity is not supported.");
+    }
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    if (new_max_capacity < capacity()) {
+      return;
+    }
+    if (reach_max_capacity_) {
+      reach_max_capacity_ = false;
+    }
+    options_.max_capacity = new_max_capacity;
+  }
+
+  /**
    * @brief Returns the dimension of the vectors.
    *
    * @return The dimension of the vectors.
@@ -1435,6 +1455,20 @@ class HashTable {
     } while (count > 0);
 
     return total_count;
+  }
+
+ private:
+  bool is_power(size_t base, size_t n) {
+    if (base < 2) {
+      throw std::invalid_argument("is_power with zero base.");
+    }
+    while (n > 1) {
+      if (n % base != 0) {
+        return false;
+      }
+      n /= base;
+    }
+    return true;
   }
 
  private:
