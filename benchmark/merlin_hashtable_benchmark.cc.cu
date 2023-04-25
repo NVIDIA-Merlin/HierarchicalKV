@@ -170,7 +170,7 @@ void test_main(const size_t dim,
   CUDA_CHECK(cudaStreamCreate(&stream));
 
   K start = 0UL;
-  float cur_load_factor = table->load_factor();
+  float cur_load_factor = table->load_factor(stream);
   auto diff_insert_or_assign = benchmark::Timer<double>();
   auto diff_find = benchmark::Timer<double>();
   auto diff_find_or_insert = benchmark::Timer<double>();
