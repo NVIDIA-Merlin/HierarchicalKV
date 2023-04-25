@@ -66,28 +66,32 @@ void test_dynamic_max_capcity_table() {
 
   size_t total_len = 0;
   while (true) {
-    buffer.ToRange(offset, /*skip=1*/1, stream);
-    size_t n_evicted = table->insert_and_evict(len, buffer.keys_ptr(),
-        buffer.values_ptr(), nullptr, evict_buffer.keys_ptr(),
-        evict_buffer.values_ptr(), nullptr, stream);
+    buffer.ToRange(offset, /*skip=1*/ 1, stream);
+    size_t n_evicted = table->insert_and_evict(
+        len, buffer.keys_ptr(), buffer.values_ptr(), nullptr,
+        evict_buffer.keys_ptr(), evict_buffer.values_ptr(), nullptr, stream);
     printf("Insert %zu keys and evict %zu\n", len, n_evicted);
     offset += len;
     total_len += len;
     evict_buffer.SyncData(/*h2d=*/false, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     for (size_t i = 0; i < n_evicted; i++) {
-      Vec_t* vec = reinterpret_cast<Vec_t*>(evict_buffer.values_ptr(false) + i * dim);
+      Vec_t* vec =
+          reinterpret_cast<Vec_t*>(evict_buffer.values_ptr(false) + i * dim);
       ref_map[evict_buffer.keys_ptr(false)[i]] = *vec;
     }
 
     if (table->load_factor(stream) >= load_factor_threshold) {
-      ASSERT_GE(table->size(stream), static_cast<size_t>((static_cast<float>(max_capacity) * load_factor_threshold)));
+      ASSERT_GE(table->size(stream),
+                static_cast<size_t>((static_cast<float>(max_capacity) *
+                                     load_factor_threshold)));
       max_capacity *= 2;
       if (max_capacity > uplimit) {
         break;
       }
       // What we need.
-      printf("----> check change max_capacity from %zu to %zu\n", table->capacity(), max_capacity);
+      printf("----> check change max_capacity from %zu to %zu\n",
+             table->capacity(), max_capacity);
       table->set_max_capacity(max_capacity);
       table->reserve(max_capacity, stream);
       ASSERT_EQ(max_capacity, table->capacity());
@@ -105,8 +109,9 @@ void test_dynamic_max_capcity_table() {
     if (offset + search_len > table->capacity()) {
       search_len = table->capacity() - offset;
     }
-    size_t n_exported = table->export_batch(search_len, offset, buffer.keys_ptr(),
-                                            buffer.values_ptr(), /*metas=*/nullptr, stream);
+    size_t n_exported =
+        table->export_batch(search_len, offset, buffer.keys_ptr(),
+                            buffer.values_ptr(), /*metas=*/nullptr, stream);
     buffer.SyncData(/*h2d=*/false);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     for (size_t i = 0; i < n_exported; i++) {
@@ -128,7 +133,8 @@ void test_dynamic_max_capcity_table() {
     }
   }
   ASSERT_EQ(table->capacity() * 2, max_capacity);
-  ASSERT_GE(static_cast<float>(ref_map.size()), static_cast<float>(table->capacity()) * load_factor_threshold);
+  ASSERT_GE(static_cast<float>(ref_map.size()),
+            static_cast<float>(table->capacity()) * load_factor_threshold);
 }
 
 TEST(MerlinHashTableTest, test_dynamic_max_capcity_table) {

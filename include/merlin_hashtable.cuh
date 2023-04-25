@@ -1268,11 +1268,12 @@ class HashTable {
    * @brief Set max_capacity of the table.
    *
    * @param new_max_capacity The new expecting max_capacity. It must be power
-   * of 2. Otherwise it will raise an error. 
+   * of 2. Otherwise it will raise an error.
    */
   void set_max_capacity(size_type new_max_capacity) {
     if (!is_power(2, new_max_capacity)) {
-      throw std::invalid_argument("None power-of-2 new_max_capacity is not supported.");
+      throw std::invalid_argument(
+          "None power-of-2 new_max_capacity is not supported.");
     }
     std::unique_lock<std::shared_timed_mutex> lock(mutex_);
     if (new_max_capacity < capacity()) {
