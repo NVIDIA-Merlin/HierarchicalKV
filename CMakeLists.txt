@@ -111,3 +111,8 @@ add_executable(insert_and_evict_test tests/insert_and_evict_test.cc.cu)
 target_compile_features(insert_and_evict_test PUBLIC cxx_std_14)
 set_target_properties(insert_and_evict_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(insert_and_evict_test gtest_main)
+
+add_executable(dynamic_max_capacity_test tests/dynamic_max_capacity_test.cc.cu)
+target_compile_features(dynamic_max_capacity_test PUBLIC cxx_std_14)
+set_target_properties(dynamic_max_capacity_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(dynamic_max_capacity_test gtest_main)
