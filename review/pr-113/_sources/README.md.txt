@@ -138,8 +138,8 @@ Your environment must meet the following requirements:
 
 * dim = 64
 * capacity = 1024 Million-KV
-* HBM = 16 GB
-* HMEM = 240 GB
+* HBM = 56 GB
+* HMEM = 200 GB
 
 | load_factor | insert_or_assign |   find | find_or_insert | assign |
 |------------:|:----------------:|-------:|:--------------:|-------:|
