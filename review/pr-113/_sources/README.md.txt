@@ -57,6 +57,7 @@ and also open for public contributions, bug fixes, and documentation. [[Contribu
 
 Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
+### with cmake
 ```shell
 git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 cd HierarchicalKV && mkdir -p build && cd build
@@ -73,6 +74,17 @@ For Unit Test:
 ./merlin_hashtable_test
 ```
 
+### with bazel
+```shell
+git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+cd HierarchicalKV && bazel build --config=cuda //...
+```
+
+For Benchmark:
+```shell
+./benchmark_util
+```
+
 Your environment must meet the following requirements:
 
 - CUDA version >= 11.2
@@ -87,39 +99,53 @@ Your environment must meet the following requirements:
 * Key-Values per OP = 1048576
 * ***Throughput Unit: Billion-KV/second***
 
-### On pure HBM mode:
+### On pure HBM mode: 
 
-| dim | Capacity<br>(M-KVs) | HBM/HMEM<br>(GB) | load_factor | insert or<br>assign |   find | find or<br>insert | assign | insert and<br>evict |
-|----:|:-------------------:|:----------------:|------------:|:-------------------:|-------:|:-----------------:|-------:|:-------------------:|
-|   4 |                  64 |          32 /  0 |        0.50 |               1.484 |  2.441 |             1.269 |  2.114 |               0.091 |
-|   4 |                  64 |          32 /  0 |        0.75 |               0.853 |  1.737 |             0.856 |  1.593 |               0.629 |
-|   4 |                  64 |          32 /  0 |        1.00 |               0.189 |  0.579 |             0.284 |  0.191 |               0.153 |
-|  16 |                  64 |          16 /  0 |        0.50 |               1.304 |  2.390 |             1.238 |  2.135 |               0.844 |
-|  16 |                  64 |          16 /  0 |        0.75 |               0.806 |  1.490 |             0.790 |  1.396 |               0.625 |
-|  16 |                  64 |          16 /  0 |        1.00 |               0.189 |  0.525 |             0.276 |  0.185 |               0.147 |
-|  64 |                  64 |          16 /  0 |        0.50 |               0.686 |  1.293 |             0.821 |  1.116 |               0.645 |
-|  64 |                  64 |          16 /  0 |        0.75 |               0.560 |  0.872 |             0.531 |  0.799 |               0.436 |
-|  64 |                  64 |          16 /  0 |        1.00 |               0.173 |  0.379 |             0.229 |  0.163 |               0.105 |
-| 128 |                 128 |          64 /  0 |        0.50 |               0.547 |  0.793 |             0.548 |  0.664 |               0.429 |
-| 128 |                 128 |          64 /  0 |        0.75 |               0.384 |  0.603 |             0.378 |  0.538 |               0.316 |
-| 128 |                 128 |          64 /  0 |        1.00 |               0.156 |  0.282 |             0.189 |  0.136 |               0.075 |
-   
-### On HBM+HMEM hybrid mode:   
+* dim = 4
+* capacity = 64 Million-KV
+* HBM = 32 GB
+* HMEM = 0 GB
 
-| dim | Capacity<br>(M-KVs) | HBM/HMEM<br>(GB) | load_factor | insert or<br>assign |   find | find or<br>insert | assign |
-|----:|:-------------------:|:----------------:|------------:|:-------------------:|-------:|:-----------------:|-------:|
-|  64 |                 128 |          16 / 16 |        0.50 |               0.086 |  0.128 |             0.111 |  0.135 |
-|  64 |                 128 |          16 / 16 |        0.75 |               0.083 |  0.125 |             0.106 |  0.132 |
-|  64 |                 128 |          16 / 16 |        1.00 |               0.064 |  0.110 |             0.076 |  0.080 |
-|  64 |                1024 |          56 /200 |        0.50 |               0.038 |  0.056 |             0.035 |  0.052 |
-|  64 |                1024 |          56 /200 |        0.75 |               0.038 |  0.055 |             0.034 |  0.051 |
-|  64 |                1024 |          56 /200 |        1.00 |               0.033 |  0.052 |             0.030 |  0.040 |
-| 128 |                  64 |          16 / 16 |        0.50 |               0.045 |  0.067 |             0.066 |  0.072 |
-| 128 |                  64 |          16 / 16 |        0.75 |               0.044 |  0.067 |             0.064 |  0.071 |
-| 128 |                  64 |          16 / 16 |        1.00 |               0.038 |  0.062 |             0.053 |  0.053 |
-| 128 |                 512 |          56 /200 |        0.50 |               0.029 |  0.045 |             0.042 |  0.048 |
-| 128 |                 512 |          56 /200 |        0.75 |               0.029 |  0.045 |             0.042 |  0.047 |
-| 128 |                 512 |          56 /200 |        1.00 |               0.026 |  0.043 |             0.036 |  0.038 |
+| load_factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
+|------------:|:----------------:|-------:|:--------------:|-------:|:----------------:|
+|        0.50 |            1.443 |  2.708 |          1.279 |  2.348 |            0.866 |
+|        0.75 |            0.810 |  1.769 |          0.820 |  1.601 |            0.603 |
+|        1.00 |            0.187 |  0.582 |          0.277 |  0.191 |            0.149 |
+
+* dim = 64
+* capacity = 64 Million-KV
+* HBM = 16 GB
+* HMEM = 0 GB
+
+| load_factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
+|------------:|:----------------:|-------:|:--------------:|-------:|:----------------:|
+|        0.50 |            0.671 |  1.296 |          0.792 |  1.118 |            0.610 |
+|        0.75 |            0.546 |  0.912 |          0.528 |  0.833 |            0.421 |
+|        1.00 |            0.171 |  0.380 |          0.224 |  0.163 |            0.103 |
+
+### On HBM+HMEM hybrid mode: 
+
+* dim = 64
+* capacity = 128 Million-KV
+* HBM = 16 GB
+* HMEM = 16 GB
+
+| load_factor | insert_or_assign |   find | find_or_insert | assign |
+|------------:|:----------------:|-------:|:--------------:|-------:|
+|        0.50 |            0.086 |  0.128 |          0.112 |  0.135 |
+|        0.75 |            0.083 |  0.126 |          0.109 |  0.133 |
+|        1.00 |            0.064 |  0.111 |          0.078 |  0.080 |
+
+* dim = 64
+* capacity = 1024 Million-KV
+* HBM = 16 GB
+* HMEM = 240 GB
+
+| load_factor | insert_or_assign |   find | find_or_insert | assign |
+|------------:|:----------------:|-------:|:--------------:|-------:|
+|        0.50 |            0.039 |  0.055 |          0.035 |  0.052 |
+|        0.75 |            0.038 |  0.055 |          0.034 |  0.051 |
+|        1.00 |            0.033 |  0.052 |          0.031 |  0.041 |
 
 
 

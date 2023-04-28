@@ -151,6 +151,8 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="section" id="how-to-build">
 <h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
 <p>Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
+<div class="section" id="with-cmake">
+<h3>with cmake<a class="headerlink" href="#with-cmake" title="Permalink to this headline"></a></h3>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 <span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
 cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-Dsm<span class="o">=</span><span class="m">80</span><span class="w"> </span>..<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>-j
@@ -164,11 +166,23 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_test
 </pre></div>
 </div>
+</div>
+<div class="section" id="with-bazel">
+<h3>with bazel<a class="headerlink" href="#with-bazel" title="Permalink to this headline"></a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>bazel<span class="w"> </span>build<span class="w"> </span>--config<span class="o">=</span>cuda<span class="w"> </span>//...
+</pre></div>
+</div>
+<p>For Benchmark:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./benchmark_util
+</pre></div>
+</div>
 <p>Your environment must meet the following requirements:</p>
 <ul class="simple">
 <li><p>CUDA version &gt;= 11.2</p></li>
 <li><p>NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0</p></li>
 </ul>
+</div>
 </div>
 <div class="section" id="benchmark-performance-w-i-p">
 <h2>Benchmark &amp; Performance(W.I.P)<a class="headerlink" href="#benchmark-performance-w-i-p" title="Permalink to this headline"></a></h2>
@@ -181,265 +195,158 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </ul>
 <div class="section" id="on-pure-hbm-mode">
 <h3>On pure HBM mode:<a class="headerlink" href="#on-pure-hbm-mode" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p>dim = 4</p></li>
+<li><p>capacity = 64 Million-KV</p></li>
+<li><p>HBM = 32 GB</p></li>
+<li><p>HMEM = 0 GB</p></li>
+</ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
-<tr class="row-odd"><th class="text-right head"><p>dim</p></th>
-<th class="text-center head"><p>Capacity<br>(M-KVs)</p></th>
-<th class="text-center head"><p>HBM/HMEM<br>(GB)</p></th>
-<th class="text-right head"><p>load_factor</p></th>
-<th class="text-center head"><p>insert or<br>assign</p></th>
+<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<th class="text-center head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-center head"><p>find or<br>insert</p></th>
+<th class="text-center head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
-<th class="text-center head"><p>insert and<br>evict</p></th>
+<th class="text-center head"><p>insert_and_evict</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td class="text-right"><p>4</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>32 /  0</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>1.484</p></td>
-<td class="text-right"><p>2.441</p></td>
-<td class="text-center"><p>1.269</p></td>
-<td class="text-right"><p>2.114</p></td>
-<td class="text-center"><p>0.091</p></td>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-center"><p>1.443</p></td>
+<td class="text-right"><p>2.708</p></td>
+<td class="text-center"><p>1.279</p></td>
+<td class="text-right"><p>2.348</p></td>
+<td class="text-center"><p>0.866</p></td>
 </tr>
-<tr class="row-odd"><td class="text-right"><p>4</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>32 /  0</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.853</p></td>
-<td class="text-right"><p>1.737</p></td>
-<td class="text-center"><p>0.856</p></td>
-<td class="text-right"><p>1.593</p></td>
-<td class="text-center"><p>0.629</p></td>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-center"><p>0.810</p></td>
+<td class="text-right"><p>1.769</p></td>
+<td class="text-center"><p>0.820</p></td>
+<td class="text-right"><p>1.601</p></td>
+<td class="text-center"><p>0.603</p></td>
 </tr>
-<tr class="row-even"><td class="text-right"><p>4</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>32 /  0</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.189</p></td>
-<td class="text-right"><p>0.579</p></td>
-<td class="text-center"><p>0.284</p></td>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-center"><p>0.187</p></td>
+<td class="text-right"><p>0.582</p></td>
+<td class="text-center"><p>0.277</p></td>
 <td class="text-right"><p>0.191</p></td>
-<td class="text-center"><p>0.153</p></td>
+<td class="text-center"><p>0.149</p></td>
 </tr>
-<tr class="row-odd"><td class="text-right"><p>16</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 /  0</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>1.304</p></td>
-<td class="text-right"><p>2.390</p></td>
-<td class="text-center"><p>1.238</p></td>
-<td class="text-right"><p>2.135</p></td>
-<td class="text-center"><p>0.844</p></td>
+</tbody>
+</table>
+<ul class="simple">
+<li><p>dim = 64</p></li>
+<li><p>capacity = 64 Million-KV</p></li>
+<li><p>HBM = 16 GB</p></li>
+<li><p>HMEM = 0 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<th class="text-center head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+<th class="text-center head"><p>insert_and_evict</p></th>
 </tr>
-<tr class="row-even"><td class="text-right"><p>16</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 /  0</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.806</p></td>
-<td class="text-right"><p>1.490</p></td>
-<td class="text-center"><p>0.790</p></td>
-<td class="text-right"><p>1.396</p></td>
-<td class="text-center"><p>0.625</p></td>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-center"><p>0.671</p></td>
+<td class="text-right"><p>1.296</p></td>
+<td class="text-center"><p>0.792</p></td>
+<td class="text-right"><p>1.118</p></td>
+<td class="text-center"><p>0.610</p></td>
 </tr>
-<tr class="row-odd"><td class="text-right"><p>16</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 /  0</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.189</p></td>
-<td class="text-right"><p>0.525</p></td>
-<td class="text-center"><p>0.276</p></td>
-<td class="text-right"><p>0.185</p></td>
-<td class="text-center"><p>0.147</p></td>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-center"><p>0.546</p></td>
+<td class="text-right"><p>0.912</p></td>
+<td class="text-center"><p>0.528</p></td>
+<td class="text-right"><p>0.833</p></td>
+<td class="text-center"><p>0.421</p></td>
 </tr>
-<tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 /  0</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.686</p></td>
-<td class="text-right"><p>1.293</p></td>
-<td class="text-center"><p>0.821</p></td>
-<td class="text-right"><p>1.116</p></td>
-<td class="text-center"><p>0.645</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 /  0</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.560</p></td>
-<td class="text-right"><p>0.872</p></td>
-<td class="text-center"><p>0.531</p></td>
-<td class="text-right"><p>0.799</p></td>
-<td class="text-center"><p>0.436</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 /  0</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.173</p></td>
-<td class="text-right"><p>0.379</p></td>
-<td class="text-center"><p>0.229</p></td>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-center"><p>0.171</p></td>
+<td class="text-right"><p>0.380</p></td>
+<td class="text-center"><p>0.224</p></td>
 <td class="text-right"><p>0.163</p></td>
-<td class="text-center"><p>0.105</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>128</p></td>
-<td class="text-center"><p>64 /  0</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.547</p></td>
-<td class="text-right"><p>0.793</p></td>
-<td class="text-center"><p>0.548</p></td>
-<td class="text-right"><p>0.664</p></td>
-<td class="text-center"><p>0.429</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>128</p></td>
-<td class="text-center"><p>64 /  0</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.384</p></td>
-<td class="text-right"><p>0.603</p></td>
-<td class="text-center"><p>0.378</p></td>
-<td class="text-right"><p>0.538</p></td>
-<td class="text-center"><p>0.316</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>128</p></td>
-<td class="text-center"><p>64 /  0</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.156</p></td>
-<td class="text-right"><p>0.282</p></td>
-<td class="text-center"><p>0.189</p></td>
-<td class="text-right"><p>0.136</p></td>
-<td class="text-center"><p>0.075</p></td>
+<td class="text-center"><p>0.103</p></td>
 </tr>
 </tbody>
 </table>
 </div>
 <div class="section" id="on-hbm-hmem-hybrid-mode">
 <h3>On HBM+HMEM hybrid mode:<a class="headerlink" href="#on-hbm-hmem-hybrid-mode" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p>dim = 64</p></li>
+<li><p>capacity = 128 Million-KV</p></li>
+<li><p>HBM = 16 GB</p></li>
+<li><p>HMEM = 16 GB</p></li>
+</ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
-<tr class="row-odd"><th class="text-right head"><p>dim</p></th>
-<th class="text-center head"><p>Capacity<br>(M-KVs)</p></th>
-<th class="text-center head"><p>HBM/HMEM<br>(GB)</p></th>
-<th class="text-right head"><p>load_factor</p></th>
-<th class="text-center head"><p>insert or<br>assign</p></th>
+<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<th class="text-center head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-center head"><p>find or<br>insert</p></th>
+<th class="text-center head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>128</p></td>
-<td class="text-center"><p>16 / 16</p></td>
-<td class="text-right"><p>0.50</p></td>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
 <td class="text-center"><p>0.086</p></td>
 <td class="text-right"><p>0.128</p></td>
-<td class="text-center"><p>0.111</p></td>
+<td class="text-center"><p>0.112</p></td>
 <td class="text-right"><p>0.135</p></td>
 </tr>
-<tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>128</p></td>
-<td class="text-center"><p>16 / 16</p></td>
-<td class="text-right"><p>0.75</p></td>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
 <td class="text-center"><p>0.083</p></td>
-<td class="text-right"><p>0.125</p></td>
-<td class="text-center"><p>0.106</p></td>
-<td class="text-right"><p>0.132</p></td>
+<td class="text-right"><p>0.126</p></td>
+<td class="text-center"><p>0.109</p></td>
+<td class="text-right"><p>0.133</p></td>
 </tr>
-<tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>128</p></td>
-<td class="text-center"><p>16 / 16</p></td>
-<td class="text-right"><p>1.00</p></td>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
 <td class="text-center"><p>0.064</p></td>
-<td class="text-right"><p>0.110</p></td>
-<td class="text-center"><p>0.076</p></td>
+<td class="text-right"><p>0.111</p></td>
+<td class="text-center"><p>0.078</p></td>
 <td class="text-right"><p>0.080</p></td>
 </tr>
-<tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>1024</p></td>
-<td class="text-center"><p>56 /200</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.038</p></td>
-<td class="text-right"><p>0.056</p></td>
+</tbody>
+</table>
+<ul class="simple">
+<li><p>dim = 64</p></li>
+<li><p>capacity = 1024 Million-KV</p></li>
+<li><p>HBM = 16 GB</p></li>
+<li><p>HMEM = 240 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<th class="text-center head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-center"><p>0.039</p></td>
+<td class="text-right"><p>0.055</p></td>
 <td class="text-center"><p>0.035</p></td>
 <td class="text-right"><p>0.052</p></td>
 </tr>
-<tr class="row-even"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>1024</p></td>
-<td class="text-center"><p>56 /200</p></td>
-<td class="text-right"><p>0.75</p></td>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
 <td class="text-center"><p>0.038</p></td>
 <td class="text-right"><p>0.055</p></td>
 <td class="text-center"><p>0.034</p></td>
 <td class="text-right"><p>0.051</p></td>
 </tr>
-<tr class="row-odd"><td class="text-right"><p>64</p></td>
-<td class="text-center"><p>1024</p></td>
-<td class="text-center"><p>56 /200</p></td>
-<td class="text-right"><p>1.00</p></td>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
 <td class="text-center"><p>0.033</p></td>
 <td class="text-right"><p>0.052</p></td>
-<td class="text-center"><p>0.030</p></td>
-<td class="text-right"><p>0.040</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 / 16</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.045</p></td>
-<td class="text-right"><p>0.067</p></td>
-<td class="text-center"><p>0.066</p></td>
-<td class="text-right"><p>0.072</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 / 16</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.044</p></td>
-<td class="text-right"><p>0.067</p></td>
-<td class="text-center"><p>0.064</p></td>
-<td class="text-right"><p>0.071</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>64</p></td>
-<td class="text-center"><p>16 / 16</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.038</p></td>
-<td class="text-right"><p>0.062</p></td>
-<td class="text-center"><p>0.053</p></td>
-<td class="text-right"><p>0.053</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>512</p></td>
-<td class="text-center"><p>56 /200</p></td>
-<td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.029</p></td>
-<td class="text-right"><p>0.045</p></td>
-<td class="text-center"><p>0.042</p></td>
-<td class="text-right"><p>0.048</p></td>
-</tr>
-<tr class="row-even"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>512</p></td>
-<td class="text-center"><p>56 /200</p></td>
-<td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.029</p></td>
-<td class="text-right"><p>0.045</p></td>
-<td class="text-center"><p>0.042</p></td>
-<td class="text-right"><p>0.047</p></td>
-</tr>
-<tr class="row-odd"><td class="text-right"><p>128</p></td>
-<td class="text-center"><p>512</p></td>
-<td class="text-center"><p>56 /200</p></td>
-<td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.026</p></td>
-<td class="text-right"><p>0.043</p></td>
-<td class="text-center"><p>0.036</p></td>
-<td class="text-right"><p>0.038</p></td>
+<td class="text-center"><p>0.031</p></td>
+<td class="text-right"><p>0.041</p></td>
 </tr>
 </tbody>
 </table>

@@ -249,8 +249,8 @@
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">&amp;&amp;</span>
-<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">ignore_evict_strategy</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
@@ -269,7 +269,7 @@
 <span class="w">      </span><span class="k">static</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">;</span>
 
 <span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(((</span><span class="n">step_counter</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">kernel_select_interval_</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">();</span>
+<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">      </span><span class="p">}</span>
 
 <span class="w">      </span><span class="n">Selector</span><span class="o">::</span><span class="n">execute_kernel</span><span class="p">(</span>
@@ -344,8 +344,8 @@
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">&amp;&amp;</span>
-<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">shared_lock</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_timed_mutex</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">defer_lock</span><span class="p">);</span>
@@ -364,7 +364,7 @@
 <span class="w">    </span><span class="k">static</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">;</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(((</span><span class="n">step_counter</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">kernel_select_interval_</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">();</span>
+<span class="w">      </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="c1">// always use max tile to avoid data-deps as possible.</span>
@@ -416,8 +416,8 @@
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">&amp;&amp;</span>
-<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">ignore_evict_strategy</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
@@ -482,8 +482,8 @@
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">&amp;&amp;</span>
-<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">);</span>
+<span class="w">           </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">)</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_load_factor</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">reserve</span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">ignore_evict_strategy</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
@@ -502,7 +502,7 @@
 <span class="w">      </span><span class="k">static</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">;</span>
 
 <span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(((</span><span class="n">step_counter</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">kernel_select_interval_</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">();</span>
+<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">      </span><span class="n">Selector</span><span class="o">::</span><span class="n">execute_kernel</span><span class="p">(</span><span class="n">load_factor</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span>
 <span class="w">                               </span><span class="n">c_table_index_</span><span class="p">,</span><span class="w"> </span><span class="n">d_table_</span><span class="p">,</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="n">metas</span><span class="p">);</span>
@@ -596,7 +596,7 @@
 <span class="w">      </span><span class="k">static</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">;</span>
 
 <span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(((</span><span class="n">step_counter</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">kernel_select_interval_</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">();</span>
+<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">      </span><span class="p">}</span>
 
 <span class="w">      </span><span class="n">Selector</span><span class="o">::</span><span class="n">execute_kernel</span><span class="p">(</span>
@@ -681,7 +681,7 @@
 <span class="w">      </span><span class="k">static</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.0</span><span class="p">;</span>
 
 <span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(((</span><span class="n">step_counter</span><span class="o">++</span><span class="p">)</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">kernel_select_interval_</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">();</span>
+<span class="w">        </span><span class="n">load_factor</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">      </span><span class="p">}</span>
 <span class="w">      </span><span class="n">Selector</span><span class="o">::</span><span class="n">execute_kernel</span><span class="p">(</span><span class="n">load_factor</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span>
 <span class="w">                               </span><span class="n">c_table_index_</span><span class="p">,</span><span class="w"> </span><span class="n">d_table_</span><span class="p">,</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="n">metas</span><span class="p">,</span>
@@ -953,6 +953,21 @@
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">float</span><span class="o">&gt;</span><span class="p">((</span><span class="n">size</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1.0</span><span class="p">)</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mf">1.0</span><span class="p">));</span>
 <span class="w">  </span><span class="p">}</span>
 
+<span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">set_max_capacity</span><span class="p">(</span><span class="n">size_type</span><span class="w"> </span><span class="n">new_max_capacity</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">is_power</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="n">new_max_capacity</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span>
+<span class="w">          </span><span class="s">&quot;None power-of-2 new_max_capacity is not supported.&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">unique_lock</span><span class="o">&lt;</span><span class="n">std</span><span class="o">::</span><span class="n">shared_timed_mutex</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">new_max_capacity</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">capacity</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">reach_max_capacity_</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="n">options_</span><span class="p">.</span><span class="n">max_capacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">new_max_capacity</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+
 <span class="w">  </span><span class="n">size_type</span><span class="w"> </span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">dim</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
 
 <span class="w">  </span><span class="n">size_type</span><span class="w"> </span><span class="n">max_bucket_size</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span>
@@ -1087,6 +1102,20 @@
 <span class="w">    </span><span class="p">}</span><span class="w"> </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">count</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">0</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">total_count</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
+
+<span class="w"> </span><span class="k">private</span><span class="o">:</span>
+<span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">is_power</span><span class="p">(</span><span class="kt">size_t</span><span class="w"> </span><span class="n">base</span><span class="p">,</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">n</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">base</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="mi">2</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">throw</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">invalid_argument</span><span class="p">(</span><span class="s">&quot;is_power with zero base.&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">while</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="mi">1</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">%</span><span class="w"> </span><span class="n">base</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">      </span><span class="n">n</span><span class="w"> </span><span class="o">/=</span><span class="w"> </span><span class="n">base</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
 <span class="w">  </span><span class="p">}</span>
 
 <span class="w"> </span><span class="k">private</span><span class="o">:</span>

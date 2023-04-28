@@ -173,8 +173,8 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        while (!reach_max_capacity_ &&
-              fast_load_factor(n) > options_.max_load_factor) {
-         reserve(capacity() * 2);
+              fast_load_factor(n, stream) > options_.max_load_factor) {
+         reserve(capacity() * 2, stream);
        }
    
        if (!ignore_evict_strategy) {
@@ -193,7 +193,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor();
+           load_factor = fast_load_factor(0, stream);
          }
    
          Selector::execute_kernel(
@@ -268,8 +268,8 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        while (!reach_max_capacity_ &&
-              fast_load_factor(n) > options_.max_load_factor) {
-         reserve(capacity() * 2);
+              fast_load_factor(n, stream) > options_.max_load_factor) {
+         reserve(capacity() * 2, stream);
        }
    
        std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
@@ -288,7 +288,7 @@ Program Listing for File merlin_hashtable.cuh
        static thread_local float load_factor = 0.0;
    
        if (((step_counter++) % kernel_select_interval_) == 0) {
-         load_factor = fast_load_factor();
+         load_factor = fast_load_factor(0, stream);
        }
    
        // always use max tile to avoid data-deps as possible.
@@ -340,8 +340,8 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        while (!reach_max_capacity_ &&
-              fast_load_factor(n) > options_.max_load_factor) {
-         reserve(capacity() * 2);
+              fast_load_factor(n, stream) > options_.max_load_factor) {
+         reserve(capacity() * 2, stream);
        }
    
        if (!ignore_evict_strategy) {
@@ -406,8 +406,8 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        while (!reach_max_capacity_ &&
-              fast_load_factor(n) > options_.max_load_factor) {
-         reserve(capacity() * 2);
+              fast_load_factor(n, stream) > options_.max_load_factor) {
+         reserve(capacity() * 2, stream);
        }
    
        if (!ignore_evict_strategy) {
@@ -426,7 +426,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor();
+           load_factor = fast_load_factor(0, stream);
          }
          Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                   c_table_index_, d_table_, keys, values, metas);
@@ -520,7 +520,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor();
+           load_factor = fast_load_factor(0, stream);
          }
    
          Selector::execute_kernel(
@@ -605,7 +605,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor();
+           load_factor = fast_load_factor(0, stream);
          }
          Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                   c_table_index_, d_table_, keys, values, metas,
@@ -877,6 +877,21 @@ Program Listing for File merlin_hashtable.cuh
        return static_cast<float>((size(stream) * 1.0) / (capacity() * 1.0));
      }
    
+     void set_max_capacity(size_type new_max_capacity) {
+       if (!is_power(2, new_max_capacity)) {
+         throw std::invalid_argument(
+             "None power-of-2 new_max_capacity is not supported.");
+       }
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+       if (new_max_capacity < capacity()) {
+         return;
+       }
+       if (reach_max_capacity_) {
+         reach_max_capacity_ = false;
+       }
+       options_.max_capacity = new_max_capacity;
+     }
+   
      size_type dim() const noexcept { return options_.dim; }
    
      size_type max_bucket_size() const noexcept {
@@ -1011,6 +1026,20 @@ Program Listing for File merlin_hashtable.cuh
        } while (count > 0);
    
        return total_count;
+     }
+   
+    private:
+     bool is_power(size_t base, size_t n) {
+       if (base < 2) {
+         throw std::invalid_argument("is_power with zero base.");
+       }
+       while (n > 1) {
+         if (n % base != 0) {
+           return false;
+         }
+         n /= base;
+       }
+       return true;
      }
    
     private:
