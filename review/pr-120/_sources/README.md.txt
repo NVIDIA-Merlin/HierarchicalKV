@@ -41,6 +41,15 @@ The main classes and structs are below, and it's recommended to read the comment
 - [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L34)
 - [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106)
 
+### API Maturity Matrix
+
+|  API | Function | Performance |          Maturity |
+|-----:|---------:|------------:|------------------:|
+| 0.50 |    1.443 |       2.708 | Industry verified |
+| 0.75 |    0.810 |       1.769 | Industry verified |
+| 1.00 |    0.187 |       0.582 | Industry verified |
+
+
 For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html)
 
 ## Usage restrictions
@@ -101,53 +110,39 @@ Your environment must meet the following requirements:
 
 ### On pure HBM mode: 
 
-* dim = 4
-* capacity = 64 Million-KV
-* HBM = 32 GB
-* HMEM = 0 GB
+* Dim = 4, Capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
-|------------:|:----------------:|-------:|:--------------:|-------:|:----------------:|
+| load factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
+|------------:|-----------------:|-------:|---------------:|-------:|-----------------:|
 |        0.50 |            1.443 |  2.708 |          1.279 |  2.348 |            0.866 |
 |        0.75 |            0.810 |  1.769 |          0.820 |  1.601 |            0.603 |
 |        1.00 |            0.187 |  0.582 |          0.277 |  0.191 |            0.149 |
 
-* dim = 64
-* capacity = 64 Million-KV
-* HBM = 16 GB
-* HMEM = 0 GB
+* Dim = 64, Capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
-|------------:|:----------------:|-------:|:--------------:|-------:|:----------------:|
+| load factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
+|------------:|-----------------:|-------:|---------------:|-------:|-----------------:|
 |        0.50 |            0.671 |  1.296 |          0.792 |  1.118 |            0.610 |
 |        0.75 |            0.546 |  0.912 |          0.528 |  0.833 |            0.421 |
 |        1.00 |            0.171 |  0.380 |          0.224 |  0.163 |            0.103 |
 
 ### On HBM+HMEM hybrid mode: 
 
-* dim = 64
-* capacity = 128 Million-KV
-* HBM = 16 GB
-* HMEM = 16 GB
+* Dim = 64, Capacity = 128 Million-KV, HBM = 16 GB, HMEM = 16 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign |
-|------------:|:----------------:|-------:|:--------------:|-------:|
-|        0.50 |            0.086 |  0.128 |          0.112 |  0.135 |
-|        0.75 |            0.083 |  0.126 |          0.109 |  0.133 |
-|        1.00 |            0.064 |  0.111 |          0.078 |  0.080 |
+| load factor | insert_or_assign |  find | find_or_insert | assign |
+|------------:|-----------------:|------:|---------------:|-------:|
+|        0.50 |            0.086 | 0.128 |          0.112 |  0.135 |
+|        0.75 |            0.083 | 0.126 |          0.109 |  0.133 |
+|        1.00 |            0.064 | 0.111 |          0.078 |  0.080 |
 
-* dim = 64
-* capacity = 1024 Million-KV
-* HBM = 56 GB
-* HMEM = 200 GB
+* Dim = 64, Capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign |
-|------------:|:----------------:|-------:|:--------------:|-------:|
+| load factor | insert_or_assign |   find | find_or_insert | assign |
+|------------:|-----------------:|-------:|---------------:|-------:|
 |        0.50 |            0.039 |  0.055 |          0.035 |  0.052 |
 |        0.75 |            0.038 |  0.055 |          0.034 |  0.051 |
 |        1.00 |            0.033 |  0.052 |          0.031 |  0.041 |
-
-
 
 
 ### Support and Feedback:

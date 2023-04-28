@@ -181,10 +181,7 @@ Program Listing for File merlin_hashtable.cuh
          check_evict_strategy(metas);
        }
    
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        if (is_fast_mode()) {
          using Selector =
@@ -193,7 +190,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor(0, stream);
+           load_factor = fast_load_factor(0, stream, false);
          }
    
          Selector::execute_kernel(
@@ -274,10 +271,7 @@ Program Listing for File merlin_hashtable.cuh
          reserve(capacity() * 2, stream);
        }
    
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        // TODO: Currently only need eviction when using HashTable as HBM cache.
        if (!is_fast_mode()) {
@@ -290,7 +284,7 @@ Program Listing for File merlin_hashtable.cuh
        static thread_local float load_factor = 0.0;
    
        if (((step_counter++) % kernel_select_interval_) == 0) {
-         load_factor = fast_load_factor(0, stream);
+         load_factor = fast_load_factor(0, stream, false);
        }
    
        // always use max tile to avoid data-deps as possible.
@@ -304,7 +298,8 @@ Program Listing for File merlin_hashtable.cuh
        auto dn_evicted = reinterpret_cast<size_type*>(d_offsets + n_offsets);
        auto d_masks = reinterpret_cast<bool*>(dn_evicted + 1);
    
-       CUDA_CHECK(cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t)));
+       CUDA_CHECK(
+           cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t), stream));
        CUDA_CHECK(cudaMemsetAsync(dn_evicted, 0, sizeof(size_type), stream));
        CUDA_CHECK(cudaMemsetAsync(d_masks, 0, n * sizeof(bool), stream));
    
@@ -351,10 +346,7 @@ Program Listing for File merlin_hashtable.cuh
          check_evict_strategy(metas);
        }
    
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        const size_type dev_ws_size{
            n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -417,10 +409,7 @@ Program Listing for File merlin_hashtable.cuh
          check_evict_strategy(metas);
        }
    
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        if (is_fast_mode()) {
          using Selector =
@@ -429,7 +418,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor(0, stream);
+           load_factor = fast_load_factor(0, stream, false);
          }
          Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                   c_table_index_, d_table_, keys, values, metas);
@@ -511,10 +500,7 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
    
-       std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::unique_lock<std::shared_timed_mutex> lock(mutex_);
    
        if (is_fast_mode()) {
          using Selector =
@@ -523,7 +509,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor(0, stream);
+           load_factor = fast_load_factor(0, stream, false);
          }
    
          Selector::execute_kernel(
@@ -596,10 +582,7 @@ Program Listing for File merlin_hashtable.cuh
    
        CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
    
-       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_);
    
        if (is_fast_mode()) {
          using Selector =
@@ -608,7 +591,7 @@ Program Listing for File merlin_hashtable.cuh
          static thread_local float load_factor = 0.0;
    
          if (((step_counter++) % kernel_select_interval_) == 0) {
-           load_factor = fast_load_factor(0, stream);
+           load_factor = fast_load_factor(0, stream, false);
          }
          Selector::execute_kernel(load_factor, options_.block_size,
                                   options_.max_bucket_size, table_->buckets_num,
@@ -735,10 +718,7 @@ Program Listing for File merlin_hashtable.cuh
                        value_type* values,          // (n, DIM)
                        meta_type* metas = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
-       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_);
    
        if (offset >= table_->capacity) {
          return;
@@ -784,10 +764,7 @@ Program Listing for File merlin_hashtable.cuh
                           value_type* values,          // (n, DIM)
                           meta_type* metas = nullptr,  // (n)
                           cudaStream_t stream = 0) const {
-       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_);
    
        if (offset >= table_->capacity) {
          CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
@@ -822,10 +799,7 @@ Program Listing for File merlin_hashtable.cuh
      bool empty(cudaStream_t stream = 0) const { return size(stream) == 0; }
    
      size_type size(cudaStream_t stream = 0) const {
-       std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
-         lock.lock();
-       }
+       std::shared_lock<std::shared_timed_mutex> lock(mutex_);
    
        size_type h_size = 0;
    
@@ -1051,9 +1025,10 @@ Program Listing for File merlin_hashtable.cuh
      inline bool is_fast_mode() const noexcept { return table_->is_pure_hbm; }
    
      inline float fast_load_factor(const size_type delta = 0,
-                                   cudaStream_t stream = 0) const {
+                                   cudaStream_t stream = 0,
+                                   const bool need_lock = true) const {
        std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-       if (!reach_max_capacity_) {
+       if (need_lock) {
          lock.lock();
        }
        size_t N = std::min(table_->buckets_num, 1024UL);
