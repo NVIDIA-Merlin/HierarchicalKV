@@ -83,14 +83,19 @@ __global__ void gpu_select_kvm_kernel(const bool* masks, size_t n,
       if (bias == tid) return;
 
       K target_key = 0;
+      AtomicKey<K>* atomic_key = reinterpret_cast<AtomicKey<K>*>(keys) + bias;
       while (target_key != empty_key) {
-        target_key = atomicCAS(keys + bias, empty_key, keys[tid]);
+        target_key = empty_key;
+        atomic_key->compare_exchange_weak(target_key, keys[tid],
+                                          cuda::std::memory_order_relaxed,
+                                          cuda::std::memory_order_relaxed);
       }
       if (metas) metas[bias] = metas[tid];
       for (size_t j = 0; j < dim; j++) {
         values[dim * bias + j] = values[dim * tid + j];
       }
-      atomicExch(keys + tid, empty_key);
+      atomic_key = reinterpret_cast<AtomicKey<K>*>(keys) + tid;
+      atomic_key->store(empty_key, cuda::std::memory_order_relaxed);
     }
   }
 }

@@ -1797,6 +1797,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
                             MAX_CAPACITY * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
+      ASSERT_EQ(total_size, dump_counter);
       size_t bigger_meta_counter = 0;
       K max_key = 0;
 
