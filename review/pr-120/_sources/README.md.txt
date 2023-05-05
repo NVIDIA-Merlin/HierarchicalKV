@@ -41,15 +41,6 @@ The main classes and structs are below, and it's recommended to read the comment
 - [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L34)
 - [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106)
 
-### API Maturity Matrix
-
-|  API | Function | Performance |          Maturity |
-|-----:|---------:|------------:|------------------:|
-| 0.50 |    1.443 |       2.708 | Industry verified |
-| 0.75 |    0.810 |       1.769 | Industry verified |
-| 1.00 |    0.187 |       0.582 | Industry verified |
-
-
 For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html)
 
 ## Usage restrictions
