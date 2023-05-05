@@ -620,8 +620,10 @@ class HashTable {
       if (((step_counter++) % kernel_select_interval_) == 0) {
         load_factor = fast_load_factor(0, stream, false);
       }
-      Selector::execute_kernel(load_factor, options_.block_size, stream, n,
-                               c_table_index_, d_table_, keys, values, metas);
+      Selector::execute_kernel(load_factor, options_.block_size,
+                               options_.max_bucket_size, table_->buckets_num,
+                               options_.dim, stream, n, d_table_, keys, values,
+                               metas);
     } else {
       const size_type dev_ws_size{
           n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -638,9 +640,10 @@ class HashTable {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         find_or_insert_kernel<key_type, value_type, meta_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(d_table_, keys,
-                                                   d_table_value_addrs, metas,
-                                                   founds, param_key_index, N);
+            <<<grid_size, block_size, 0, stream>>>(
+                d_table_, options_.max_bucket_size, table_->buckets_num,
+                options_.dim, keys, d_table_value_addrs, metas, founds,
+                param_key_index, N);
       }
 
       {
@@ -734,9 +737,10 @@ class HashTable {
         load_factor = fast_load_factor(0, stream, false);
       }
 
-      Selector::execute_kernel(
-          load_factor, options_.block_size, stream, n, c_table_index_,
-          reinterpret_cast<const TableCore*>(d_table_), keys, values, metas);
+      Selector::execute_kernel(load_factor, options_.block_size,
+                               options_.max_bucket_size, table_->buckets_num,
+                               options_.dim, stream, n, d_table_, keys, values,
+                               metas);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -751,8 +755,9 @@ class HashTable {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         update_kernel<key_type, value_type, meta_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(d_table_, keys, d_dst, metas,
-                                                   d_src_offset, N);
+            <<<grid_size, block_size, 0, stream>>>(
+                d_table_, options_.max_bucket_size, table_->buckets_num,
+                options_.dim, keys, d_dst, metas, d_src_offset, N);
       }
 
       {
