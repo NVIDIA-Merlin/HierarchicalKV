@@ -2315,54 +2315,54 @@ void test_find_or_insert_values_check(size_t max_hbm_for_vectors) {
   }
 }
 
-TEST(MerlinHashTableTest, test_export_batch_if) {
+TEST(FindOrInsertTest, test_export_batch_if) {
   test_export_batch_if(16);
   test_export_batch_if(0);
 }
-TEST(MerlinHashTableTest, test_find_or_insert_multi_threads) {
+TEST(FindOrInsertTest, test_find_or_insert_multi_threads) {
   test_find_or_insert_multi_threads(16, 0.25f, 0.125f);
   test_find_or_insert_multi_threads(16, 0.375f, 0.125f);
   test_find_or_insert_multi_threads(0, 0.25f, 0.125f);
   test_find_or_insert_multi_threads(0, 0.375f, 0.125f);
 }
-TEST(MerlinHashTableTest, test_basic) {
+TEST(FindOrInsertTest, test_basic) {
   test_basic(16);
   test_basic(0);
 }
-TEST(MerlinHashTableTest, test_basic_when_full) {
+TEST(FindOrInsertTest, test_basic_when_full) {
   test_basic_when_full(16);
   test_basic_when_full(0);
 }
-TEST(MerlinHashTableTest, test_erase_if_pred) {
+TEST(FindOrInsertTest, test_erase_if_pred) {
   test_erase_if_pred(16);
   test_erase_if_pred(0);
 }
-TEST(MerlinHashTableTest, test_rehash) {
+TEST(FindOrInsertTest, test_rehash) {
   test_rehash(16);
   test_rehash(0);
 }
-TEST(MerlinHashTableTest, test_rehash_on_big_batch) {
+TEST(FindOrInsertTest, test_rehash_on_big_batch) {
   test_rehash_on_big_batch(16);
   test_rehash_on_big_batch(0);
 }
-TEST(MerlinHashTableTest, test_dynamic_rehash_on_multi_threads) {
+TEST(FindOrInsertTest, test_dynamic_rehash_on_multi_threads) {
   test_dynamic_rehash_on_multi_threads(16);
   test_dynamic_rehash_on_multi_threads(0);
 }
-TEST(MerlinHashTableTest, test_basic_for_cpu_io) { test_basic_for_cpu_io(); }
-TEST(MerlinHashTableTest, test_evict_strategy_lru_basic) {
+TEST(FindOrInsertTest, test_basic_for_cpu_io) { test_basic_for_cpu_io(); }
+TEST(FindOrInsertTest, test_evict_strategy_lru_basic) {
   test_evict_strategy_lru_basic(16);
   test_evict_strategy_lru_basic(0);
 }
-TEST(MerlinHashTableTest, test_evict_strategy_customized_basic) {
+TEST(FindOrInsertTest, test_evict_strategy_customized_basic) {
   test_evict_strategy_customized_basic(16);
   test_evict_strategy_customized_basic(0);
 }
-TEST(MerlinHashTableTest, test_evict_strategy_customized_advanced) {
+TEST(FindOrInsertTest, test_evict_strategy_customized_advanced) {
   test_evict_strategy_customized_advanced(16);
   test_evict_strategy_customized_advanced(0);
 }
-TEST(MerlinHashTableTest, test_evict_strategy_customized_correct_rate) {
+TEST(FindOrInsertTest, test_evict_strategy_customized_correct_rate) {
   // TODO(rhdong): after blossom CI issue is resolved, the skip logic.
   const bool skip_hmem_check = (nullptr != std::getenv("IS_BLOSSOM_CI"));
   test_evict_strategy_customized_correct_rate(16);
@@ -2373,7 +2373,7 @@ TEST(MerlinHashTableTest, test_evict_strategy_customized_correct_rate) {
   }
 }
 
-TEST(MerlinHashTableTest, test_find_or_insert_values_check) {
+TEST(FindOrInsertTest, test_find_or_insert_values_check) {
   test_find_or_insert_values_check(16);
   // TODO(rhdong): Add back when diff error issue fixed in hybrid mode.
   // test_insert_or_assign_values_check(0);

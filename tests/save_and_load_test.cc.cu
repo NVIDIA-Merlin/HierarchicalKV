@@ -96,4 +96,4 @@ void test_save_to_file() {
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
-TEST(MerlinHashTableTest, test_save_and_load) { test_save_to_file(); }
+TEST(SaveAndLoadTest, test_save_and_load) { test_save_to_file(); }

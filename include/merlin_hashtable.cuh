@@ -282,10 +282,7 @@ class HashTable {
       check_evict_strategy(metas);
     }
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -294,12 +291,13 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor(0, stream);
+        load_factor = fast_load_factor(0, stream, false);
       }
 
       Selector::execute_kernel(
-          load_factor, options_.block_size, stream, n, c_table_index_, d_table_,
-          keys, reinterpret_cast<const value_type*>(values), metas);
+          load_factor, options_.block_size, options_.max_bucket_size,
+          table_->buckets_num, options_.dim, stream, n, d_table_, keys,
+          reinterpret_cast<const value_type*>(values), metas);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -314,8 +312,9 @@ class HashTable {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         upsert_kernel<key_type, value_type, meta_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(d_table_, keys, d_dst, metas,
-                                                   d_src_offset, N);
+            <<<grid_size, block_size, 0, stream>>>(
+                d_table_, options_.max_bucket_size, table_->buckets_num,
+                options_.dim, keys, d_dst, metas, d_src_offset, N);
       }
 
       {
@@ -414,10 +413,7 @@ class HashTable {
       reserve(capacity() * 2, stream);
     }
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
 
     // TODO: Currently only need eviction when using HashTable as HBM cache.
     if (!is_fast_mode()) {
@@ -430,7 +426,7 @@ class HashTable {
     static thread_local float load_factor = 0.0;
 
     if (((step_counter++) % kernel_select_interval_) == 0) {
-      load_factor = fast_load_factor(0, stream);
+      load_factor = fast_load_factor(0, stream, false);
     }
 
     // always use max tile to avoid data-deps as possible.
@@ -444,7 +440,8 @@ class HashTable {
     auto dn_evicted = reinterpret_cast<size_type*>(d_offsets + n_offsets);
     auto d_masks = reinterpret_cast<bool*>(dn_evicted + 1);
 
-    CUDA_CHECK(cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t)));
+    CUDA_CHECK(
+        cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t), stream));
     CUDA_CHECK(cudaMemsetAsync(dn_evicted, 0, sizeof(size_type), stream));
     CUDA_CHECK(cudaMemsetAsync(d_masks, 0, n * sizeof(bool), stream));
 
@@ -453,9 +450,10 @@ class HashTable {
     CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY),
                                n * sizeof(K), stream));
 
-    Selector::execute_kernel(load_factor, options_.block_size, stream, n,
-                             c_table_index_, d_table_, keys, values, metas,
-                             evicted_keys, evicted_values, evicted_metas);
+    Selector::execute_kernel(
+        load_factor, options_.block_size, options_.max_bucket_size,
+        table_->buckets_num, options_.dim, stream, n, d_table_, keys, values,
+        metas, evicted_keys, evicted_values, evicted_metas);
 
     keys_not_empty<K>
         <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
@@ -531,10 +529,7 @@ class HashTable {
       check_evict_strategy(metas);
     }
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
 
     const size_type dev_ws_size{
         n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -613,10 +608,7 @@ class HashTable {
       check_evict_strategy(metas);
     }
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -625,7 +617,7 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor(0, stream);
+        load_factor = fast_load_factor(0, stream, false);
       }
       Selector::execute_kernel(load_factor, options_.block_size, stream, n,
                                c_table_index_, d_table_, keys, values, metas);
@@ -729,10 +721,7 @@ class HashTable {
       return;
     }
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -741,7 +730,7 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor(0, stream);
+        load_factor = fast_load_factor(0, stream, false);
       }
 
       Selector::execute_kernel(
@@ -832,10 +821,7 @@ class HashTable {
 
     CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -844,11 +830,12 @@ class HashTable {
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor(0, stream);
+        load_factor = fast_load_factor(0, stream, false);
       }
-      Selector::execute_kernel(load_factor, options_.block_size, stream, n,
-                               c_table_index_, d_table_, keys, values, metas,
-                               founds);
+      Selector::execute_kernel(load_factor, options_.block_size,
+                               options_.max_bucket_size, table_->buckets_num,
+                               options_.dim, stream, n, d_table_, keys, values,
+                               metas, founds);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -863,8 +850,9 @@ class HashTable {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         lookup_kernel<key_type, value_type, meta_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(d_table_, keys, src, metas,
-                                                   founds, dst_offset, N);
+            <<<grid_size, block_size, 0, stream>>>(
+                d_table_, options_.max_bucket_size, table_->buckets_num,
+                options_.dim, keys, src, metas, founds, dst_offset, N);
       }
 
       {
@@ -1032,10 +1020,7 @@ class HashTable {
                     value_type* values,          // (n, DIM)
                     meta_type* metas = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
 
     if (offset >= table_->capacity) {
       return;
@@ -1123,10 +1108,7 @@ class HashTable {
                        value_type* values,          // (n, DIM)
                        meta_type* metas = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
 
     if (offset >= table_->capacity) {
       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
@@ -1173,10 +1155,7 @@ class HashTable {
    * @return The table size.
    */
   size_type size(cudaStream_t stream = 0) const {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
 
     size_type h_size = 0;
 
@@ -1484,13 +1463,15 @@ class HashTable {
    *
    * @param delta A hypothetical upcoming change on table size.
    * @param stream The CUDA stream used to execute the operation.
+   * @param need_lock If lock is needed.
    *
    * @return The evaluated load factor
    */
   inline float fast_load_factor(const size_type delta = 0,
-                                cudaStream_t stream = 0) const {
+                                cudaStream_t stream = 0,
+                                const bool need_lock = true) const {
     std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
+    if (need_lock) {
       lock.lock();
     }
     size_t N = std::min(table_->buckets_num, 1024UL);

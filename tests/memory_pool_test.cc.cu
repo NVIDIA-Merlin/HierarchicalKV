@@ -461,11 +461,13 @@ void test_borrow_return_with_context() {
   CUDA_CHECK(cudaStreamDestroy(stream));
 }
 
-TEST(MemoryPool, standard_allocator) { test_standard_allocator(); }
-TEST(MemoryPool, host_allocator) { test_host_allocator(); }
-TEST(MemoryPool, device_allocator) { test_device_allocator(); }
+TEST(MemoryPoolTest, standard_allocator) { test_standard_allocator(); }
+TEST(MemoryPoolTest, host_allocator) { test_host_allocator(); }
+TEST(MemoryPoolTest, device_allocator) { test_device_allocator(); }
 
-TEST(MemoryPool, borrow_return_no_context) { test_borrow_return_no_context(); }
-TEST(MemoryPool, borrow_return_with_context) {
+TEST(MemoryPoolTest, borrow_return_no_context) {
+  test_borrow_return_no_context();
+}
+TEST(MemoryPoolTest, borrow_return_with_context) {
   test_borrow_return_with_context();
 }
