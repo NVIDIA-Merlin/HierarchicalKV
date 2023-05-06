@@ -441,10 +441,10 @@ int main() {
     int32_t capacity = static_cast<int32_t>(init_capacity / (1024 * 1024));
     size_t hmem4values = init_capacity * dim * sizeof(V) / (1024 * 1024 * 1024);
     hmem4values = hmem4values < hbm4values ? 0 : (hmem4values - hbm4values);
-    cout << "\n* dim = " << dim << "\n"
-         << "* capacity = " << capacity << " Million-KV\n"
-         << "* HBM = " << hbm4values << " GB\n"
-         << "* HMEM = " << hmem4values << " GB\n";
+    cout << "\n* dim = " << dim << ", "
+         << "capacity = " << capacity << " Million-KV, "
+         << "HBM = " << hbm4values << " GB, "
+         << "HMEM = " << hmem4values << " GB\n";
   };
   try {
     test_mode = Test_Mode::pure_hbm;

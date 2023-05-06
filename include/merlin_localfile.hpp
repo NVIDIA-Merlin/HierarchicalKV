@@ -112,7 +112,8 @@ class LocalKVFile : public BaseKVFile<K, V, M> {
    *
    * @return Number of KV pairs have been successfully read.
    */
-  size_t read(const size_t n, const size_t dim, K* keys, V* vectors, M* metas) override {
+  size_t read(const size_t n, const size_t dim, K* keys, V* vectors,
+              M* metas) override {
     size_t nread_keys =
         fread(keys, sizeof(K), static_cast<size_t>(n), keys_fp_);
     size_t nread_vecs =
@@ -137,8 +138,8 @@ class LocalKVFile : public BaseKVFile<K, V, M> {
    *
    * @return Number of KV pairs have been successfully written.
    */
-  size_t write(const size_t n, const size_t dim, const K* keys, const V* vectors,
-               const M* metas) override {
+  size_t write(const size_t n, const size_t dim, const K* keys,
+               const V* vectors, const M* metas) override {
     size_t nwritten_keys =
         fwrite(keys, sizeof(K), static_cast<size_t>(n), keys_fp_);
     size_t nwritten_vecs =

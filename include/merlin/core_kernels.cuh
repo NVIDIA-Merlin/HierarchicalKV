@@ -824,7 +824,7 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_vacant(
       vote = g.ballot(expected_key == static_cast<K>(LOCKED_KEY));
     } while (vote != 0);
 
-    //     Step 2: (TBD)try find empty location.
+    // Step 2: (TBD)try find empty location.
     while (vote) {
       src_lane = __ffs(vote) - 1;
       if (src_lane == g.thread_rank()) {
@@ -1072,6 +1072,9 @@ __global__ void upsert_kernel_with_io_core(
     size_t key_idx = t / TILE_SIZE;
 
     const K insert_key = keys[key_idx];
+
+    if (IS_RESERVED_KEY(insert_key)) continue;
+
     const M insert_meta =
         metas != nullptr ? metas[key_idx] : static_cast<M>(MAX_META);
     const V* insert_value = values + key_idx * dim;
@@ -1136,6 +1139,9 @@ __global__ void upsert_and_evict_kernel_with_io_core(
     size_t key_idx = t / TILE_SIZE;
 
     const K insert_key = keys[key_idx];
+
+    if (IS_RESERVED_KEY(insert_key)) continue;
+
     const M insert_meta =
         metas != nullptr ? metas[key_idx] : static_cast<M>(MAX_META);
     const V* insert_value = values + key_idx * dim;
@@ -1223,16 +1229,8 @@ struct SelectUpsertKernelWithIO {
       upsert_kernel_with_io_core<K, V, M, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, bucket_max_size, buckets_num, dim, keys, values, metas, N);
-    } else if (load_factor == 1.000) {
-      const unsigned int tile_size = 32;
-      const size_t N = n * tile_size;
-      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-
-      upsert_kernel_with_io_core<K, V, M, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(
-              table, bucket_max_size, buckets_num, dim, keys, values, metas, N);
     } else {
-      const unsigned int tile_size = 16;
+      const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       upsert_kernel_with_io_core<K, V, M, tile_size>
@@ -1303,6 +1301,8 @@ __global__ void upsert_kernel(const Table<K, V, M>* __restrict table,
     size_t key_idx = t / TILE_SIZE;
 
     const K insert_key = keys[key_idx];
+    if (IS_RESERVED_KEY(insert_key)) continue;
+
     const M insert_meta =
         metas != nullptr ? metas[key_idx] : static_cast<M>(MAX_META);
 
@@ -1328,7 +1328,7 @@ __global__ void upsert_kernel(const Table<K, V, M>* __restrict table,
             src_lane, bucket_max_size);
       } else {
         start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
-        occupy_result = find_and_lock_when_full<K, V, M, TILE_SIZE>(
+        occupy_result = find_and_lock_when_vacant<K, V, M, TILE_SIZE>(
             g, bucket, insert_key, insert_meta, evicted_key, start_idx, key_pos,
             src_lane, bucket_max_size);
       }
@@ -1376,6 +1376,9 @@ __global__ void accum_kernel(
 
     size_t key_idx = t / TILE_SIZE;
     K insert_key = *(keys + key_idx);
+
+    if (IS_RESERVED_KEY(insert_key)) continue;
+
     K hashed_key = Murmur3HashDevice(insert_key);
     size_t global_idx = hashed_key % (buckets_num * bucket_max_size);
     size_t bkt_idx = global_idx / bucket_max_size;
@@ -1460,6 +1463,8 @@ __global__ void lookup_kernel_with_io(const Table<K, V, M>* __restrict table,
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
+    if (IS_RESERVED_KEY(find_key)) continue;
+
     V* find_value = values + key_idx * dim;
 
     int key_pos = -1;
@@ -1504,7 +1509,7 @@ struct SelectLookupKernelWithIO {
                              const Table<K, V, M>* __restrict table,
                              const K* __restrict keys, V* __restrict values,
                              M* __restrict metas, bool* __restrict found) {
-    if (load_factor <= 0.9) {
+    if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
@@ -1545,6 +1550,7 @@ __global__ void lookup_kernel(const Table<K, V, M>* __restrict table,
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
+    if (IS_RESERVED_KEY(find_key)) continue;
 
     int key_pos = -1;
     int src_lane = -1;
@@ -1620,6 +1626,8 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
        t += blockDim.x * gridDim.x) {
     int key_idx = t / TILE_SIZE;
     K find_key = keys[key_idx];
+    if (IS_RESERVED_KEY(find_key)) continue;
+
     int key_pos = -1;
 
     size_t bkt_idx = 0;
@@ -1694,7 +1702,7 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
           bucket->keys(key_offset)->load(cuda::std::memory_order_relaxed);
       current_meta =
           bucket->metas(key_offset)->load(cuda::std::memory_order_relaxed);
-      if (current_key != static_cast<K>(EMPTY_KEY)) {
+      if (!IS_RESERVED_KEY(current_key)) {
         if (pred(current_key, current_meta, pattern, threshold)) {
           atomicAdd(count, 1);
           key_pos = key_offset;
