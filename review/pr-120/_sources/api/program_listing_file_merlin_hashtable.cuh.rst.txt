@@ -645,7 +645,7 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
    
-       unique_lock lock(mutex_);
+       write_read_lock lock(mutex_);
    
        {
          const size_t block_size = options_.block_size;
@@ -664,7 +664,7 @@ Program Listing for File merlin_hashtable.cuh
    
      size_type erase_if(const Pred& pred, const key_type& pattern,
                         const meta_type& threshold, cudaStream_t stream = 0) {
-       unique_lock lock(mutex_);
+       write_read_lock lock(mutex_);
    
        auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
        auto d_count{dev_ws.get<size_type*>(0)};
@@ -697,7 +697,7 @@ Program Listing for File merlin_hashtable.cuh
      }
    
      void clear(cudaStream_t stream = 0) {
-       unique_lock lock(mutex_);
+       write_read_lock lock(mutex_);
    
        const size_t block_size = options_.block_size;
        const size_t N = table_->buckets_num * table_->bucket_max_size;
@@ -825,7 +825,7 @@ Program Listing for File merlin_hashtable.cuh
        }
    
        {
-         unique_lock lock(mutex_);
+         write_read_lock lock(mutex_);
    
          // Once we have exclusive access, make sure that pending GPU calls have
          // been processed.
@@ -860,7 +860,7 @@ Program Listing for File merlin_hashtable.cuh
              "None power-of-2 new_max_capacity is not supported.");
        }
    
-       unique_lock lock(mutex_);
+       write_read_lock lock(mutex_);
    
        if (new_max_capacity < capacity()) {
          return;
@@ -894,7 +894,7 @@ Program Listing for File merlin_hashtable.cuh
            dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
    
        // Request exclusive access (to make sure capacity won't change anymore).
-       unique_lock lock(mutex_);
+       write_read_lock lock(mutex_);
    
        const size_type total_size{capacity()};
        const size_type n{std::min(max_workspace_size / tuple_size, total_size)};
