@@ -46,7 +46,7 @@ For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/
 ## Usage restrictions
 
 - The `key_type` and `meta_type` must be `uint64_t`.
-- The keys of `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE` and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
+- The keys of `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
 
 ## Contributors
 
@@ -101,39 +101,40 @@ Your environment must meet the following requirements:
 
 ### On pure HBM mode: 
 
-* Dim = 4, Capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
+* dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
 
-| load factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
-|------------:|-----------------:|-------:|---------------:|-------:|-----------------:|
-|        0.50 |            1.443 |  2.708 |          1.279 |  2.348 |            0.866 |
-|        0.75 |            0.810 |  1.769 |          0.820 |  1.601 |            0.603 |
-|        1.00 |            0.187 |  0.582 |          0.277 |  0.191 |            0.149 |
+| load_factor | insert_or_assign |  find | find_or_insert | assign | insert_and_evict |
+|------------:|:----------------:|---------:|:--------------:|-------:|:----------------:|
+|        0.50 |            1.673 | 3.101 |          1.364 |  2.497 |            0.820 |
+|        0.75 |            0.909 | 1.907 |          0.828 |  1.536 |            0.620 |
+|        1.00 |            0.281 | 0.529 |          0.238 |  0.215 |            0.247 |
 
-* Dim = 64, Capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
+* dim = 64, capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
 
-| load factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
-|------------:|-----------------:|-------:|---------------:|-------:|-----------------:|
-|        0.50 |            0.671 |  1.296 |          0.792 |  1.118 |            0.610 |
-|        0.75 |            0.546 |  0.912 |          0.528 |  0.833 |            0.421 |
-|        1.00 |            0.171 |  0.380 |          0.224 |  0.163 |            0.103 |
+| load_factor | insert_or_assign |   find | find_or_insert | assign | insert_and_evict |
+|------------:|:----------------:|-------:|:--------------:|-------:|:----------------:|
+|        0.50 |            0.801 |  1.606 |          0.833 |  1.128 |            0.590 |
+|        0.75 |            0.569 |  1.073 |          0.532 |  0.821 |            0.406 |
+|        1.00 |            0.261 |  0.397 |          0.194 |  0.183 |            0.140 |
 
-### On HBM+HMEM hybrid mode: 
+### On HBM+HMEM hybrid mode:
 
-* Dim = 64, Capacity = 128 Million-KV, HBM = 16 GB, HMEM = 16 GB
+* dim = 64, capacity = 128 Million-KV, HBM = 16 GB, HMEM = 16 GB
 
-| load factor | insert_or_assign |  find | find_or_insert | assign |
-|------------:|-----------------:|------:|---------------:|-------:|
-|        0.50 |            0.086 | 0.128 |          0.112 |  0.135 |
-|        0.75 |            0.083 | 0.126 |          0.109 |  0.133 |
-|        1.00 |            0.064 | 0.111 |          0.078 |  0.080 |
+| load_factor | insert_or_assign |   find | find_or_insert | assign |
+|------------:|:----------------:|-------:|:--------------:|-------:|
+|        0.50 |            0.121 |  0.148 |          0.122 |  0.150 |
+|        0.75 |            0.114 |  0.145 |          0.117 |  0.146 |
+|        1.00 |            0.082 |  0.118 |          0.079 |  0.096 |
 
-* Dim = 64, Capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
+* dim = 64, capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
 
-| load factor | insert_or_assign |   find | find_or_insert | assign |
-|------------:|-----------------:|-------:|---------------:|-------:|
-|        0.50 |            0.039 |  0.055 |          0.035 |  0.052 |
-|        0.75 |            0.038 |  0.055 |          0.034 |  0.051 |
-|        1.00 |            0.033 |  0.052 |          0.031 |  0.041 |
+| load_factor | insert_or_assign |   find | find_or_insert | assign |
+|------------:|:----------------:|-------:|:--------------:|-------:|
+|        0.50 |            0.035 |  0.055 |          0.034 |  0.047 |
+|        0.75 |            0.033 |  0.055 |          0.035 |  0.047 |
+|        1.00 |            0.032 |  0.051 |          0.030 |  0.040 |
+
 
 
 ### Support and Feedback:

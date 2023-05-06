@@ -28,6 +28,7 @@
 #include "merlin/array_kernels.cuh"
 #include "merlin/core_kernels.cuh"
 #include "merlin/flexible_buffer.cuh"
+#include "merlin/group_lock.hpp"
 #include "merlin/memory_pool.cuh"
 #include "merlin/types.cuh"
 #include "merlin/utils.cuh"
@@ -282,7 +283,7 @@ class HashTable {
       check_evict_strategy(metas);
     }
 
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    writer_shared_lock lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -413,7 +414,7 @@ class HashTable {
       reserve(capacity() * 2, stream);
     }
 
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    writer_shared_lock lock(mutex_);
 
     // TODO: Currently only need eviction when using HashTable as HBM cache.
     if (!is_fast_mode()) {
@@ -529,7 +530,7 @@ class HashTable {
       check_evict_strategy(metas);
     }
 
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    writer_shared_lock lock(mutex_);
 
     const size_type dev_ws_size{
         n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -608,7 +609,7 @@ class HashTable {
       check_evict_strategy(metas);
     }
 
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    writer_shared_lock lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -721,7 +722,7 @@ class HashTable {
       return;
     }
 
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    writer_shared_lock lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -821,7 +822,7 @@ class HashTable {
 
     CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
 
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+    reader_shared_lock lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
@@ -891,7 +892,7 @@ class HashTable {
       return;
     }
 
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    write_read_lock lock(mutex_);
 
     {
       const size_t block_size = options_.block_size;
@@ -938,7 +939,7 @@ class HashTable {
    */
   size_type erase_if(const Pred& pred, const key_type& pattern,
                      const meta_type& threshold, cudaStream_t stream = 0) {
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    write_read_lock lock(mutex_);
 
     auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
     auto d_count{dev_ws.get<size_type*>(0)};
@@ -975,10 +976,7 @@ class HashTable {
    * object.
    */
   void clear(cudaStream_t stream = 0) {
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
-    if (!reach_max_capacity_) {
-      lock.lock();
-    }
+    write_read_lock lock(mutex_);
 
     const size_t block_size = options_.block_size;
     const size_t N = table_->buckets_num * table_->bucket_max_size;
@@ -1020,7 +1018,7 @@ class HashTable {
                     value_type* values,          // (n, DIM)
                     meta_type* metas = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+    reader_shared_lock lock(mutex_);
 
     if (offset >= table_->capacity) {
       return;
@@ -1108,7 +1106,7 @@ class HashTable {
                        value_type* values,          // (n, DIM)
                        meta_type* metas = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+    reader_shared_lock lock(mutex_);
 
     if (offset >= table_->capacity) {
       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
@@ -1155,7 +1153,7 @@ class HashTable {
    * @return The table size.
    */
   size_type size(cudaStream_t stream = 0) const {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_);
+    reader_shared_lock lock(mutex_);
 
     size_type h_size = 0;
 
@@ -1206,7 +1204,7 @@ class HashTable {
     }
 
     {
-      std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+      write_read_lock lock(mutex_);
 
       // Once we have exclusive access, make sure that pending GPU calls have
       // been processed.
@@ -1254,7 +1252,9 @@ class HashTable {
       throw std::invalid_argument(
           "None power-of-2 new_max_capacity is not supported.");
     }
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+
+    write_read_lock lock(mutex_);
+
     if (new_max_capacity < capacity()) {
       return;
     }
@@ -1313,7 +1313,7 @@ class HashTable {
         dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
 
     // Request exclusive access (to make sure capacity won't change anymore).
-    std::unique_lock<std::shared_timed_mutex> lock(mutex_);
+    write_read_lock lock(mutex_);
 
     const size_type total_size{capacity()};
     const size_type n{std::min(max_workspace_size / tuple_size, total_size)};
@@ -1470,10 +1470,11 @@ class HashTable {
   inline float fast_load_factor(const size_type delta = 0,
                                 cudaStream_t stream = 0,
                                 const bool need_lock = true) const {
-    std::shared_lock<std::shared_timed_mutex> lock(mutex_, std::defer_lock);
+    reader_shared_lock lock(mutex_, std::defer_lock);
     if (need_lock) {
       lock.lock();
     }
+
     size_t N = std::min(table_->buckets_num, 1024UL);
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
@@ -1524,7 +1525,7 @@ class HashTable {
   size_t shared_mem_size_ = 0;
   std::atomic_bool reach_max_capacity_{false};
   bool initialized_ = false;
-  mutable std::shared_timed_mutex mutex_;
+  mutable group_shared_mutex mutex_;
   const unsigned int kernel_select_interval_ = 7;
   int c_table_index_ = -1;
   std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
