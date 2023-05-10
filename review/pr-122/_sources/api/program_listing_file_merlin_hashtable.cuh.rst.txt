@@ -495,6 +495,42 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
+     void find_or_insert(const size_type n, const key_type* keys,  // (n)
+                         value_type** values,                      // (n)
+                         bool* founds,                             // (n)
+                         meta_type* metas = nullptr,               // (n)
+                         cudaStream_t stream = 0,
+                         bool ignore_evict_strategy = false) {
+       if (n == 0) {
+         return;
+       }
+   
+       while (!reach_max_capacity_ &&
+              fast_load_factor(n, stream) > options_.max_load_factor) {
+         reserve(capacity() * 2, stream);
+       }
+   
+       if (!ignore_evict_strategy) {
+         check_evict_strategy(metas);
+       }
+   
+       writer_shared_lock lock(mutex_);
+   
+       using Selector =
+           SelectFindOrInsertPtrKernel<key_type, value_type, meta_type>;
+       static thread_local int step_counter = 0;
+       static thread_local float load_factor = 0.0;
+   
+       if (((step_counter++) % kernel_select_interval_) == 0) {
+         load_factor = fast_load_factor(0, stream, false);
+       }
+       Selector::execute_kernel(load_factor, options_.block_size,
+                                options_.max_bucket_size, table_->buckets_num,
+                                options_.dim, stream, n, d_table_, keys, values,
+                                metas, founds);
+   
+       CudaCheckError();
+     }
      void assign(const size_type n,
                  const key_type* keys,              // (n)
                  const value_type* values,          // (n, DIM)
@@ -658,8 +694,7 @@ Program Listing for File merlin_hashtable.cuh
    
        reader_shared_lock lock(mutex_);
    
-       using Selector =
-           SelectLookupPtrKernelWithIO<key_type, value_type, meta_type>;
+       using Selector = SelectLookupPtrKernel<key_type, value_type, meta_type>;
        static thread_local int step_counter = 0;
        static thread_local float load_factor = 0.0;
    
