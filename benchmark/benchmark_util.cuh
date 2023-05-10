@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include "merlin/utils.cuh"
 
 namespace benchmark {
 enum class TimeUnit {
@@ -47,4 +48,48 @@ struct Timer {
   std::chrono::time_point<std::chrono::steady_clock> startRecord{};
   std::chrono::time_point<std::chrono::steady_clock> endRecord{};
 };
+template <class V>
+__global__ void read_from_ptr_kernel(const V* const* __restrict src,
+                                     V* __restrict dst, const size_t dim,
+                                     size_t N) {
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
+    int vec_index = int(t / dim);
+    int dim_index = t % dim;
+    dst[vec_index * dim + dim_index] = src[vec_index][dim_index];
+  }
+}
+
+template <class V>
+void read_from_ptr(const V* const* __restrict src, V* __restrict dst,
+                   const size_t dim, size_t n, cudaStream_t stream) {
+  const size_t block_size = 1024;
+  const size_t N = n * dim;
+  const size_t grid_size = nv::merlin::SAFE_GET_GRID_SIZE(N, block_size);
+
+  read_from_ptr_kernel<V>
+      <<<grid_size, block_size, 0, stream>>>(src, dst, dim, N);
+}
+
+template <class V>
+__global__ void array2ptr_kernel(V** ptr, V* __restrict array, const size_t dim,
+                                 size_t N) {
+  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
+
+  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
+    int vec_index = int(t);
+    ptr[vec_index] = array + vec_index * dim;
+  }
+}
+
+template <class V>
+void array2ptr(V** ptr, V* __restrict array, const size_t dim, size_t n,
+               cudaStream_t stream) {
+  const size_t block_size = 1024;
+  const size_t N = n;
+  const size_t grid_size = nv::merlin::SAFE_GET_GRID_SIZE(N, block_size);
+
+  array2ptr_kernel<V><<<grid_size, block_size, 0, stream>>>(ptr, array, dim, N);
+}
 }  // namespace benchmark
