@@ -54,6 +54,7 @@ enum class API_Select {
   find_or_insert = 2,
   assign = 3,
   insert_and_evict = 4,
+  find_ptr = 5,
 };
 
 enum class Hit_Mode {
@@ -310,6 +311,24 @@ float test_one_api(const API_Select api, const size_t dim,
       timer.end();
       break;
     }
+    case API_Select::find_ptr: {
+      V** d_vectors_ptr = nullptr;
+      CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
+      benchmark::array2ptr(d_vectors_ptr, d_vectors, options.dim,
+                           key_num_per_op, stream);
+
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.start();
+      table->find(key_num_per_op, d_keys, d_vectors_ptr, d_found, d_metas,
+                  stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      benchmark::read_from_ptr(d_vectors_ptr, d_vectors, options.dim,
+                               key_num_per_op, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      CUDA_CHECK(cudaFree(d_vectors_ptr));
+      break;
+    }
     default: {
       std::cout << "[Unsupport API]\n";
     }
@@ -345,7 +364,8 @@ void print_title() {
        << "| insert_or_assign "
        << "|   find "
        << "| find_or_insert "
-       << "| assign ";
+       << "| assign "
+       << "|  find* ";
   if (Test_Mode::pure_hbm == test_mode) {
     cout << "| insert_and_evict ";
   }
@@ -360,6 +380,8 @@ void print_title() {
        //<< "| find_or_insert "
        << "|:--------------:"
        //<< "| assign "
+       << "|-------:"
+       //<< "|   find* "
        << "|-------:";
   if (Test_Mode::pure_hbm == test_mode) {
     //<< "| insert_and_evict "
@@ -374,10 +396,9 @@ void test_main(const size_t dim,
                const size_t hbm4values = 16, const float load_factor = 1.0f) {
   std::cout << "|" << rep(8) << fixed << setprecision(2) << load_factor << " ";
   std::vector<API_Select> apis{
-      API_Select::insert_or_assign,
-      API_Select::find,
-      API_Select::find_or_insert,
-      API_Select::assign,
+      API_Select::insert_or_assign, API_Select::find,
+      API_Select::find_or_insert,   API_Select::assign,
+      API_Select::find_ptr,
   };
   if (Test_Mode::pure_hbm == test_mode) {
     apis.push_back(API_Select::insert_and_evict);
@@ -410,6 +431,10 @@ void test_main(const size_t dim,
       }
       case API_Select::insert_and_evict: {
         std::cout << rep(12);
+        break;
+      }
+      case API_Select::find_ptr: {
+        std::cout << rep(2);
         break;
       }
       default: {
