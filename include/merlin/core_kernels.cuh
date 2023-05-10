@@ -1585,11 +1585,12 @@ __global__ void lookup_kernel(const Table<K, V, M>* __restrict table,
  * usually used for the pure HBM mode for better performance.
  */
 template <class K, class V, class M, uint32_t TILE_SIZE = 4>
-__global__ void lookup_ptr_kernel_with_io(
-    const Table<K, V, M>* __restrict table, const size_t bucket_max_size,
-    const size_t buckets_num, const size_t dim, const K* __restrict keys,
-    V** __restrict values, M* __restrict metas, bool* __restrict found,
-    size_t N) {
+__global__ void lookup_ptr_kernel(const Table<K, V, M>* __restrict table,
+                                  const size_t bucket_max_size,
+                                  const size_t buckets_num, const size_t dim,
+                                  const K* __restrict keys,
+                                  V** __restrict values, M* __restrict metas,
+                                  bool* __restrict found, size_t N) {
   int* buckets_size = table->buckets_size;
   Bucket<K, V, M>* buckets = table->buckets;
 
@@ -2185,6 +2186,125 @@ __global__ void find_or_insert_kernel(
     }
   }
 }
+
+/* find or insert with the end-user specified meta.
+ */
+template <class K, class V, class M, uint32_t TILE_SIZE = 4>
+__global__ void find_ptr_or_insert_kernel(
+    const Table<K, V, M>* __restrict table, const size_t bucket_max_size,
+    const size_t buckets_num, const size_t dim, const K* __restrict keys,
+    V** __restrict vectors, M* __restrict metas, bool* __restrict found,
+    const size_t N) {
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  int* buckets_size = table->buckets_size;
+
+  for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
+       t += blockDim.x * gridDim.x) {
+    int key_pos = -1;
+    size_t key_idx = t / TILE_SIZE;
+
+    const K find_or_insert_key = keys[key_idx];
+
+    if (IS_RESERVED_KEY(find_or_insert_key)) continue;
+
+    const M find_or_insert_meta =
+        metas != nullptr ? metas[key_idx] : static_cast<M>(MAX_META);
+
+    size_t bkt_idx = 0;
+    size_t start_idx = 0;
+    int src_lane = -1;
+    K evicted_key;
+
+    Bucket<K, V, M>* bucket =
+        get_key_position<K>(table->buckets, find_or_insert_key, bkt_idx,
+                            start_idx, buckets_num, bucket_max_size);
+
+    OccupyResult occupy_result{OccupyResult::INITIAL};
+    const int bucket_size = buckets_size[bkt_idx];
+    do {
+      if (bucket_size < bucket_max_size) {
+        occupy_result = find_and_lock_when_vacant<K, V, M, TILE_SIZE>(
+            g, bucket, find_or_insert_key, find_or_insert_meta, evicted_key,
+            start_idx, key_pos, src_lane, bucket_max_size);
+      } else {
+        start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
+        occupy_result = find_and_lock_when_full<K, V, M, TILE_SIZE>(
+            g, bucket, find_or_insert_key, find_or_insert_meta, evicted_key,
+            start_idx, key_pos, src_lane, bucket_max_size);
+      }
+
+      occupy_result = g.shfl(occupy_result, src_lane);
+    } while (occupy_result == OccupyResult::CONTINUE);
+
+    if (occupy_result == OccupyResult::REFUSED) continue;
+
+    if ((occupy_result == OccupyResult::OCCUPIED_EMPTY ||
+         occupy_result == OccupyResult::OCCUPIED_RECLAIMED) &&
+        g.thread_rank() == src_lane) {
+      atomicAdd(&(buckets_size[bkt_idx]), 1);
+    }
+
+    if (occupy_result == OccupyResult::DUPLICATE) {
+      if (g.thread_rank() == src_lane) {
+        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
+        *(found + key_idx) = true;
+        if (metas != nullptr) {
+          *(metas + key_idx) =
+              bucket->metas(key_pos)->load(cuda::std::memory_order_relaxed);
+        }
+      }
+    } else {
+      if (g.thread_rank() == src_lane) {
+        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
+        *(found + key_idx) = false;
+        update_meta(bucket, key_pos, metas, key_idx);
+      }
+    }
+
+    if (g.thread_rank() == src_lane) {
+      (bucket->keys(key_pos))
+          ->store(find_or_insert_key, cuda::std::memory_order_relaxed);
+    }
+  }
+}
+
+template <typename K, typename V, typename M>
+struct SelectFindOrInsertPtrKernel {
+  static void execute_kernel(const float& load_factor, const int& block_size,
+                             const size_t bucket_max_size,
+                             const size_t buckets_num, const size_t dim,
+                             cudaStream_t& stream, const size_t& n,
+                             const Table<K, V, M>* __restrict table,
+                             const K* __restrict keys, V** __restrict values,
+                             M* __restrict metas, bool* __restrict found) {
+    if (load_factor <= 0.5) {
+      const unsigned int tile_size = 4;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      find_ptr_or_insert_kernel<K, V, M, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
+                                                 buckets_num, dim, keys, values,
+                                                 metas, found, N);
+    } else if (load_factor <= 0.875) {
+      const unsigned int tile_size = 8;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      find_ptr_or_insert_kernel<K, V, M, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
+                                                 buckets_num, dim, keys, values,
+                                                 metas, found, N);
+    } else {
+      const unsigned int tile_size = 32;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      find_ptr_or_insert_kernel<K, V, M, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
+                                                 buckets_num, dim, keys, values,
+                                                 metas, found, N);
+    }
+    return;
+  }
+};
 
 /* Read the data from address of table_value_addrs to corresponding position
   in param_value if mask[i] is true, otherwise write data to table_value_addrs

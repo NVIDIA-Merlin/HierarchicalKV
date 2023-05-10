@@ -695,6 +695,62 @@ class HashTable {
   }
 
   /**
+   * @brief Searches the hash table for the specified keys and returns address
+   * of the values. When a key is missing, the value in @p values and @p metas
+   * will be inserted.
+   *
+   * @warning This API returns internal addresses for high-performance but
+   * thread-unsafe. The caller is responsible for guaranteeing data consistency.
+   *
+   * @param n The number of key-value-meta tuples to search or insert.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param values  The addresses of values to search on GPU-accessible memory
+   * with shape (n).
+   * @param founds The status that indicates if the keys are found on
+   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * @endparblock
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   */
+  void find_or_insert(const size_type n, const key_type* keys,  // (n)
+                      value_type** values,                      // (n)
+                      bool* founds,                             // (n)
+                      meta_type* metas = nullptr,               // (n)
+                      cudaStream_t stream = 0,
+                      bool ignore_evict_strategy = false) {
+    if (n == 0) {
+      return;
+    }
+
+    while (!reach_max_capacity_ &&
+           fast_load_factor(n, stream) > options_.max_load_factor) {
+      reserve(capacity() * 2, stream);
+    }
+
+    if (!ignore_evict_strategy) {
+      check_evict_strategy(metas);
+    }
+
+    writer_shared_lock lock(mutex_);
+
+    using Selector =
+        SelectFindOrInsertPtrKernel<key_type, value_type, meta_type>;
+    static thread_local int step_counter = 0;
+    static thread_local float load_factor = 0.0;
+
+    if (((step_counter++) % kernel_select_interval_) == 0) {
+      load_factor = fast_load_factor(0, stream, false);
+    }
+    Selector::execute_kernel(load_factor, options_.block_size,
+                             options_.max_bucket_size, table_->buckets_num,
+                             options_.dim, stream, n, d_table_, keys, values,
+                             metas, founds);
+
+    CudaCheckError();
+  }
+  /**
    * @brief Assign new key-value-meta tuples into the hash table.
    * If the key doesn't exist, the operation on the key will be ignored.
    *
@@ -918,8 +974,7 @@ class HashTable {
 
     reader_shared_lock lock(mutex_);
 
-    using Selector =
-        SelectLookupPtrKernel<key_type, value_type, meta_type>;
+    using Selector = SelectLookupPtrKernel<key_type, value_type, meta_type>;
     static thread_local int step_counter = 0;
     static thread_local float load_factor = 0.0;
 
