@@ -191,48 +191,47 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <li><p>Key Type = uint64_t</p></li>
 <li><p>Value Type = float32 * {dim}</p></li>
 <li><p>Key-Values per OP = 1048576</p></li>
+<li><p>Hit rate = 0.60</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">find*</span></code> means the <code class="docutils literal notranslate"><span class="pre">find</span></code> API that directly returns the addresses of values.</p></li>
 <li><p><em><strong>Throughput Unit: Billion-KV/second</strong></em></p></li>
 </ul>
 <div class="section" id="on-pure-hbm-mode">
 <h3>On pure HBM mode:<a class="headerlink" href="#on-pure-hbm-mode" title="Permalink to this headline"></a></h3>
-<ul class="simple">
-<li><p>dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB</p></li>
-</ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
 <tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
-<th class="text-center head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 <th class="text-right head"><p>find*</p></th>
-<th class="text-center head"><p>insert_and_evict</p></th>
+<th class="text-right head"><p>insert_and_evict</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>1.686</p></td>
-<td class="text-right"><p>3.191</p></td>
-<td class="text-center"><p>1.379</p></td>
-<td class="text-right"><p>2.562</p></td>
-<td class="text-right"><p>4.005</p></td>
-<td class="text-center"><p>0.790</p></td>
+<td class="text-right"><p>1.402</p></td>
+<td class="text-right"><p>2.958</p></td>
+<td class="text-right"><p>1.743</p></td>
+<td class="text-right"><p>1.954</p></td>
+<td class="text-right"><p>3.632</p></td>
+<td class="text-right"><p>1.178</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.870</p></td>
-<td class="text-right"><p>1.932</p></td>
-<td class="text-center"><p>0.821</p></td>
-<td class="text-right"><p>1.530</p></td>
-<td class="text-right"><p>2.243</p></td>
-<td class="text-center"><p>0.628</p></td>
+<td class="text-right"><p>1.072</p></td>
+<td class="text-right"><p>1.629</p></td>
+<td class="text-right"><p>0.617</p></td>
+<td class="text-right"><p>0.914</p></td>
+<td class="text-right"><p>1.851</p></td>
+<td class="text-right"><p>0.906</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.282</p></td>
-<td class="text-right"><p>0.531</p></td>
-<td class="text-center"><p>0.237</p></td>
-<td class="text-right"><p>0.215</p></td>
-<td class="text-right"><p>0.561</p></td>
-<td class="text-center"><p>0.245</p></td>
+<td class="text-right"><p>0.352</p></td>
+<td class="text-right"><p>0.826</p></td>
+<td class="text-right"><p>0.342</p></td>
+<td class="text-right"><p>0.552</p></td>
+<td class="text-right"><p>0.895</p></td>
+<td class="text-right"><p>0.303</p></td>
 </tr>
 </tbody>
 </table>
@@ -242,38 +241,38 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <table class="colwidths-auto docutils align-default">
 <thead>
 <tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
-<th class="text-center head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 <th class="text-right head"><p>find*</p></th>
-<th class="text-center head"><p>insert_and_evict</p></th>
+<th class="text-right head"><p>insert_and_evict</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.844</p></td>
-<td class="text-right"><p>1.613</p></td>
-<td class="text-center"><p>0.835</p></td>
+<td class="text-right"><p>0.925</p></td>
+<td class="text-right"><p>1.584</p></td>
+<td class="text-right"><p>0.890</p></td>
 <td class="text-right"><p>1.128</p></td>
-<td class="text-right"><p>3.981</p></td>
-<td class="text-center"><p>0.607</p></td>
+<td class="text-right"><p>3.645</p></td>
+<td class="text-right"><p>0.795</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.568</p></td>
-<td class="text-right"><p>1.079</p></td>
-<td class="text-center"><p>0.530</p></td>
-<td class="text-right"><p>0.821</p></td>
-<td class="text-right"><p>2.252</p></td>
-<td class="text-center"><p>0.427</p></td>
+<td class="text-right"><p>0.665</p></td>
+<td class="text-right"><p>1.115</p></td>
+<td class="text-right"><p>0.541</p></td>
+<td class="text-right"><p>0.834</p></td>
+<td class="text-right"><p>1.849</p></td>
+<td class="text-right"><p>0.569</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.261</p></td>
-<td class="text-right"><p>0.398</p></td>
-<td class="text-center"><p>0.194</p></td>
-<td class="text-right"><p>0.182</p></td>
-<td class="text-right"><p>0.561</p></td>
-<td class="text-center"><p>0.141</p></td>
+<td class="text-right"><p>0.323</p></td>
+<td class="text-right"><p>0.640</p></td>
+<td class="text-right"><p>0.314</p></td>
+<td class="text-right"><p>0.512</p></td>
+<td class="text-right"><p>0.896</p></td>
+<td class="text-right"><p>0.179</p></td>
 </tr>
 </tbody>
 </table>
@@ -286,34 +285,34 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <table class="colwidths-auto docutils align-default">
 <thead>
 <tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
-<th class="text-center head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 <th class="text-right head"><p>find*</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.123</p></td>
+<td class="text-right"><p>0.121</p></td>
 <td class="text-right"><p>0.149</p></td>
-<td class="text-center"><p>0.123</p></td>
-<td class="text-right"><p>0.150</p></td>
-<td class="text-right"><p>3.688</p></td>
+<td class="text-right"><p>0.120</p></td>
+<td class="text-right"><p>0.147</p></td>
+<td class="text-right"><p>3.397</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.114</p></td>
+<td class="text-right"><p>0.116</p></td>
 <td class="text-right"><p>0.145</p></td>
-<td class="text-center"><p>0.118</p></td>
-<td class="text-right"><p>0.147</p></td>
-<td class="text-right"><p>1.063</p></td>
+<td class="text-right"><p>0.115</p></td>
+<td class="text-right"><p>0.143</p></td>
+<td class="text-right"><p>1.800</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.085</p></td>
-<td class="text-right"><p>0.120</p></td>
-<td class="text-center"><p>0.081</p></td>
-<td class="text-right"><p>0.097</p></td>
-<td class="text-right"><p>0.716</p></td>
+<td class="text-right"><p>0.087</p></td>
+<td class="text-right"><p>0.125</p></td>
+<td class="text-right"><p>0.087</p></td>
+<td class="text-right"><p>0.114</p></td>
+<td class="text-right"><p>0.883</p></td>
 </tr>
 </tbody>
 </table>
@@ -323,30 +322,34 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <table class="colwidths-auto docutils align-default">
 <thead>
 <tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
-<th class="text-center head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
-<th class="text-center head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
+<th class="text-right head"><p>find*</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-center"><p>0.035</p></td>
-<td class="text-right"><p>0.055</p></td>
-<td class="text-center"><p>0.034</p></td>
-<td class="text-right"><p>0.047</p></td>
+<td class="text-right"><p>0.036</p></td>
+<td class="text-right"><p>0.054</p></td>
+<td class="text-right"><p>0.035</p></td>
+<td class="text-right"><p>0.045</p></td>
+<td class="text-right"><p>2.809</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-center"><p>0.033</p></td>
+<td class="text-right"><p>0.035</p></td>
 <td class="text-right"><p>0.055</p></td>
-<td class="text-center"><p>0.035</p></td>
+<td class="text-right"><p>0.034</p></td>
 <td class="text-right"><p>0.047</p></td>
+<td class="text-right"><p>1.930</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-center"><p>0.032</p></td>
+<td class="text-right"><p>0.034</p></td>
 <td class="text-right"><p>0.051</p></td>
-<td class="text-center"><p>0.030</p></td>
-<td class="text-right"><p>0.040</p></td>
+<td class="text-right"><p>0.031</p></td>
+<td class="text-right"><p>0.047</p></td>
+<td class="text-right"><p>0.855</p></td>
 </tr>
 </tbody>
 </table>
