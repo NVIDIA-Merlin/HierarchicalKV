@@ -53,16 +53,11 @@ using AtomicMeta = cuda::atomic<M, cuda::thread_scope_device>;
 template <class T>
 using AtomicPos = cuda::atomic<T, cuda::thread_scope_device>;
 
-template <class K, class M>
-struct AtomicKM {
-  AtomicKey<K> key;
-  AtomicMeta<M> meta;
-};
-
 template <class K, class V, class M>
 struct Bucket {
-  AtomicKM<K, M>* KMs;  // HBM
-  V* vectors;           // Pinned memory or HBM
+  AtomicKey<K>* keys_;
+  AtomicMeta<M>* metas_;
+  V* vectors;  // Pinned memory or HBM
 
   /* For upsert_kernel without user specified metas
      recording the current meta, the cur_meta will
@@ -76,11 +71,11 @@ struct Bucket {
   AtomicPos<int> min_pos;
 
   __forceinline__ __device__ AtomicKey<K>* keys(int index) const {
-    return &(KMs[index].key);
+    return keys_ + index;
   }
 
   __forceinline__ __device__ AtomicMeta<M>* metas(int index) const {
-    return &(KMs[index].meta);
+    return metas_ + index;
   }
 };
 

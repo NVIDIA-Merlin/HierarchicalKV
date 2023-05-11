@@ -267,6 +267,62 @@ float test_one_api(const API_Select api, const size_t dim,
     CUDA_CHECK(cudaStreamSynchronize(stream));
   }
 
+  // For trigger the kernel selection in advance.
+  int key_num_per_op_warmup = 1;
+  for (int i = 0; i < 9; i++) {
+    switch (api) {
+      case API_Select::find: {
+        table->find(key_num_per_op_warmup, d_keys, d_vectors, d_found, d_metas,
+                    stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        break;
+      }
+      case API_Select::insert_or_assign: {
+        table->insert_or_assign(key_num_per_op_warmup, d_keys, d_vectors,
+                                d_metas, stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        break;
+      }
+      case API_Select::find_or_insert: {
+        table->find_or_insert(key_num_per_op_warmup, d_keys, d_vectors, d_metas,
+                              stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        break;
+      }
+      case API_Select::assign: {
+        table->assign(key_num_per_op_warmup, d_keys, d_def_val, d_metas,
+                      stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        break;
+      }
+      case API_Select::insert_and_evict: {
+        table->insert_and_evict(key_num_per_op_warmup, d_keys, d_vectors,
+                                d_metas, d_evict_keys, d_def_val, d_evict_metas,
+                                stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        break;
+      }
+      case API_Select::find_ptr: {
+        V** d_vectors_ptr = nullptr;
+        CUDA_CHECK(
+            cudaMalloc(&d_vectors_ptr, key_num_per_op_warmup * sizeof(V*)));
+        benchmark::array2ptr(d_vectors_ptr, d_vectors, options.dim,
+                             key_num_per_op_warmup, stream);
+
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        table->find(1, d_keys, d_vectors_ptr, d_found, d_metas, stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        benchmark::read_from_ptr(d_vectors_ptr, d_vectors, options.dim,
+                                 key_num_per_op_warmup, stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        CUDA_CHECK(cudaFree(d_vectors_ptr));
+        break;
+      }
+      default: {
+        std::cout << "[Unsupport API]\n";
+      }
+    }
+  }
   create_keys_for_hitrate<K, M>(h_keys, h_metas, key_num_per_op, hitrate,
                                 Hit_Mode::last_insert, start, true /*reset*/);
   CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
@@ -367,6 +423,7 @@ float test_one_api(const API_Select api, const size_t dim,
   CUDA_CHECK(cudaFree(d_evict_keys));
   CUDA_CHECK(cudaFree(d_evict_metas));
 
+  CUDA_CHECK(cudaDeviceSynchronize());
   CudaCheckError();
 
   float througput =
