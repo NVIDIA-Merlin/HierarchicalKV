@@ -163,8 +163,10 @@ void initialize_buckets(Table<K, V, M>** table, const size_t start,
 
   (*table)->num_of_memory_slices += num_of_memory_slices;
   for (int i = start; i < end; i++) {
-    CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].KMs),
-                          (*table)->bucket_max_size * sizeof(AtomicKM<K, M>)));
+    CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].keys_),
+                          (*table)->bucket_max_size * sizeof(AtomicKey<K>)));
+    CUDA_CHECK(cudaMalloc(&((*table)->buckets[i].metas_),
+                          (*table)->bucket_max_size * sizeof(AtomicMeta<M>)));
   }
 
   {
@@ -300,7 +302,8 @@ void double_capacity(Table<K, V, M>** table) {
 template <class K, class V, class M>
 void destroy_table(Table<K, V, M>** table) {
   for (int i = 0; i < (*table)->buckets_num; i++) {
-    CUDA_CHECK(cudaFree((*table)->buckets[i].KMs));
+    CUDA_CHECK(cudaFree((*table)->buckets[i].keys_));
+    CUDA_CHECK(cudaFree((*table)->buckets[i].metas_));
   }
 
   for (int i = 0; i < (*table)->num_of_memory_slices; i++) {
@@ -756,7 +759,6 @@ __device__ __forceinline__ OccupyResult find_without_lock(
   K expected_key = static_cast<K>(EMPTY_KEY);
 
   AtomicKey<K>* current_key;
-  AtomicMeta<M>* current_meta;
 
   unsigned vote = 0;
 
@@ -765,7 +767,6 @@ __device__ __forceinline__ OccupyResult find_without_lock(
     key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
 
     current_key = bucket->keys(key_pos);
-    current_meta = bucket->metas(key_pos);
 
     expected_key = current_key->load(cuda::std::memory_order_relaxed);
     vote = g.ballot(desired_key == expected_key);
@@ -781,7 +782,7 @@ __device__ __forceinline__ OccupyResult find_without_lock(
 }
 
 template <class K, class V, class M, uint32_t TILE_SIZE = 4>
-__device__ __forceinline__ OccupyResult find_and_lock_when_vacant(
+__device__ __inline__ OccupyResult find_and_lock_when_vacant(
     cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, M>* __restrict__ bucket,
     const K desired_key, const M desired_meta, K& evicted_key,
     const size_t start_idx, int& key_pos, int& src_lane,
@@ -805,7 +806,6 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_vacant(
     key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
 
     current_key = bucket->keys(key_pos);
-    current_meta = bucket->metas(key_pos);
 
     // Step 1: try find and lock the desired_key.
     do {
@@ -840,21 +840,27 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_vacant(
       }
       vote -= ((unsigned(0x1)) << src_lane);
     }
-
-    // Step 3: (TBD) record reclaim location.
-
-    // Step 4: record min meta location.
-    expected_key = current_key->load(cuda::std::memory_order_relaxed);
-    temp_min_meta_val = current_meta->load(cuda::std::memory_order_relaxed);
-    if (temp_min_meta_val < local_min_meta_val &&
-        (expected_key != static_cast<K>(LOCKED_KEY) &&
-         expected_key != static_cast<K>(EMPTY_KEY))) {
-      local_min_meta_key = expected_key;
-      local_min_meta_val = temp_min_meta_val;
-      local_min_meta_pos = key_pos;
-    }
   }
 
+  for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+       tile_offset += TILE_SIZE) {
+    key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
+
+    current_meta = bucket->metas(key_pos);
+
+    // Step 4: record min meta location.
+    temp_min_meta_val = current_meta->load(cuda::std::memory_order_relaxed);
+    if (temp_min_meta_val < local_min_meta_val) {
+      expected_key =
+          bucket->keys(key_pos)->load(cuda::std::memory_order_relaxed);
+      if (expected_key != static_cast<K>(LOCKED_KEY) &&
+          expected_key != static_cast<K>(EMPTY_KEY)) {
+        local_min_meta_key = expected_key;
+        local_min_meta_val = temp_min_meta_val;
+        local_min_meta_pos = key_pos;
+      }
+    }
+  }
   // Step 5: insert by evicting some one.
   const M global_min_meta_val =
       cg::reduce(g, local_min_meta_val, cg::less<M>());
@@ -918,7 +924,6 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_full(
     key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
 
     current_key = bucket->keys(key_pos);
-    current_meta = bucket->metas(key_pos);
 
     // Step 1: try find and lock the desired_key.
     do {
@@ -934,17 +939,27 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_full(
       }
       vote = g.ballot(expected_key == static_cast<K>(LOCKED_KEY));
     } while (vote != 0);
+  }
 
-    // Step 4: record min meta location.
-    temp_min_meta_val = current_meta->load(cuda::std::memory_order_relaxed);
+  for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+       tile_offset += TILE_SIZE) {
+    key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
+
+    // Step 2: record min meta location.
+    temp_min_meta_val =
+        bucket->metas(key_pos)->load(cuda::std::memory_order_relaxed);
     if (temp_min_meta_val < local_min_meta_val) {
+      while ((expected_key = bucket->keys(key_pos)->load(
+                  cuda::std::memory_order_relaxed)) ==
+             static_cast<K>(LOCKED_KEY))
+        ;
       local_min_meta_key = expected_key;
       local_min_meta_val = temp_min_meta_val;
       local_min_meta_pos = key_pos;
     }
   }
 
-  // Step 5: insert by evicting some one.
+  // Step 3: insert by evicting some one.
   const M global_min_meta_val =
       cg::reduce(g, local_min_meta_val, cg::less<M>());
   if (desired_meta < global_min_meta_val) {
@@ -1507,7 +1522,7 @@ struct SelectLookupKernelWithIO {
                                                  buckets_num, dim, keys, values,
                                                  metas, found, N);
     } else {
-      const unsigned int tile_size = 32;
+      const unsigned int tile_size = 16;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       lookup_kernel_with_io<K, V, M, tile_size>
@@ -1654,7 +1669,7 @@ struct SelectLookupPtrKernel {
                                                  buckets_num, dim, keys, values,
                                                  metas, found, N);
     } else {
-      const unsigned int tile_size = 32;
+      const unsigned int tile_size = 16;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       lookup_ptr_kernel<K, V, M, tile_size>
@@ -2073,15 +2088,8 @@ struct SelectFindOrInsertKernelWithIO {
                              const Table<K, V, M>* __restrict table,
                              const K* __restrict keys, V* __restrict values,
                              M* __restrict metas) {
-    if (load_factor <= 0.5) {
+    if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
-      const size_t N = n * tile_size;
-      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      find_or_insert_kernel_with_io<K, V, M, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(
-              table, bucket_max_size, buckets_num, dim, keys, values, metas, N);
-    } else if (load_factor <= 0.875) {
-      const unsigned int tile_size = 8;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       find_or_insert_kernel_with_io<K, V, M, tile_size>
