@@ -103,6 +103,8 @@ Your environment must meet the following requirements:
 
 ### On pure HBM mode: 
 
+* dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
+
 | load_factor | insert_or_assign |   find | find_or_insert | assign |  find* | insert_and_evict |
 |------------:|-----------------:|-------:|---------------:|-------:|-------:|-----------------:|
 |        0.50 |            1.402 |  2.958 |          1.743 |  1.954 |  3.632 |            1.178 |
