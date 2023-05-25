@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Complete HierarchicalKV API &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <title>Variable nv::merlin::thrust_par &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
       <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/banner.css" type="text/css" />
-    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/unabridged_orphan.html" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html" />
   <!--[if lt IE 9]>
     <script src="../_static/js/html5shiv.min.js"></script>
   <![endif]-->
@@ -24,7 +24,9 @@
         <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
-    <link rel="search" title="Search" href="../search.html" /> 
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Typedef nv::merlin::EraseIfPredict" href="typedef_merlin__hashtable_8cuh_1a20afe66b4f5d4690391f7ef8845223e5.html" />
+    <link rel="prev" title="Enum EvictStrategy" href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" /> 
 </head>
 
 <body class="wy-body-for-nav">
@@ -54,9 +56,14 @@
 </div>
         </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
               <p class="caption"><span class="caption-text">Contents</span></p>
-<ul>
+<ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="../README.html">Introduction</a></li>
-<li class="toctree-l1"><a class="reference internal" href="index.html">API Documentation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Documentation</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#class-hierarchy">Class Hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#file-hierarchy">File Hierarchy</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#complete-hierarchicalkv-api">Complete HierarchicalKV API</a></li>
+</ul>
+</li>
 <li class="toctree-l1"><a class="reference internal" href="../CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
 </ul>
 
@@ -74,7 +81,8 @@
           <div role="navigation" aria-label="Page navigation">
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
-      <li class="breadcrumb-item active">Complete HierarchicalKV API</li>
+          <li class="breadcrumb-item"><a href="index.html">HierarchicalKV C++ API Documentation</a></li>
+      <li class="breadcrumb-item active">Variable nv::merlin::thrust_par</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -83,34 +91,28 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <div class="section" id="complete-hierarchicalkv-api">
-<h1>Complete HierarchicalKV API<a class="headerlink" href="#complete-hierarchicalkv-api" title="Permalink to this headline"></a></h1>
-<div class="section" id="files">
-<h2>Files<a class="headerlink" href="#files" title="Permalink to this headline"></a></h2>
-<div class="toctree-wrapper compound">
-<ul>
-<li class="toctree-l1"><a class="reference internal" href="file_merlin_hashtable.cuh.html">File merlin_hashtable.cuh</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="file_merlin_hashtable.cuh.html#definition-merlin-hashtable-cuh">Definition (<code class="docutils literal notranslate"><span class="pre">merlin_hashtable.cuh</span></code>)</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="program_listing_file_merlin_hashtable.cuh.html">Program Listing for File merlin_hashtable.cuh</a></li>
+  <div class="section" id="variable-nv-merlin-thrust-par">
+<span id="exhale-variable-merlin-hashtable-8cuh-1a359fe56354918308560f46cb3136a3da"></span><h1>Variable nv::merlin::thrust_par<a class="headerlink" href="#variable-nv-merlin-thrust-par" title="Permalink to this headline"></a></h1>
+<ul class="simple">
+<li><p>Defined in <a class="reference internal" href="file_merlin_hashtable.cuh.html#file-merlin-hashtable-cuh"><span class="std std-ref">File merlin_hashtable.cuh</span></a></p></li>
 </ul>
-</li>
-<li class="toctree-l2"><a class="reference internal" href="file_merlin_hashtable.cuh.html#includes">Includes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="file_merlin_hashtable.cuh.html#namespaces">Namespaces</a></li>
-<li class="toctree-l2"><a class="reference internal" href="file_merlin_hashtable.cuh.html#classes">Classes</a></li>
-<li class="toctree-l2"><a class="reference internal" href="file_merlin_hashtable.cuh.html#enums">Enums</a></li>
-<li class="toctree-l2"><a class="reference internal" href="file_merlin_hashtable.cuh.html#typedefs">Typedefs</a></li>
-<li class="toctree-l2"><a class="reference internal" href="file_merlin_hashtable.cuh.html#variables">Variables</a></li>
-</ul>
-</li>
-</ul>
-</div>
+<div class="section" id="variable-documentation">
+<h2>Variable Documentation<a class="headerlink" href="#variable-documentation" title="Permalink to this headline"></a></h2>
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin10thrust_parE">
+<span id="_CPPv3N2nv6merlin10thrust_parE"></span><span id="_CPPv2N2nv6merlin10thrust_parE"></span><span id="nv::merlin::thrust_par__autoR"></span><span class="target" id="merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">auto</span> <span class="pre">&amp;</span><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">thrust_par</span></code> <span class="pre">=</span> <span class="pre">thrust</span><span class="pre">::</span><span class="pre">cuda</span><span class="pre">::</span><span class="pre">par</span><a class="headerlink" href="#_CPPv4N2nv6merlin10thrust_parE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
 </div>
 </div>
 
 
            </div>
           </div>
-          <footer>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html" class="btn btn-neutral float-left" title="Enum EvictStrategy" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="typedef_merlin__hashtable_8cuh_1a20afe66b4f5d4690391f7ef8845223e5.html" class="btn btn-neutral float-right" title="Typedef nv::merlin::EraseIfPredict" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
 
   <hr/>
 
