@@ -150,13 +150,20 @@ void initialize_buckets(Table<K, V, M>** table, const size_t start,
       (*table)->remaining_hbm_for_vectors -= slice_real_size;
     } else {
       (*table)->is_pure_hbm = false;
-      CUDA_CHECK(
-          cudaMallocHost(&((*table)->slices[i]), slice_real_size,
-                         cudaHostAllocMapped | cudaHostAllocWriteCombined));
+      CUDA_CHECK(cudaMallocHost(&((*table)->slices[i]), slice_real_size,
+                                cudaHostAllocMapped));
     }
     for (int j = 0; j < num_of_buckets_in_one_slice; j++) {
-      (*table)->buckets[start + num_of_allocated_buckets + j].vectors =
-          (*table)->slices[i] + j * (*table)->bucket_max_size * (*table)->dim;
+      if ((*table)->is_pure_hbm) {
+        (*table)->buckets[start + num_of_allocated_buckets + j].vectors =
+            (*table)->slices[i] + j * (*table)->bucket_max_size * (*table)->dim;
+      } else {
+        V* h_ptr =
+            (*table)->slices[i] + j * (*table)->bucket_max_size * (*table)->dim;
+        CUDA_CHECK(cudaHostGetDevicePointer(
+            &((*table)->buckets[start + num_of_allocated_buckets + j].vectors),
+            h_ptr, 0));
+      }
     }
     num_of_allocated_buckets += num_of_buckets_in_one_slice;
   }
@@ -201,7 +208,9 @@ size_t get_slice_size(Table<K, V, M>** table) {
   const size_t max_table_size = (*table)->max_size * sizeof(V) * (*table)->dim;
   size_t slice_size = 0;
 
-  if (max_table_size >= GB(16)) {
+  if (max_table_size >= GB(128)) {
+    slice_size = GB(16);
+  } else if (max_table_size >= GB(16)) {
     slice_size = GB(2);
   } else if (max_table_size >= GB(2)) {
     slice_size = MB(128);
