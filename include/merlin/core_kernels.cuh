@@ -1774,9 +1774,10 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
 }
 
 /* Remove specified keys which match the Predict. */
-template <class K, class V, class M, uint32_t TILE_SIZE = 1>
+template <class K, class V, class M,
+          template <typename, typename> class PredFunctor,
+          uint32_t TILE_SIZE = 1>
 __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
-                              const EraseIfPredictInternal<K, M> pred,
                               const K pattern, const M threshold,
                               size_t* __restrict count,
                               Bucket<K, V, M>* __restrict buckets,
@@ -1784,6 +1785,7 @@ __global__ void remove_kernel(const Table<K, V, M>* __restrict table,
                               const size_t bucket_max_size,
                               const size_t buckets_num, size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  PredFunctor<K, M> pred;
 
   for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
        t += blockDim.x * gridDim.x) {
@@ -1891,9 +1893,9 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table, K* d_key,
 }
 
 /* Dump with meta. */
-template <class K, class V, class M>
+template <class K, class V, class M,
+          template <typename, typename> class PredFunctor>
 __global__ void dump_kernel(const Table<K, V, M>* __restrict table,
-                            const EraseIfPredictInternal<K, M> pred,
                             const K pattern, const M threshold, K* d_key,
                             V* __restrict d_val, M* __restrict d_meta,
                             const size_t offset, const size_t search_length,
@@ -1907,6 +1909,7 @@ __global__ void dump_kernel(const Table<K, V, M>* __restrict table,
   M* block_result_meta = (M*)&(block_result_val[blockDim.x * dim]);
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
+  PredFunctor<K, M> pred;
 
   const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 

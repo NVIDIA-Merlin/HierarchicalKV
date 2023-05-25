@@ -87,24 +87,28 @@ struct HashTableOptions {
  *
  *    ```
  *    template <class K, class M>
- *    __forceinline__ __device__ bool erase_if_pred(const K& key,
- *                                                  M& meta,
- *                                                  const K& pattern,
- *                                                  const M& threshold) {
- *      return ((key & 0xFFFF000000000000 == pattern) &&
- *              (meta < threshold));
- *    }
+ *    struct EraseIfPredFunctor {
+ *      __forceinline__ __device__ bool operator()(const K& key,
+ *                                                 M& meta,
+ *                                                 const K& pattern,
+ *                                                 const M& threshold) {
+ *        return ((key & 0xFFFF000000000000 == pattern) &&
+ *                (meta < threshold));
+ *      }
+ *    };
  *    ```
  *
  *  Example for export_batch_if:
  *    ```
  *    template <class K, class M>
- *    __forceinline__ __device__ bool export_if_pred(const K& key,
- *                                                   M& meta,
- *                                                   const K& pattern,
- *                                                   const M& threshold) {
- *      return meta >= threshold;
- *    }
+ *    struct ExportIfPredFunctor {
+ *      __forceinline__ __device__ bool operator()(const K& key,
+ *                                                 M& meta,
+ *                                                 const K& pattern,
+ *                                                 const M& threshold) {
+ *        return meta >= threshold;
+ *      }
+ *    };
  *    ```
  */
 template <class K, class M>
@@ -1023,21 +1027,24 @@ class HashTable {
    * @brief Erases all elements that satisfy the predicate @p pred from the
    * hash table.
    *
-   * The value for @p pred should be a function with type `Pred` defined like
-   * the following example:
+   * @tparam PredFunctor The predicate template <typename K, typename M>
+   * function with operator signature (bool*)(const K&, const M&, const K&,
+   * const threshold) that returns `true` if the element should be erased. The
+   * value for @p pred should be a function with type `Pred` defined like the
+   * following example:
    *
    *    ```
    *    template <class K, class M>
-   *    __forceinline__ __device__ bool erase_if_pred(const K& key,
-   *                                                  const M& meta,
-   *                                                  const K& pattern,
-   *                                                  const M& threshold) {
-   *      return ((key & 0x1 == pattern) && (meta < threshold));
-   *    }
+   *    struct EraseIfPredFunctor {
+   *      __forceinline__ __device__ bool operator()(const K& key,
+   *                                                 M& meta,
+   *                                                 const K& pattern,
+   *                                                 const M& threshold) {
+   *        return ((key & 0x1 == pattern) && (meta < threshold));
+   *      }
+   *    };
    *    ```
    *
-   * @param pred The predicate function with type Pred that returns `true` if
-   * the element should be erased.
    * @param pattern The third user-defined argument to @p pred with key_type
    * type.
    * @param threshold The fourth user-defined argument to @p pred with meta_type
@@ -1047,8 +1054,9 @@ class HashTable {
    * @return The number of elements removed.
    *
    */
-  size_type erase_if(const Pred& pred, const key_type& pattern,
-                     const meta_type& threshold, cudaStream_t stream = 0) {
+  template <template <typename, typename> class PredFunctor>
+  size_type erase_if(const key_type& pattern, const meta_type& threshold,
+                     cudaStream_t stream = 0) {
     write_read_lock lock(mutex_);
 
     auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
@@ -1056,18 +1064,14 @@ class HashTable {
 
     CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
 
-    Pred h_pred;
-    CUDA_CHECK(cudaMemcpyFromSymbolAsync(&h_pred, pred, sizeof(Pred), 0,
-                                         cudaMemcpyDeviceToHost, stream));
-
     {
       const size_t block_size = options_.block_size;
       const size_t N = table_->buckets_num;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      remove_kernel<key_type, value_type, meta_type>
+      remove_kernel<key_type, value_type, meta_type, PredFunctor>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, h_pred, pattern, threshold, d_count, table_->buckets,
+              table_, pattern, threshold, d_count, table_->buckets,
               table_->buckets_size, table_->bucket_max_size,
               table_->buckets_num, N);
     }
@@ -1169,6 +1173,9 @@ class HashTable {
 
   /**
    * @brief Exports a certain number of the key-value-meta tuples which match
+   *
+   * @tparam PredFunctor A functor with template <K, M> defined an operator
+   * with signature:  __device__ (bool*)(const K&, M&, const K&, const M&).
    * specified condition from the hash table.
    *
    * @param n The maximum number of exported pairs.
@@ -1177,17 +1184,16 @@ class HashTable {
    *
    *    ```
    *    template <class K, class M>
-   *    __forceinline__ __device__ bool export_if_pred(const K& key,
-   *                                                   M& meta,
-   *                                                   const K& pattern,
-   *                                                   const M& threshold) {
-   *
-   *      return meta > threshold;
-   *    }
+   *    struct ExportIfPredFunctor {
+   *      __forceinline__ __device__ bool operator()(const K& key,
+   *                                                 M& meta,
+   *                                                 const K& pattern,
+   *                                                 const M& threshold) {
+   *        return meta >= threshold;
+   *      }
+   *    };
    *    ```
    *
-   * @param pred The predicate function with type Pred that returns `true` if
-   * the element should be exported.
    * @param pattern The third user-defined argument to @p pred with key_type
    * type.
    * @param threshold The fourth user-defined argument to @p pred with meta_type
@@ -1209,9 +1215,10 @@ class HashTable {
    * memory. Reducing the value for @p n is currently required if this exception
    * occurs.
    */
-  void export_batch_if(Pred& pred, const key_type& pattern,
-                       const meta_type& threshold, size_type n,
-                       const size_type offset, size_type* d_counter,
+  template <template <typename, typename> class PredFunctor>
+  void export_batch_if(const key_type& pattern, const meta_type& threshold,
+                       size_type n, const size_type offset,
+                       size_type* d_counter,
                        key_type* keys,              // (n)
                        value_type* values,          // (n, DIM)
                        meta_type* metas = nullptr,  // (n)
@@ -1235,13 +1242,9 @@ class HashTable {
     const size_t shared_size = kvm_size * block_size;
     const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
 
-    Pred h_pred;
-    CUDA_CHECK(cudaMemcpyFromSymbolAsync(&h_pred, pred, sizeof(Pred), 0,
-                                         cudaMemcpyDeviceToHost, stream));
-
-    dump_kernel<key_type, value_type, meta_type>
+    dump_kernel<key_type, value_type, meta_type, PredFunctor>
         <<<grid_size, block_size, shared_size, stream>>>(
-            table_, h_pred, pattern, threshold, keys, values, metas, offset, n,
+            table_, pattern, threshold, keys, values, metas, offset, n,
             d_counter);
 
     CudaCheckError();

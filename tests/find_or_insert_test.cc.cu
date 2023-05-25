@@ -39,24 +39,22 @@ using Table = nv::merlin::HashTable<K, V, M>;
 using TableOptions = nv::merlin::HashTableOptions;
 
 template <class K, class M>
-__forceinline__ __device__ bool erase_if_pred(const K& key, M& meta,
-                                              const K& pattern,
-                                              const M& threshold) {
-  return ((key & 0x7f > pattern) && (meta > threshold));
-}
+struct EraseIfPredFunctor {
+  __forceinline__ __device__ bool operator()(const K& key, M& meta,
+                                             const K& pattern,
+                                             const M& threshold) {
+    return ((key & 0x7f > pattern) && (meta > threshold));
+  }
+};
 
 template <class K, class M>
-__device__ Table::Pred EraseIfPred = erase_if_pred<K, M>;
-
-template <class K, class M>
-__forceinline__ __device__ bool export_if_pred(const K& key, M& meta,
-                                               const K& pattern,
-                                               const M& threshold) {
-  return meta > threshold;
-}
-
-template <class K, class M>
-__device__ Table::Pred ExportIfPred = export_if_pred<K, M>;
+struct ExportIfPredFunctor {
+  __forceinline__ __device__ bool operator()(const K& key, M& meta,
+                                             const K& pattern,
+                                             const M& threshold) {
+    return meta > threshold;
+  }
+};
 
 void test_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
@@ -470,8 +468,8 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
 
     K pattern = 100;
     M threshold = 0;
-    size_t erase_num =
-        table->erase_if(EraseIfPred<K, M>, pattern, threshold, stream);
+    size_t erase_num = table->template erase_if<EraseIfPredFunctor>(
+        pattern, threshold, stream);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ((erase_num + total_size), BUCKET_MAX_SIZE);
@@ -1061,9 +1059,9 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
     K pattern = 100;
     M threshold = h_metas[size_t(KEY_NUM / 2)];
 
-    table->export_batch_if(ExportIfPred<K, M>, pattern, threshold,
-                           table->capacity(), 0, d_dump_counter, d_keys,
-                           d_vectors, d_metas, stream);
+    table->template export_batch_if<ExportIfPredFunctor>(
+        pattern, threshold, table->capacity(), 0, d_dump_counter, d_keys,
+        d_vectors, d_metas, stream);
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaMemcpy(&h_dump_counter, d_dump_counter, sizeof(size_t),
