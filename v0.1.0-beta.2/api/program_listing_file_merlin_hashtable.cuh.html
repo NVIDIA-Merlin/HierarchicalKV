@@ -156,6 +156,12 @@
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">M</span><span class="o">&amp;</span><span class="w"> </span><span class="n">threshold</span>
 <span class="p">);</span>
 
+<span class="cp">#if THRUST_VERSION &gt;= 101600</span>
+<span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">thrust_par</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">thrust</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">par_nosync</span><span class="p">;</span>
+<span class="cp">#else</span>
+<span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="k">auto</span><span class="o">&amp;</span><span class="w"> </span><span class="n">thrust_par</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">thrust</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">par</span><span class="p">;</span>
+<span class="cp">#endif</span>
+
 <span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">class</span><span class="w"> </span><span class="nc">K</span><span class="p">,</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">V</span><span class="p">,</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">M</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">uint64_t</span><span class="o">&gt;</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">HashTable</span><span class="w"> </span><span class="p">{</span>
 <span class="w"> </span><span class="k">public</span><span class="o">:</span>
@@ -171,12 +177,6 @@
 
 <span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">DeviceMemoryPool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">MemoryPool</span><span class="o">&lt;</span><span class="n">DeviceAllocator</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">&gt;&gt;</span><span class="p">;</span>
 <span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">HostMemoryPool</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">MemoryPool</span><span class="o">&lt;</span><span class="n">HostAllocator</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">&gt;&gt;</span><span class="p">;</span>
-
-<span class="cp">#if THRUST_VERSION &gt;= 101600</span>
-<span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">thrust_par</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">thrust</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">par_nosync</span><span class="p">;</span>
-<span class="cp">#else</span>
-<span class="w">  </span><span class="k">static</span><span class="w"> </span><span class="k">constexpr</span><span class="w"> </span><span class="k">auto</span><span class="w"> </span><span class="n">thrust_par</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">thrust</span><span class="o">::</span><span class="n">cuda</span><span class="o">::</span><span class="n">par</span><span class="p">;</span>
-<span class="cp">#endif</span>
 
 <span class="w"> </span><span class="k">public</span><span class="o">:</span>
 <span class="w">  </span><span class="n">HashTable</span><span class="p">(){};</span>

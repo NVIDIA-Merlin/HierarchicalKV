@@ -80,6 +80,12 @@ Program Listing for File merlin_hashtable.cuh
        const M& threshold  
    );
    
+   #if THRUST_VERSION >= 101600
+   static constexpr auto& thrust_par = thrust::cuda::par_nosync;
+   #else
+   static constexpr auto& thrust_par = thrust::cuda::par;
+   #endif
+   
    template <class K, class V, class M = uint64_t>
    class HashTable {
     public:
@@ -95,12 +101,6 @@ Program Listing for File merlin_hashtable.cuh
    
      using DeviceMemoryPool = MemoryPool<DeviceAllocator<char>>;
      using HostMemoryPool = MemoryPool<HostAllocator<char>>;
-   
-   #if THRUST_VERSION >= 101600
-     static constexpr auto thrust_par = thrust::cuda::par_nosync;
-   #else
-     static constexpr auto thrust_par = thrust::cuda::par;
-   #endif
    
     public:
      HashTable(){};
