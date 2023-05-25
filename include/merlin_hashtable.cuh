@@ -115,6 +115,12 @@ using EraseIfPredict = bool (*)(
     const M& threshold  ///< The threshold to compare with the `meta` argument.
 );
 
+#if THRUST_VERSION >= 101600
+static constexpr auto& thrust_par = thrust::cuda::par_nosync;
+#else
+static constexpr auto& thrust_par = thrust::cuda::par;
+#endif
+
 /**
  * A HierarchicalKV hash table is a concurrent and hierarchical hash table that
  * is powered by GPUs and can use HBM and host memory as storage for key-value
@@ -152,12 +158,6 @@ class HashTable {
 
   using DeviceMemoryPool = MemoryPool<DeviceAllocator<char>>;
   using HostMemoryPool = MemoryPool<HostAllocator<char>>;
-
-#if THRUST_VERSION >= 101600
-  static constexpr auto thrust_par = thrust::cuda::par_nosync;
-#else
-  static constexpr auto thrust_par = thrust::cuda::par;
-#endif
 
  public:
   /**
