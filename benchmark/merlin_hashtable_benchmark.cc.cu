@@ -68,8 +68,8 @@ enum class Test_Mode {
   hybrid = 1,
 };
 
-template <class K, class M>
-void create_random_keys(K* h_keys, M* h_metas, const int key_num_per_op) {
+template <class K, class S>
+void create_random_keys(K* h_keys, S* h_scores, const int key_num_per_op) {
   std::unordered_set<K> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
@@ -81,24 +81,24 @@ void create_random_keys(K* h_keys, M* h_metas, const int key_num_per_op) {
   }
   for (const K num : numbers) {
     h_keys[i] = num;
-    h_metas[i] = getTimestamp();
+    h_scores[i] = getTimestamp();
     i++;
   }
 }
 
 std::string rep(int n) { return std::string(n, ' '); }
 
-template <class K, class M>
-void create_continuous_keys(K* h_keys, M* h_metas, const int key_num_per_op,
+template <class K, class S>
+void create_continuous_keys(K* h_keys, S* h_scores, const int key_num_per_op,
                             const K start = 0) {
   for (K i = 0; i < key_num_per_op; i++) {
     h_keys[i] = start + static_cast<K>(i);
-    h_metas[i] = getTimestamp();
+    h_scores[i] = getTimestamp();
   }
 }
 
-template <typename K, typename M>
-void create_keys_for_hitrate(K* h_keys, M* h_metas, const int key_num_per_op,
+template <typename K, typename S>
+void create_keys_for_hitrate(K* h_keys, S* h_scores, const int key_num_per_op,
                              const float hitrate = 0.6f,
                              const Hit_Mode hit_mode = Hit_Mode::last_insert,
                              const K end = 0, const bool reset = false) {
@@ -120,13 +120,13 @@ void create_keys_for_hitrate(K* h_keys, M* h_metas, const int key_num_per_op,
     int i = 0;
     for (auto existed_value : numbers) {
       h_keys[i] = existed_value;
-      h_metas[i] = getTimestamp();
+      h_scores[i] = getTimestamp();
       i++;
     }
   } else {
-    // else keep its original value, but update metas
+    // else keep its original value, but update scores
     for (int i = 0; i < divide; i++) {
-      h_metas[i] = getTimestamp();
+      h_scores[i] = getTimestamp();
     }
   }
 
@@ -136,14 +136,14 @@ void create_keys_for_hitrate(K* h_keys, M* h_metas, const int key_num_per_op,
   }
   for (int i = divide; i < key_num_per_op; i++) {
     h_keys[i] = new_value--;
-    h_metas[i] = getTimestamp();
+    h_scores[i] = getTimestamp();
   }
 }
 
-template <typename M>
-void refresh_metas(M* h_metas, const int key_num_per_op) {
+template <typename S>
+void refresh_scores(S* h_scores, const int key_num_per_op) {
   for (int i = 0; i < key_num_per_op; i++) {
-    h_metas[i] = getTimestamp();
+    h_scores[i] = getTimestamp();
   }
 }
 
@@ -152,9 +152,9 @@ float test_one_api(const API_Select api, const size_t dim,
                    const size_t hbm4values, const float load_factor,
                    const float hitrate = 0.6f, const bool io_by_cpu = false) {
   using K = uint64_t;
-  using M = uint64_t;
+  using S = uint64_t;
   using V = float;
-  using Table = nv::merlin::HashTable<K, float, M>;
+  using Table = nv::merlin::HashTable<K, float, S>;
   using TableOptions = nv::merlin::HashTableOptions;
 
   size_t free, total;
@@ -166,7 +166,7 @@ float test_one_api(const API_Select api, const size_t dim,
   }
 
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   bool* h_found;
 
@@ -183,7 +183,7 @@ float test_one_api(const API_Select api, const size_t dim,
   table->init(options);
 
   CUDA_CHECK(cudaMallocHost(&h_keys, key_num_per_op * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, key_num_per_op * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, key_num_per_op * sizeof(S)));
   CUDA_CHECK(
       cudaMallocHost(&h_vectors, key_num_per_op * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMallocHost(&h_found, key_num_per_op * sizeof(bool)));
@@ -192,7 +192,7 @@ float test_one_api(const API_Select api, const size_t dim,
       cudaMemset(h_vectors, 0, key_num_per_op * sizeof(V) * options.dim));
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   V* d_def_val;
   V** d_vectors_ptr;
@@ -200,10 +200,10 @@ float test_one_api(const API_Select api, const size_t dim,
   K* d_keys_out;
 
   K* d_evict_keys;
-  M* d_evict_metas;
+  S* d_evict_scores;
 
   CUDA_CHECK(cudaMalloc(&d_keys, key_num_per_op * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, key_num_per_op * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, key_num_per_op * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, key_num_per_op * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_def_val, key_num_per_op * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
@@ -211,7 +211,7 @@ float test_one_api(const API_Select api, const size_t dim,
   CUDA_CHECK(cudaMalloc(&d_keys_out, key_num_per_op * sizeof(K)));
 
   CUDA_CHECK(cudaMalloc(&d_evict_keys, key_num_per_op * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_evict_metas, key_num_per_op * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_evict_scores, key_num_per_op * sizeof(S)));
 
   CUDA_CHECK(
       cudaMemset(d_vectors, 1, key_num_per_op * sizeof(V) * options.dim));
@@ -236,12 +236,12 @@ float test_one_api(const API_Select api, const size_t dim,
   for (int i = 0; i < loop_num_init; i++) {
     uint64_t key_num_cur_insert =
         i == loop_num_init - 1 ? key_num_remain : key_num_per_op;
-    create_continuous_keys<K, M>(h_keys, h_metas, key_num_cur_insert, start);
+    create_continuous_keys<K, S>(h_keys, h_scores, key_num_cur_insert, start);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_cur_insert * sizeof(K),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_cur_insert * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, key_num_cur_insert * sizeof(S),
                           cudaMemcpyHostToDevice));
-    table->insert_or_assign(key_num_cur_insert, d_keys, d_vectors, d_metas,
+    table->insert_or_assign(key_num_cur_insert, d_keys, d_vectors, d_scores,
                             stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     start += key_num_cur_insert;
@@ -255,12 +255,13 @@ float test_one_api(const API_Select api, const size_t dim,
     if (key_num_append <= 0) break;
     key_num_append =
         std::min(static_cast<int64_t>(key_num_per_op), key_num_append);
-    create_continuous_keys<K, M>(h_keys, h_metas, key_num_append, start);
+    create_continuous_keys<K, S>(h_keys, h_scores, key_num_append, start);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_append * sizeof(K),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_append * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, key_num_append * sizeof(S),
                           cudaMemcpyHostToDevice));
-    table->insert_or_assign(key_num_append, d_keys, d_vectors, d_metas, stream);
+    table->insert_or_assign(key_num_append, d_keys, d_vectors, d_scores,
+                            stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     start += key_num_append;
     real_load_factor = table->load_factor(stream);
@@ -272,33 +273,33 @@ float test_one_api(const API_Select api, const size_t dim,
   for (int i = 0; i < 9; i++) {
     switch (api) {
       case API_Select::find: {
-        table->find(key_num_per_op_warmup, d_keys, d_vectors, d_found, d_metas,
+        table->find(key_num_per_op_warmup, d_keys, d_vectors, d_found, d_scores,
                     stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         break;
       }
       case API_Select::insert_or_assign: {
         table->insert_or_assign(key_num_per_op_warmup, d_keys, d_vectors,
-                                d_metas, stream);
+                                d_scores, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         break;
       }
       case API_Select::find_or_insert: {
-        table->find_or_insert(key_num_per_op_warmup, d_keys, d_vectors, d_metas,
-                              stream);
+        table->find_or_insert(key_num_per_op_warmup, d_keys, d_vectors,
+                              d_scores, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         break;
       }
       case API_Select::assign: {
-        table->assign(key_num_per_op_warmup, d_keys, d_def_val, d_metas,
+        table->assign(key_num_per_op_warmup, d_keys, d_def_val, d_scores,
                       stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         break;
       }
       case API_Select::insert_and_evict: {
         table->insert_and_evict(key_num_per_op_warmup, d_keys, d_vectors,
-                                d_metas, d_evict_keys, d_def_val, d_evict_metas,
-                                stream);
+                                d_scores, d_evict_keys, d_def_val,
+                                d_evict_scores, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         break;
       }
@@ -310,7 +311,7 @@ float test_one_api(const API_Select api, const size_t dim,
                              key_num_per_op_warmup, stream);
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
-        table->find(1, d_keys, d_vectors_ptr, d_found, d_metas, stream);
+        table->find(1, d_keys, d_vectors_ptr, d_found, d_scores, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         benchmark::read_from_ptr(d_vectors_ptr, d_vectors, options.dim,
                                  key_num_per_op_warmup, stream);
@@ -328,7 +329,7 @@ float test_one_api(const API_Select api, const size_t dim,
                              key_num_per_op_warmup, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         table->find_or_insert(key_num_per_op_warmup, d_keys, d_vectors_ptr,
-                              d_found, d_metas, stream);
+                              d_found, d_scores, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         CUDA_CHECK(cudaFree(d_vectors_ptr));
         CUDA_CHECK(cudaFree(d_found));
@@ -339,24 +340,24 @@ float test_one_api(const API_Select api, const size_t dim,
       }
     }
   }
-  create_keys_for_hitrate<K, M>(h_keys, h_metas, key_num_per_op, hitrate,
+  create_keys_for_hitrate<K, S>(h_keys, h_scores, key_num_per_op, hitrate,
                                 Hit_Mode::last_insert, start, true /*reset*/);
   CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
                         cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, key_num_per_op * sizeof(M),
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores, key_num_per_op * sizeof(S),
                         cudaMemcpyHostToDevice));
   auto timer = benchmark::Timer<double>();
   switch (api) {
     case API_Select::find: {
       timer.start();
-      table->find(key_num_per_op, d_keys, d_vectors, d_found, d_metas, stream);
+      table->find(key_num_per_op, d_keys, d_vectors, d_found, d_scores, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
       break;
     }
     case API_Select::insert_or_assign: {
       timer.start();
-      table->insert_or_assign(key_num_per_op, d_keys, d_vectors, d_metas,
+      table->insert_or_assign(key_num_per_op, d_keys, d_vectors, d_scores,
                               stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
@@ -364,22 +365,23 @@ float test_one_api(const API_Select api, const size_t dim,
     }
     case API_Select::find_or_insert: {
       timer.start();
-      table->find_or_insert(key_num_per_op, d_keys, d_vectors, d_metas, stream);
+      table->find_or_insert(key_num_per_op, d_keys, d_vectors, d_scores,
+                            stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
       break;
     }
     case API_Select::assign: {
       timer.start();
-      table->assign(key_num_per_op, d_keys, d_def_val, d_metas, stream);
+      table->assign(key_num_per_op, d_keys, d_def_val, d_scores, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
       break;
     }
     case API_Select::insert_and_evict: {
       timer.start();
-      table->insert_and_evict(key_num_per_op, d_keys, d_vectors, d_metas,
-                              d_evict_keys, d_def_val, d_evict_metas, stream);
+      table->insert_and_evict(key_num_per_op, d_keys, d_vectors, d_scores,
+                              d_evict_keys, d_def_val, d_evict_scores, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
       break;
@@ -392,7 +394,7 @@ float test_one_api(const API_Select api, const size_t dim,
 
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.start();
-      table->find(key_num_per_op, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find(key_num_per_op, d_keys, d_vectors_ptr, d_found, d_scores,
                   stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
@@ -412,7 +414,7 @@ float test_one_api(const API_Select api, const size_t dim,
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.start();
       table->find_or_insert(key_num_per_op, d_keys, d_vectors_ptr, d_found,
-                            d_metas, stream);
+                            d_scores, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
       CUDA_CHECK(cudaFree(d_vectors_ptr));
@@ -427,17 +429,17 @@ float test_one_api(const API_Select api, const size_t dim,
   CUDA_CHECK(cudaStreamDestroy(stream));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaFree(d_evict_keys));
-  CUDA_CHECK(cudaFree(d_evict_metas));
+  CUDA_CHECK(cudaFree(d_evict_scores));
 
   CUDA_CHECK(cudaDeviceSynchronize());
   CudaCheckError();

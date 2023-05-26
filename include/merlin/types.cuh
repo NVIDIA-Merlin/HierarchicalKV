@@ -24,13 +24,13 @@ namespace nv {
 namespace merlin {
 
 /**
- * Shorthand for a Key-Value-Meta tuple.
+ * Shorthand for a Key-Value-score tuple.
  */
-template <class K, class V, class M>
+template <class K, class V, class S>
 struct KVM {
   K key;
   V* value;
-  M meta;
+  S score;
 };
 
 constexpr uint64_t EMPTY_KEY = UINT64_C(0xFFFFFFFFFFFFFFFF);
@@ -38,8 +38,8 @@ constexpr uint64_t RECLAIM_KEY = UINT64_C(0xFFFFFFFFFFFFFFFE);
 constexpr uint64_t VACANT_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFE);
 constexpr uint64_t LOCKED_KEY = UINT64_C(0xFFFFFFFFFFFFFFFD);
 constexpr uint64_t RESERVED_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFC);
-constexpr uint64_t MAX_META = UINT64_C(0xFFFFFFFFFFFFFFFF);
-constexpr uint64_t EMPTY_META = UINT64_C(0);
+constexpr uint64_t MAX_SCORE = UINT64_C(0xFFFFFFFFFFFFFFFF);
+constexpr uint64_t EMPTY_SCORE = UINT64_C(0);
 
 #define IS_RESERVED_KEY(key) ((RESERVED_KEY_MASK & (key)) == RESERVED_KEY_MASK)
 #define IS_VACANT_KEY(key) ((VACANT_KEY_MASK & (key)) == VACANT_KEY_MASK)
@@ -47,35 +47,35 @@ constexpr uint64_t EMPTY_META = UINT64_C(0);
 template <class K>
 using AtomicKey = cuda::atomic<K, cuda::thread_scope_device>;
 
-template <class M>
-using AtomicMeta = cuda::atomic<M, cuda::thread_scope_device>;
+template <class S>
+using AtomicScore = cuda::atomic<S, cuda::thread_scope_device>;
 
 template <class T>
 using AtomicPos = cuda::atomic<T, cuda::thread_scope_device>;
 
-template <class K, class V, class M>
+template <class K, class V, class S>
 struct Bucket {
   AtomicKey<K>* keys_;
-  AtomicMeta<M>* metas_;
+  AtomicScore<S>* scores_;
   V* vectors;  // Pinned memory or HBM
 
-  /* For upsert_kernel without user specified metas
-     recording the current meta, the cur_meta will
+  /* For upsert_kernel without user specified scores
+     recording the current score, the cur_score will
      increment by 1 when a new inserting happens. */
-  AtomicMeta<M> cur_meta;
+  AtomicScore<S> cur_score;
 
-  /* min_meta and min_pos is for or upsert_kernel
-     with user specified meta. They record the minimum
-     meta and its pos in the bucket. */
-  AtomicMeta<M> min_meta;
+  /* min_score and min_pos is for or upsert_kernel
+     with user specified score. They record the minimum
+     score and its pos in the bucket. */
+  AtomicScore<S> min_score;
   AtomicPos<int> min_pos;
 
   __forceinline__ __device__ AtomicKey<K>* keys(int index) const {
     return keys_ + index;
   }
 
-  __forceinline__ __device__ AtomicMeta<M>* metas(int index) const {
-    return metas_ + index;
+  __forceinline__ __device__ AtomicScore<S>* scores(int index) const {
+    return scores_ + index;
   }
 };
 
@@ -111,9 +111,9 @@ class Lock {
 
 using Mutex = Lock<cuda::thread_scope_device>;
 
-template <class K, class V, class M>
+template <class K, class V, class S>
 struct Table {
-  Bucket<K, V, M>* buckets;
+  Bucket<K, V, S>* buckets;
   Mutex* locks;                 // mutex for write buckets
   int* buckets_size;            // size of each buckets.
   V** slices;                   // Handles of the HBM/ HMEM slices.
@@ -135,12 +135,12 @@ struct Table {
   int tile_size;
 };
 
-template <class K, class M>
+template <class K, class S>
 using EraseIfPredictInternal =
     bool (*)(const K& key,       ///< iterated key in table
-             M& meta,            ///< iterated meta in table
+             S& score,           ///< iterated score in table
              const K& pattern,   ///< input key from caller
-             const M& threshold  ///< input meta from caller
+             const S& threshold  ///< input score from caller
     );
 
 /**
@@ -151,19 +151,19 @@ using EraseIfPredictInternal =
  * @tparam K The data type of the key.
  * @tparam V The data type of the vector's elements.
  *         The item data type should be a basic data type of C++/CUDA.
- * @tparam M The data type for `meta`.
+ * @tparam S The data type for `score`.
  *           The currently supported data type is only `uint64_t`.
  *
  */
-template <class K, class V, class M>
+template <class K, class V, class S>
 class BaseKVFile {
  public:
   virtual ~BaseKVFile() {}
 
   /**
-   * Read from file and fill into the keys, values, and metas buffer.
+   * Read from file and fill into the keys, values, and scores buffer.
    * When calling save/load method from table, it can assume that the
-   * received buffer of keys, vectors, and metas are automatically
+   * received buffer of keys, vectors, and scores are automatically
    * pre-allocated.
    *
    * @param n The number of KV pairs expect to read. `int64_t` was used
@@ -171,15 +171,15 @@ class BaseKVFile {
    * @param dim The dimension of the `vectors`.
    * @param keys The pointer to received buffer for keys.
    * @param vectors The pointer to received buffer for vectors.
-   * @param metas The pointer to received buffer for metas.
+   * @param scores The pointer to received buffer for scores.
    *
    * @return Number of KV pairs have been successfully read.
    */
   virtual size_t read(const size_t n, const size_t dim, K* keys, V* vectors,
-                      M* metas) = 0;
+                      S* scores) = 0;
 
   /**
-   * Write keys, values, metas from table to the file. It defines
+   * Write keys, values, scores from table to the file. It defines
    * an abstract method to get batch of KV pairs and write them into
    * file.
    *
@@ -188,12 +188,12 @@ class BaseKVFile {
    * @param dim The dimension of the `vectors`.
    * @param keys The keys will be written to file.
    * @param vectors The vectors of values will be written to file.
-   * @param metas The metas will be written to file.
+   * @param scores The scores will be written to file.
    *
    * @return Number of KV pairs have been successfully written.
    */
   virtual size_t write(const size_t n, const size_t dim, const K* keys,
-                       const V* vectors, const M* metas) = 0;
+                       const V* vectors, const S* scores) = 0;
 };
 
 enum class OccupyResult {
@@ -202,8 +202,8 @@ enum class OccupyResult {
   OCCUPIED_EMPTY,  ///< New pair inserted successfully
   OCCUPIED_RECLAIMED,
   DUPLICATE,  ///< Insert did not succeed, key is already present
-  EVICT,      ///< Insert succeeded by evicting one key with minimum meta.
-  REFUSED,    ///< Insert did not succeed, insert meta is too low.
+  EVICT,      ///< Insert succeeded by evicting one key with minimum score.
+  REFUSED,    ///< Insert did not succeed, insert score is too low.
 };
 
 enum class OverrideResult {

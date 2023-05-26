@@ -45,7 +45,7 @@ For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/
 
 ## Usage restrictions
 
-- The `key_type` and `meta_type` must be `uint64_t`.
+- The `key_type` and `score_type` must be `uint64_t`.
 - The keys of `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
 
 ## Contributors

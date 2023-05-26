@@ -99,8 +99,8 @@ uint64_t getTimestamp() {
       .count();
 }
 
-template <class K, class M>
-void create_random_keys(K* h_keys, M* h_metas, int KEY_NUM) {
+template <class K, class S>
+void create_random_keys(K* h_keys, S* h_scores, int KEY_NUM) {
   std::unordered_set<K> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
@@ -112,13 +112,13 @@ void create_random_keys(K* h_keys, M* h_metas, int KEY_NUM) {
   }
   for (const K num : numbers) {
     h_keys[i] = num;
-    h_metas[i] = getTimestamp();
+    h_scores[i] = getTimestamp();
     i++;
   }
 }
 
-template <class K, class M, class V, size_t DIM = 16>
-void create_random_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM,
+template <class K, class S, class V, size_t DIM = 16>
+void create_random_keys(K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
                         size_t range = std::numeric_limits<uint64_t>::max()) {
   std::unordered_set<K> numbers;
   std::random_device rd;
@@ -131,8 +131,8 @@ void create_random_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM,
   }
   for (const K num : numbers) {
     h_keys[i] = num;
-    if (h_metas != nullptr) {
-      h_metas[i] = num;
+    if (h_scores != nullptr) {
+      h_scores[i] = num;
     }
     if (h_vectors != nullptr) {
       for (size_t j = 0; j < DIM; j++) {
@@ -153,12 +153,12 @@ inline uint64_t Murmur3HashHost(const uint64_t& key) {
   return k;
 }
 
-template <class K, class M, class V, size_t DIM = 16>
-void create_continuous_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM,
+template <class K, class S, class V, size_t DIM = 16>
+void create_continuous_keys(K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
                             K start = 1) {
   for (K i = 0; i < KEY_NUM; i++) {
     h_keys[i] = start + static_cast<K>(i);
-    h_metas[i] = h_keys[i];
+    h_scores[i] = h_keys[i];
     if (h_vectors != nullptr) {
       for (size_t j = 0; j < DIM; j++) {
         h_vectors[i * DIM + j] = static_cast<float>(h_keys[i] * 0.00001);
@@ -167,8 +167,8 @@ void create_continuous_keys(K* h_keys, M* h_metas, V* h_vectors, int KEY_NUM,
   }
 }
 
-template <class K, class M, class V, size_t DIM = 16>
-void create_keys_in_one_buckets(K* h_keys, M* h_metas, V* h_vectors,
+template <class K, class S, class V, size_t DIM = 16>
+void create_keys_in_one_buckets(K* h_keys, S* h_scores, V* h_vectors,
                                 int KEY_NUM, int capacity,
                                 int bucket_max_size = 128, int bucket_idx = 0,
                                 K min = 0,
@@ -194,8 +194,8 @@ void create_keys_in_one_buckets(K* h_keys, M* h_metas, V* h_vectors,
   }
   for (const K num : numbers) {
     h_keys[i] = num;
-    if (h_metas != nullptr) {
-      h_metas[i] = num;
+    if (h_scores != nullptr) {
+      h_scores[i] = num;
     }
     for (size_t j = 0; j < DIM; j++) {
       *(h_vectors + i * DIM + j) = static_cast<float>(num * 0.00001);
@@ -332,7 +332,7 @@ struct HostAndDeviceBuffer {
   size_t size_ = 0;
 };
 
-template <typename K, typename V, typename M>
+template <typename K, typename V, typename S>
 struct KVMSBuffer {
  public:
   KVMSBuffer() : len_(0), dim_(0) {}
@@ -340,7 +340,7 @@ struct KVMSBuffer {
   void Reserve(size_t n, size_t dim, cudaStream_t stream = 0) {
     keys.Alloc(n, stream);
     values.Alloc(n * dim, stream);
-    metas.Alloc(n, stream);
+    scores.Alloc(n, stream);
     status.Alloc(n, stream);
     len_ = n;
     dim_ = dim;
@@ -355,7 +355,7 @@ struct KVMSBuffer {
   void Free(cudaStream_t stream = 0) {
     keys.Free(stream);
     values.Free(stream);
-    metas.Free(stream);
+    scores.Free(stream);
     status.Free(stream);
     len_ = 0;
   }
@@ -374,12 +374,12 @@ struct KVMSBuffer {
   void ToZeros(cudaStream_t stream) {
     keys.ToZeros(stream);
     values.ToZeros(stream);
-    metas.ToZeros(stream);
+    scores.ToZeros(stream);
     status.ToZeros(stream);
   }
 
-  void SetMeta(const M meta, cudaStream_t stream) {
-    metas.ToConst(meta, stream);
+  void Setscore(const S score, cudaStream_t stream) {
+    scores.ToConst(score, stream);
   }
 
   K* keys_ptr(bool on_device = true) {
@@ -396,24 +396,24 @@ struct KVMSBuffer {
     return values.h_data;
   }
 
-  M* metas_ptr(bool on_device = true) {
+  S* scores_ptr(bool on_device = true) {
     if (on_device) {
-      return metas.d_data;
+      return scores.d_data;
     }
-    return metas.h_data;
+    return scores.h_data;
   }
 
   void SyncData(bool h2d, cudaStream_t stream = 0) {
     keys.SyncData(h2d, stream);
     values.SyncData(h2d, stream);
-    metas.SyncData(h2d, stream);
+    scores.SyncData(h2d, stream);
     status.SyncData(h2d, stream);
   }
 
  public:
   HostAndDeviceBuffer<K> keys;
   HostAndDeviceBuffer<V> values;
-  HostAndDeviceBuffer<M> metas;
+  HostAndDeviceBuffer<S> scores;
   HostAndDeviceBuffer<bool> status;
   size_t dim_;
   size_t len_;
@@ -449,8 +449,8 @@ bool allEqualGpu(T* a, T* b, size_t n, cudaStream_t stream) {
   return ndiff == 0;
 }
 
-#define TableType nv::merlin::HashTable<K, V, M>
-template <typename K, typename V, typename M>
+#define TableType nv::merlin::HashTable<K, V, S>
+template <typename K, typename V, typename S>
 bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
   size_t size = a->size(stream);
   if (size != b->size(stream)) {
@@ -464,29 +464,30 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
   size_t* d_size = nullptr;
   K* d_keys = nullptr;
   V* d_vectors = nullptr;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   bool* d_founds_in_b = nullptr;
   V* d_vectors_in_b = nullptr;
-  M* d_metas_in_b = nullptr;
+  S* d_scores_in_b = nullptr;
 
   getBufferOnDevice(&d_size, sizeof(size_t), stream);
   getBufferOnDevice(&d_keys, sizeof(K) * size, stream);
   getBufferOnDevice(&d_vectors, sizeof(V) * size * a->dim(), stream);
-  getBufferOnDevice(&d_metas, sizeof(M) * size, stream);
+  getBufferOnDevice(&d_scores, sizeof(S) * size, stream);
   getBufferOnDevice(&d_founds_in_b, sizeof(bool) * size, stream);
   getBufferOnDevice(&d_vectors_in_b, sizeof(V) * size * a->dim(), stream);
-  getBufferOnDevice(&d_metas_in_b, sizeof(M) * size, stream);
+  getBufferOnDevice(&d_scores_in_b, sizeof(S) * size, stream);
 
-  a->export_batch(a->capacity(), 0, d_size, d_keys, d_vectors, d_metas, stream);
-  b->find(size, d_keys, d_vectors_in_b, d_founds_in_b, d_metas_in_b, stream);
+  a->export_batch(a->capacity(), 0, d_size, d_keys, d_vectors, d_scores,
+                  stream);
+  b->find(size, d_keys, d_vectors_in_b, d_founds_in_b, d_scores_in_b, stream);
   if (!allTrueGpu(d_founds_in_b, size, stream)) {
-    CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_metas,
-                       d_founds_in_b, d_vectors_in_b, d_metas_in_b);
+    CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_scores,
+                       d_founds_in_b, d_vectors_in_b, d_scores_in_b);
     return false;
   }
   if (!allEqualGpu(d_vectors, d_vectors_in_b, size * a->dim(), stream)) {
-    CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_metas,
-                       d_founds_in_b, d_vectors_in_b, d_metas_in_b);
+    CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_scores,
+                       d_founds_in_b, d_vectors_in_b, d_scores_in_b);
     return false;
   }
   return true;

@@ -34,25 +34,25 @@
 constexpr size_t DIM = 16;
 using K = uint64_t;
 using V = float;
-using M = uint64_t;
-using Table = nv::merlin::HashTable<K, V, M>;
+using S = uint64_t;
+using Table = nv::merlin::HashTable<K, V, S>;
 using TableOptions = nv::merlin::HashTableOptions;
 
-template <class K, class M>
+template <class K, class S>
 struct EraseIfPredFunctor {
-  __forceinline__ __device__ bool operator()(const K& key, M& meta,
+  __forceinline__ __device__ bool operator()(const K& key, S& score,
                                              const K& pattern,
-                                             const M& threshold) {
-    return ((key & 0x7f > pattern) && (meta > threshold));
+                                             const S& threshold) {
+    return ((key & 0x7f > pattern) && (score > threshold));
   }
 };
 
-template <class K, class M>
+template <class K, class S>
 struct ExportIfPredFunctor {
-  __forceinline__ __device__ bool operator()(const K& key, M& meta,
+  __forceinline__ __device__ bool operator()(const K& key, S& score,
                                              const K& pattern,
-                                             const M& threshold) {
-    return meta > threshold;
+                                             const S& threshold) {
+    return score > threshold;
   }
 };
 
@@ -63,7 +63,7 @@ void test_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 1;
 
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   bool* h_found;
 
@@ -76,31 +76,31 @@ void test_basic(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
 
   CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
 
-  test_util::create_random_keys<K, M, V, DIM>(h_keys, h_metas, h_vectors,
+  test_util::create_random_keys<K, S, V, DIM>(h_keys, h_scores, h_vectors,
                                               KEY_NUM);
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   V* d_new_vectors;
   bool* d_found;
   size_t dump_counter = 0;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_new_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
 
   CUDA_CHECK(
       cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
                         cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors, KEY_NUM * sizeof(V) * options.dim,
                         cudaMemcpyHostToDevice));
@@ -126,7 +126,7 @@ void test_basic(size_t max_hbm_for_vectors) {
 
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -141,7 +141,7 @@ void test_basic(size_t max_hbm_for_vectors) {
     ASSERT_EQ(total_size, KEY_NUM);
 
     CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
-    CUDA_CHECK(cudaMemset(d_metas, 0, KEY_NUM * sizeof(M)));
+    CUDA_CHECK(cudaMemset(d_scores, 0, KEY_NUM * sizeof(S)));
     CUDA_CHECK(cudaMemset(d_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
 
     {
@@ -149,7 +149,7 @@ void test_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas, stream);
+      table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores, stream);
       test_util::read_from_ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                                stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -159,7 +159,7 @@ void test_basic(size_t max_hbm_for_vectors) {
     int found_num = 0;
     CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
                           cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_metas, d_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
@@ -167,7 +167,7 @@ void test_basic(size_t max_hbm_for_vectors) {
 
     for (int i = 0; i < KEY_NUM; i++) {
       if (h_found[i]) found_num++;
-      ASSERT_EQ(h_metas[i], h_keys[i]);
+      ASSERT_EQ(h_scores[i], h_keys[i]);
       for (int j = 0; j < options.dim; j++) {
         ASSERT_EQ(h_vectors[i * options.dim + j],
                   static_cast<float>(h_keys[i] * 0.00001));
@@ -178,7 +178,7 @@ void test_basic(size_t max_hbm_for_vectors) {
     CUDA_CHECK(cudaMemset(d_new_vectors, 2, KEY_NUM * sizeof(V) * options.dim));
     table->assign(KEY_NUM, reinterpret_cast<const K*>(d_keys),
                   reinterpret_cast<const float*>(d_new_vectors),
-                  reinterpret_cast<const M*>(d_metas), stream);
+                  reinterpret_cast<const S*>(d_scores), stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     total_size = table->size(stream);
@@ -192,7 +192,7 @@ void test_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_new_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find(KEY_NUM, d_keys, d_new_vectors, d_found, d_metas, stream);
+      table->find(KEY_NUM, d_keys, d_new_vectors, d_found, d_scores, stream);
       test_util::read_from_ptr(d_vectors_ptr, d_new_vectors, options.dim,
                                KEY_NUM, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -215,7 +215,7 @@ void test_basic(size_t max_hbm_for_vectors) {
     }
     ASSERT_EQ(found_num, KEY_NUM);
 
-    table->accum_or_assign(KEY_NUM, d_keys, d_vectors, d_found, d_metas,
+    table->accum_or_assign(KEY_NUM, d_keys, d_vectors, d_found, d_scores,
                            stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
@@ -240,7 +240,7 @@ void test_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -255,7 +255,7 @@ void test_basic(size_t max_hbm_for_vectors) {
     ASSERT_EQ(total_size, KEY_NUM);
 
     CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
-    CUDA_CHECK(cudaMemset(d_metas, 0, KEY_NUM * sizeof(M)));
+    CUDA_CHECK(cudaMemset(d_scores, 0, KEY_NUM * sizeof(S)));
     CUDA_CHECK(cudaMemset(d_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
 
     {
@@ -263,7 +263,7 @@ void test_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas, stream);
+      table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores, stream);
       test_util::read_from_ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                                stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -275,7 +275,7 @@ void test_basic(size_t max_hbm_for_vectors) {
     found_num = 0;
     CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
                           cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_metas, d_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
@@ -283,7 +283,7 @@ void test_basic(size_t max_hbm_for_vectors) {
 
     for (int i = 0; i < KEY_NUM; i++) {
       if (h_found[i]) found_num++;
-      ASSERT_EQ(h_metas[i], h_keys[i]);
+      ASSERT_EQ(h_scores[i], h_keys[i]);
       for (int j = 0; j < options.dim; j++) {
         ASSERT_EQ(h_vectors[i * options.dim + j],
                   static_cast<float>(h_keys[i] * 0.00001));
@@ -292,10 +292,10 @@ void test_basic(size_t max_hbm_for_vectors) {
     ASSERT_EQ(found_num, KEY_NUM);
 
     CUDA_CHECK(cudaMemset(d_keys, 0, KEY_NUM * sizeof(K)));
-    CUDA_CHECK(cudaMemset(d_metas, 0, KEY_NUM * sizeof(M)));
+    CUDA_CHECK(cudaMemset(d_scores, 0, KEY_NUM * sizeof(S)));
     CUDA_CHECK(cudaMemset(d_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
     dump_counter = table->export_batch(table->capacity(), 0, d_keys, d_vectors,
-                                       d_metas, stream);
+                                       d_scores, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     ASSERT_EQ(dump_counter, KEY_NUM);
@@ -304,10 +304,10 @@ void test_basic(size_t max_hbm_for_vectors) {
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
                           cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_metas, d_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyDeviceToHost));
     for (int i = 0; i < KEY_NUM; i++) {
-      ASSERT_EQ(h_metas[i], h_keys[i]);
+      ASSERT_EQ(h_scores[i], h_keys[i]);
       for (int j = 0; j < options.dim; j++) {
         ASSERT_EQ(h_vectors[i * options.dim + j],
                   static_cast<float>(h_keys[i] * 0.00001));
@@ -317,11 +317,11 @@ void test_basic(size_t max_hbm_for_vectors) {
   CUDA_CHECK(cudaStreamDestroy(stream));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_new_vectors));
   CUDA_CHECK(cudaFree(d_found));
@@ -337,7 +337,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 1;
 
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   bool* h_found;
 
@@ -350,24 +350,24 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
 
   CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
 
-  test_util::create_random_keys<K, M, V, DIM>(h_keys, h_metas, nullptr,
+  test_util::create_random_keys<K, S, V, DIM>(h_keys, h_scores, nullptr,
                                               KEY_NUM);
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   V* d_def_val;
   V** d_vectors_ptr;
   bool* d_found;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_def_val, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
@@ -375,7 +375,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(
       cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
                         cudaMemcpyHostToDevice));
 
   CUDA_CHECK(cudaMemset(d_vectors, 1, KEY_NUM * sizeof(V) * options.dim));
@@ -401,7 +401,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -427,7 +427,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -448,11 +448,11 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
                         cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
@@ -470,7 +470,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128;
 
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   bool* h_found;
 
@@ -486,17 +486,17 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
   table->init(options);
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   bool* d_found;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
 
@@ -505,11 +505,11 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
 
   uint64_t total_size = 0;
   for (int i = 0; i < TEST_TIMES; i++) {
-    test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-        h_keys, h_metas, h_vectors, KEY_NUM, INIT_CAPACITY);
+    test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+        h_keys, h_scores, h_vectors, KEY_NUM, INIT_CAPACITY);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
@@ -527,7 +527,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -543,7 +543,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
     ASSERT_EQ(total_size, BUCKET_MAX_SIZE);
 
     K pattern = 100;
-    M threshold = 0;
+    S threshold = 0;
     size_t erase_num = table->template erase_if<EraseIfPredFunctor>(
         pattern, threshold, stream);
     total_size = table->size(stream);
@@ -557,7 +557,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas, stream);
+      table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores, stream);
       test_util::read_from_ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                                stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -568,11 +568,11 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
     int found_num = 0;
 
     CUDA_CHECK(cudaMemset(h_found, 0, KEY_NUM * sizeof(bool)));
-    CUDA_CHECK(cudaMemset(h_metas, 0, KEY_NUM * sizeof(M)));
+    CUDA_CHECK(cudaMemset(h_scores, 0, KEY_NUM * sizeof(S)));
     CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
     CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
                           cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_metas, d_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
@@ -580,7 +580,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
     for (int i = 0; i < KEY_NUM; i++) {
       if (h_found[i]) {
         found_num++;
-        ASSERT_EQ(h_metas[i], h_keys[i]);
+        ASSERT_EQ(h_scores[i], h_keys[i]);
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors[i * options.dim + j],
                     static_cast<float>(h_keys[i] * 0.00001));
@@ -600,11 +600,11 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
                         cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -619,7 +619,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
   constexpr uint64_t KEY_NUM = BUCKET_MAX_SIZE * 2;
   constexpr uint64_t TEST_TIMES = 100;
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   bool* h_found;
 
@@ -633,18 +633,18 @@ void test_rehash(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   bool* d_found;
   size_t dump_counter = 0;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
 
@@ -655,11 +655,11 @@ void test_rehash(size_t max_hbm_for_vectors) {
   for (int i = 0; i < TEST_TIMES; i++) {
     std::unique_ptr<Table> table = std::make_unique<Table>();
     table->init(options);
-    test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-        h_keys, h_metas, h_vectors, KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE);
+    test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+        h_keys, h_scores, h_vectors, KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
@@ -677,7 +677,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -693,7 +693,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
     ASSERT_EQ(total_size, KEY_NUM);
 
     dump_counter = table->export_batch(table->capacity(), 0, d_keys, d_vectors,
-                                       d_metas, stream);
+                                       d_scores, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ(dump_counter, KEY_NUM);
 
@@ -711,7 +711,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, BUCKET_MAX_SIZE * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim,
                            BUCKET_MAX_SIZE, stream);
-      table->find(BUCKET_MAX_SIZE, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find(BUCKET_MAX_SIZE, d_keys, d_vectors_ptr, d_found, d_scores,
                   stream);
       test_util::read_from_ptr(d_vectors_ptr, d_vectors, options.dim,
                                BUCKET_MAX_SIZE, stream);
@@ -722,13 +722,13 @@ void test_rehash(size_t max_hbm_for_vectors) {
     int found_num = 0;
 
     CUDA_CHECK(cudaMemset(h_found, 0, KEY_NUM * sizeof(bool)));
-    CUDA_CHECK(cudaMemset(h_metas, 0, KEY_NUM * sizeof(M)));
+    CUDA_CHECK(cudaMemset(h_scores, 0, KEY_NUM * sizeof(S)));
     CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
     CUDA_CHECK(cudaMemcpy(h_keys, d_keys, KEY_NUM * sizeof(K),
                           cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
                           cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_metas, d_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
@@ -736,7 +736,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
     for (int i = 0; i < BUCKET_MAX_SIZE; i++) {
       if (h_found[i]) {
         found_num++;
-        ASSERT_EQ(h_metas[i], h_keys[i]);
+        ASSERT_EQ(h_scores[i], h_keys[i]);
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors[i * options.dim + j],
                     static_cast<float>(h_keys[i] * 0.00001));
@@ -756,11 +756,11 @@ void test_rehash(size_t max_hbm_for_vectors) {
                         cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -774,7 +774,7 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_KEY_NUM = 1024;
   constexpr uint64_t KEY_NUM = 2048;
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   bool* h_found;
 
@@ -789,18 +789,18 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   bool* d_found;
   size_t dump_counter = 0;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
 
@@ -812,12 +812,12 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
 
-  test_util::create_random_keys<K, M, V, DIM>(h_keys, h_metas, h_vectors,
+  test_util::create_random_keys<K, S, V, DIM>(h_keys, h_scores, h_vectors,
                                               KEY_NUM);
 
   CUDA_CHECK(
       cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
                         cudaMemcpyHostToDevice));
   CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors, KEY_NUM * sizeof(V) * options.dim,
                         cudaMemcpyHostToDevice));
@@ -834,8 +834,8 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
     CUDA_CHECK(cudaMalloc(&d_vectors_ptr, INIT_KEY_NUM * sizeof(V*)));
     test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, INIT_KEY_NUM,
                          stream);
-    table->find_or_insert(INIT_KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
-                          stream);
+    table->find_or_insert(INIT_KEY_NUM, d_keys, d_vectors_ptr, d_found,
+                          d_scores, stream);
     test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found, options.dim,
                                  INIT_KEY_NUM, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -858,7 +858,7 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
     CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
     test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                          stream);
-    table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+    table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                           stream);
     test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found, options.dim,
                                  KEY_NUM, stream);
@@ -876,18 +876,18 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   ASSERT_EQ(table->capacity(), KEY_NUM * 4);
 
   dump_counter = table->export_batch(table->capacity(), 0, d_keys, d_vectors,
-                                     d_metas, stream);
+                                     d_scores, stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
   ASSERT_EQ(dump_counter, expected_size);
 
   CUDA_CHECK(cudaMemset(d_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
-  CUDA_CHECK(cudaMemset(d_metas, 0, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMemset(d_scores, 0, KEY_NUM * sizeof(S)));
   {
     V** d_vectors_ptr = nullptr;
     CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
     test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                          stream);
-    table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas, stream);
+    table->find(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores, stream);
     test_util::read_from_ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                              stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -897,20 +897,20 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   int found_num = 0;
 
   CUDA_CHECK(cudaMemset(h_found, 0, KEY_NUM * sizeof(bool)));
-  CUDA_CHECK(cudaMemset(h_metas, 0, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMemset(h_scores, 0, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(
       cudaMemcpy(h_keys, d_keys, KEY_NUM * sizeof(K), cudaMemcpyDeviceToHost));
   CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
                         cudaMemcpyDeviceToHost));
-  CUDA_CHECK(cudaMemcpy(h_metas, d_metas, KEY_NUM * sizeof(M),
+  CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
                         cudaMemcpyDeviceToHost));
   CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors, KEY_NUM * sizeof(V) * options.dim,
                         cudaMemcpyDeviceToHost));
   for (int i = 0; i < KEY_NUM; i++) {
     if (h_found[i]) {
       found_num++;
-      ASSERT_EQ(h_metas[i], h_keys[i]);
+      ASSERT_EQ(h_scores[i], h_keys[i]);
       for (int j = 0; j < options.dim; j++) {
         ASSERT_EQ(h_vectors[i * options.dim + j],
                   static_cast<float>(h_keys[i] * 0.00001));
@@ -929,11 +929,11 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
                         cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -986,7 +986,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
     CUDA_CHECK(cudaStreamCreate(&stream));
 
     while (table->capacity() < MAX_CAPACITY) {
-      test_util::create_random_keys<K, M, V, DIM>(h_keys, nullptr, h_vectors,
+      test_util::create_random_keys<K, S, V, DIM>(h_keys, nullptr, h_vectors,
                                                   KEY_NUM);
       CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
                             cudaMemcpyHostToDevice));
@@ -1093,7 +1093,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
 
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   size_t h_dump_counter = 0;
 
@@ -1109,11 +1109,11 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   table->init(options);
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   bool* d_found;
   size_t* d_dump_counter;
@@ -1121,7 +1121,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   bool* h_found;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
   CUDA_CHECK(cudaMalloc(&d_dump_counter, sizeof(size_t)));
@@ -1133,12 +1133,12 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
 
   uint64_t total_size = 0;
   for (int i = 0; i < TEST_TIMES; i++) {
-    test_util::create_random_keys<K, M, V, DIM>(h_keys, h_metas, h_vectors,
+    test_util::create_random_keys<K, S, V, DIM>(h_keys, h_scores, h_vectors,
                                                 KEY_NUM);
 
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
@@ -1155,7 +1155,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -1208,11 +1208,11 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
     ASSERT_EQ(found_num, KEY_NUM);
 
     K pattern = 100;
-    M threshold = h_metas[size_t(KEY_NUM / 2)];
+    S threshold = h_scores[size_t(KEY_NUM / 2)];
 
     table->template export_batch_if<ExportIfPredFunctor>(
         pattern, threshold, table->capacity(), 0, d_dump_counter, d_keys,
-        d_vectors, d_metas, stream);
+        d_vectors, d_scores, stream);
 
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaMemcpy(&h_dump_counter, d_dump_counter, sizeof(size_t),
@@ -1220,24 +1220,24 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
 
     size_t expected_export_count = 0;
     for (int i = 0; i < KEY_NUM; i++) {
-      if (h_metas[i] > threshold) expected_export_count++;
+      if (h_scores[i] > threshold) expected_export_count++;
     }
     ASSERT_EQ(expected_export_count, h_dump_counter);
 
     CUDA_CHECK(cudaMemset(h_keys, 0, KEY_NUM * sizeof(K)));
-    CUDA_CHECK(cudaMemset(h_metas, 0, KEY_NUM * sizeof(M)));
+    CUDA_CHECK(cudaMemset(h_scores, 0, KEY_NUM * sizeof(S)));
     CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
 
     CUDA_CHECK(cudaMemcpy(h_keys, d_keys, KEY_NUM * sizeof(K),
                           cudaMemcpyDeviceToHost));
-    CUDA_CHECK(cudaMemcpy(h_metas, d_metas, KEY_NUM * sizeof(M),
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
                           cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
                           cudaMemcpyDeviceToHost));
 
     for (int i = 0; i < h_dump_counter; i++) {
-      ASSERT_GT(h_metas[i], threshold);
+      ASSERT_GT(h_scores[i], threshold);
       for (int j = 0; j < options.dim; j++) {
         ASSERT_EQ(h_vectors[i * options.dim + j],
                   static_cast<float>(h_keys[i] * 0.00001));
@@ -1256,11 +1256,11 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
                         cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_found));
   CUDA_CHECK(cudaFree(d_dump_counter));
@@ -1276,7 +1276,7 @@ void test_basic_for_cpu_io() {
   constexpr uint64_t TEST_TIMES = 1;
 
   K* h_keys;
-  M* h_metas;
+  S* h_scores;
   V* h_vectors;
   bool* h_found;
 
@@ -1290,17 +1290,17 @@ void test_basic_for_cpu_io() {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMallocHost(&h_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
 
   CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
 
-  test_util::create_random_keys<K, M, V, DIM>(h_keys, h_metas, nullptr,
+  test_util::create_random_keys<K, S, V, DIM>(h_keys, h_scores, nullptr,
                                               KEY_NUM);
 
   K* d_keys;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   V* d_vectors;
   V* d_def_val;
   V** d_vectors_ptr;
@@ -1308,7 +1308,7 @@ void test_basic_for_cpu_io() {
   size_t dump_counter = 0;
 
   CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas, KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_def_val, KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
@@ -1316,7 +1316,7 @@ void test_basic_for_cpu_io() {
 
   CUDA_CHECK(
       cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_metas, h_metas, KEY_NUM * sizeof(M),
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
                         cudaMemcpyHostToDevice));
 
   CUDA_CHECK(cudaMemset(d_vectors, 1, KEY_NUM * sizeof(V) * options.dim));
@@ -1342,7 +1342,7 @@ void test_basic_for_cpu_io() {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -1358,7 +1358,7 @@ void test_basic_for_cpu_io() {
     ASSERT_EQ(total_size, KEY_NUM);
 
     CUDA_CHECK(cudaMemset(d_vectors, 2, KEY_NUM * sizeof(V) * options.dim));
-    table->assign(KEY_NUM, d_keys, d_vectors, d_metas, stream);
+    table->assign(KEY_NUM, d_keys, d_vectors, d_scores, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     total_size = table->size(stream);
@@ -1387,7 +1387,7 @@ void test_basic_for_cpu_io() {
     }
     ASSERT_EQ(found_num, KEY_NUM);
 
-    table->accum_or_assign(KEY_NUM, d_keys, d_vectors, d_found, d_metas,
+    table->accum_or_assign(KEY_NUM, d_keys, d_vectors, d_found, d_scores,
                            stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
@@ -1412,7 +1412,7 @@ void test_basic_for_cpu_io() {
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
-      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_metas,
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
                             stream);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
@@ -1422,7 +1422,7 @@ void test_basic_for_cpu_io() {
     }
 
     dump_counter = table->export_batch(table->capacity(), 0, d_keys, d_vectors,
-                                       d_metas, stream);
+                                       d_scores, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ(dump_counter, KEY_NUM);
   }
@@ -1432,11 +1432,11 @@ void test_basic_for_cpu_io() {
                         cudaMemcpyDeviceToHost));
 
   CUDA_CHECK(cudaFreeHost(h_keys));
-  CUDA_CHECK(cudaFreeHost(h_metas));
+  CUDA_CHECK(cudaFreeHost(h_scores));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_metas));
+  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
@@ -1465,32 +1465,32 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kLru;
 
   std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<M, BASE_KEY_NUM> h_metas_base;
+  std::array<S, BASE_KEY_NUM> h_scores_base;
   std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
 
   std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<M, TEST_KEY_NUM> h_metas_test;
+  std::array<S, TEST_KEY_NUM> h_scores_test;
   std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
 
   std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<M, TEMP_KEY_NUM> h_metas_temp;
+  std::array<S, TEMP_KEY_NUM> h_scores_temp;
   std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
 
   K* d_keys_temp;
-  M* d_metas_temp = nullptr;
+  S* d_scores_temp = nullptr;
   V* d_vectors_temp;
 
   CUDA_CHECK(cudaMalloc(&d_keys_temp, TEMP_KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas_temp, TEMP_KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores_temp, TEMP_KEY_NUM * sizeof(S)));
   CUDA_CHECK(
       cudaMalloc(&d_vectors_temp, TEMP_KEY_NUM * sizeof(V) * options.dim));
 
-  test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-      h_keys_base.data(), h_metas_base.data(), h_vectors_base.data(),
+  test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+      h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
 
-  test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-      h_keys_test.data(), h_metas_test.data(), h_vectors_test.data(),
+  test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+      h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
       TEST_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0x3FFFFFFFFFFFFFFF,
       0xFFFFFFFFFFFFFFFD);
 
@@ -1517,8 +1517,8 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
     {
       CUDA_CHECK(cudaMemcpy(d_keys_temp, h_keys_base.data(),
                             BASE_KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-      CUDA_CHECK(cudaMemcpy(d_metas_temp, h_metas_base.data(),
-                            BASE_KEY_NUM * sizeof(M), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_scores_temp, h_scores_base.data(),
+                            BASE_KEY_NUM * sizeof(S), cudaMemcpyHostToDevice));
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_base.data(),
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
@@ -1546,22 +1546,22 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
       ASSERT_EQ(total_size, BUCKET_MAX_SIZE);
 
       dump_counter = table->export_batch(table->capacity(), 0, d_keys_temp,
-                                         d_vectors_temp, d_metas_temp, stream);
+                                         d_vectors_temp, d_scores_temp, stream);
       ASSERT_EQ(dump_counter, BUCKET_MAX_SIZE);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp.data(), d_keys_temp,
                             BASE_KEY_NUM * sizeof(K), cudaMemcpyDefault));
-      CUDA_CHECK(cudaMemcpy(h_metas_temp.data(), d_metas_temp,
-                            BASE_KEY_NUM * sizeof(M), cudaMemcpyDefault));
+      CUDA_CHECK(cudaMemcpy(h_scores_temp.data(), d_scores_temp,
+                            BASE_KEY_NUM * sizeof(S), cudaMemcpyDefault));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp.data(), d_vectors_temp,
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
-      std::array<M, BASE_KEY_NUM> h_metas_temp_sorted(h_metas_temp);
-      std::sort(h_metas_temp_sorted.begin(), h_metas_temp_sorted.end());
+      std::array<S, BASE_KEY_NUM> h_scores_temp_sorted(h_scores_temp);
+      std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
       ASSERT_TRUE(
-          (h_metas_temp_sorted == test_util::range<M, TEMP_KEY_NUM>(1)));
+          (h_scores_temp_sorted == test_util::range<S, TEMP_KEY_NUM>(1)));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -1573,8 +1573,8 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
     {
       CUDA_CHECK(cudaMemcpy(d_keys_temp, h_keys_test.data(),
                             TEST_KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-      CUDA_CHECK(cudaMemcpy(d_metas_temp, h_metas_test.data(),
-                            TEST_KEY_NUM * sizeof(M), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_scores_temp, h_scores_test.data(),
+                            TEST_KEY_NUM * sizeof(S), cudaMemcpyHostToDevice));
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_test.data(),
                             TEST_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
@@ -1603,32 +1603,33 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
       ASSERT_EQ(total_size, BUCKET_MAX_SIZE);
 
       dump_counter = table->export_batch(table->capacity(), 0, d_keys_temp,
-                                         d_vectors_temp, d_metas_temp, stream);
+                                         d_vectors_temp, d_scores_temp, stream);
       ASSERT_EQ(dump_counter, BUCKET_MAX_SIZE);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp.data(), d_keys_temp,
                             TEMP_KEY_NUM * sizeof(K), cudaMemcpyDefault));
-      CUDA_CHECK(cudaMemcpy(h_metas_temp.data(), d_metas_temp,
-                            TEMP_KEY_NUM * sizeof(M), cudaMemcpyDefault));
+      CUDA_CHECK(cudaMemcpy(h_scores_temp.data(), d_scores_temp,
+                            TEMP_KEY_NUM * sizeof(S), cudaMemcpyDefault));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp.data(), d_vectors_temp,
                             TEMP_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
-      std::array<M, TEST_KEY_NUM> h_metas_temp_sorted;
+      std::array<S, TEST_KEY_NUM> h_scores_temp_sorted;
       int ctr = 0;
       for (int i = 0; i < TEMP_KEY_NUM; i++) {
         if (h_keys_test.end() !=
             std::find(h_keys_test.begin(), h_keys_test.end(), h_keys_temp[i])) {
-          ASSERT_GT(h_metas_temp[i], BUCKET_MAX_SIZE);
-          h_metas_temp_sorted[ctr++] = h_metas_temp[i];
+          ASSERT_GT(h_scores_temp[i], BUCKET_MAX_SIZE);
+          h_scores_temp_sorted[ctr++] = h_scores_temp[i];
         } else {
-          ASSERT_LE(h_metas_temp[i], BUCKET_MAX_SIZE);
+          ASSERT_LE(h_scores_temp[i], BUCKET_MAX_SIZE);
         }
       }
-      std::sort(h_metas_temp_sorted.begin(), h_metas_temp_sorted.begin() + ctr);
+      std::sort(h_scores_temp_sorted.begin(),
+                h_scores_temp_sorted.begin() + ctr);
 
-      ASSERT_TRUE((h_metas_temp_sorted ==
-                   test_util::range<M, TEST_KEY_NUM>(BUCKET_MAX_SIZE + 1)));
+      ASSERT_TRUE((h_scores_temp_sorted ==
+                   test_util::range<S, TEST_KEY_NUM>(BUCKET_MAX_SIZE + 1)));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -1640,7 +1641,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   CUDA_CHECK(cudaStreamDestroy(stream));
 
   CUDA_CHECK(cudaFree(d_keys_temp));
-  CUDA_CHECK(cudaFree(d_metas_temp));
+  CUDA_CHECK(cudaFree(d_scores_temp));
   CUDA_CHECK(cudaFree(d_vectors_temp));
 
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -1667,42 +1668,42 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<M, BASE_KEY_NUM> h_metas_base;
+  std::array<S, BASE_KEY_NUM> h_scores_base;
   std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
 
   std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<M, TEST_KEY_NUM> h_metas_test;
+  std::array<S, TEST_KEY_NUM> h_scores_test;
   std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
 
   std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<M, TEMP_KEY_NUM> h_metas_temp;
+  std::array<S, TEMP_KEY_NUM> h_scores_temp;
   std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
 
   K* d_keys_temp;
-  M* d_metas_temp = nullptr;
+  S* d_scores_temp = nullptr;
   V* d_vectors_temp;
 
   CUDA_CHECK(cudaMalloc(&d_keys_temp, TEMP_KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas_temp, TEMP_KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores_temp, TEMP_KEY_NUM * sizeof(S)));
   CUDA_CHECK(
       cudaMalloc(&d_vectors_temp, TEMP_KEY_NUM * sizeof(V) * options.dim));
 
-  test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-      h_keys_base.data(), h_metas_base.data(), h_vectors_base.data(),
+  test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+      h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
 
-  const M base_meta_start = 1000;
+  const S base_score_start = 1000;
   for (int i = 0; i < BASE_KEY_NUM; i++) {
-    h_metas_base[i] = base_meta_start + i;
+    h_scores_base[i] = base_score_start + i;
   }
 
-  test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-      h_keys_test.data(), h_metas_test.data(), h_vectors_test.data(),
+  test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+      h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
       TEST_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0x3FFFFFFFFFFFFFFF,
       0xFFFFFFFFFFFFFFFD);
-  const M test_meta_start = base_meta_start + BASE_KEY_NUM;
+  const S test_score_start = base_score_start + BASE_KEY_NUM;
   for (int i = 0; i < TEST_KEY_NUM; i++) {
-    h_metas_test[i] = test_meta_start + i;
+    h_scores_test[i] = test_score_start + i;
   }
   for (int i = 64; i < TEST_KEY_NUM; i++) {
     h_keys_test[i] = h_keys_base[i];
@@ -1727,8 +1728,8 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
     {
       CUDA_CHECK(cudaMemcpy(d_keys_temp, h_keys_base.data(),
                             BASE_KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-      CUDA_CHECK(cudaMemcpy(d_metas_temp, h_metas_base.data(),
-                            BASE_KEY_NUM * sizeof(M), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_scores_temp, h_scores_base.data(),
+                            BASE_KEY_NUM * sizeof(S), cudaMemcpyHostToDevice));
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_base.data(),
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
@@ -1740,7 +1741,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
         test_util::array2ptr(d_vectors_ptr, d_vectors_temp, options.dim,
                              BASE_KEY_NUM, stream);
         table->find_or_insert(BASE_KEY_NUM, d_keys_temp, d_vectors_ptr, d_found,
-                              d_metas_temp, stream);
+                              d_scores_temp, stream);
         test_util::read_or_write_ptr(d_vectors_ptr, d_vectors_temp, d_found,
                                      options.dim, BASE_KEY_NUM, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -1755,22 +1756,22 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
       ASSERT_EQ(total_size, BUCKET_MAX_SIZE);
 
       dump_counter = table->export_batch(table->capacity(), 0, d_keys_temp,
-                                         d_vectors_temp, d_metas_temp, stream);
+                                         d_vectors_temp, d_scores_temp, stream);
       ASSERT_EQ(dump_counter, BUCKET_MAX_SIZE);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp.data(), d_keys_temp,
                             BASE_KEY_NUM * sizeof(K), cudaMemcpyDefault));
-      CUDA_CHECK(cudaMemcpy(h_metas_temp.data(), d_metas_temp,
-                            BASE_KEY_NUM * sizeof(M), cudaMemcpyDefault));
+      CUDA_CHECK(cudaMemcpy(h_scores_temp.data(), d_scores_temp,
+                            BASE_KEY_NUM * sizeof(S), cudaMemcpyDefault));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp.data(), d_vectors_temp,
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
-      std::array<M, BASE_KEY_NUM> h_metas_temp_sorted(h_metas_temp);
-      std::sort(h_metas_temp_sorted.begin(), h_metas_temp_sorted.end());
+      std::array<S, BASE_KEY_NUM> h_scores_temp_sorted(h_scores_temp);
+      std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
-      ASSERT_TRUE((h_metas_temp_sorted ==
-                   test_util::range<M, TEMP_KEY_NUM>(base_meta_start)));
+      ASSERT_TRUE((h_scores_temp_sorted ==
+                   test_util::range<S, TEMP_KEY_NUM>(base_score_start)));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -1782,12 +1783,12 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
     {
       CUDA_CHECK(cudaMemcpy(d_keys_temp, h_keys_test.data(),
                             TEST_KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-      CUDA_CHECK(cudaMemcpy(d_metas_temp, h_metas_test.data(),
-                            TEST_KEY_NUM * sizeof(M), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_scores_temp, h_scores_test.data(),
+                            TEST_KEY_NUM * sizeof(S), cudaMemcpyHostToDevice));
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_test.data(),
                             TEST_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
-      table->assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp, d_metas_temp,
+      table->assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp, d_scores_temp,
                     stream);
       {
         V** d_vectors_ptr = nullptr;
@@ -1797,7 +1798,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
         test_util::array2ptr(d_vectors_ptr, d_vectors_temp, options.dim,
                              TEST_KEY_NUM, stream);
         table->find_or_insert(TEST_KEY_NUM, d_keys_temp, d_vectors_ptr, d_found,
-                              d_metas_temp, stream);
+                              d_scores_temp, stream);
         test_util::read_or_write_ptr(d_vectors_ptr, d_vectors_temp, d_found,
                                      options.dim, TEST_KEY_NUM, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -1812,22 +1813,22 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
       ASSERT_EQ(total_size, BUCKET_MAX_SIZE);
 
       dump_counter = table->export_batch(table->capacity(), 0, d_keys_temp,
-                                         d_vectors_temp, d_metas_temp, stream);
+                                         d_vectors_temp, d_scores_temp, stream);
       ASSERT_EQ(dump_counter, BUCKET_MAX_SIZE);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp.data(), d_keys_temp,
                             TEMP_KEY_NUM * sizeof(K), cudaMemcpyDefault));
-      CUDA_CHECK(cudaMemcpy(h_metas_temp.data(), d_metas_temp,
-                            TEMP_KEY_NUM * sizeof(M), cudaMemcpyDefault));
+      CUDA_CHECK(cudaMemcpy(h_scores_temp.data(), d_scores_temp,
+                            TEMP_KEY_NUM * sizeof(S), cudaMemcpyDefault));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp.data(), d_vectors_temp,
                             TEMP_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
-      std::array<M, TEST_KEY_NUM> h_metas_temp_sorted(h_metas_temp);
-      std::sort(h_metas_temp_sorted.begin(), h_metas_temp_sorted.end());
+      std::array<S, TEST_KEY_NUM> h_scores_temp_sorted(h_scores_temp);
+      std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
-      ASSERT_TRUE((h_metas_temp_sorted ==
-                   test_util::range<M, TEST_KEY_NUM>(test_meta_start)));
+      ASSERT_TRUE((h_scores_temp_sorted ==
+                   test_util::range<S, TEST_KEY_NUM>(test_score_start)));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -1839,7 +1840,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
   CUDA_CHECK(cudaStreamDestroy(stream));
 
   CUDA_CHECK(cudaFree(d_keys_temp));
-  CUDA_CHECK(cudaFree(d_metas_temp));
+  CUDA_CHECK(cudaFree(d_scores_temp));
   CUDA_CHECK(cudaFree(d_vectors_temp));
 
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -1866,37 +1867,37 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<M, BASE_KEY_NUM> h_metas_base;
+  std::array<S, BASE_KEY_NUM> h_scores_base;
   std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
 
   std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<M, TEST_KEY_NUM> h_metas_test;
+  std::array<S, TEST_KEY_NUM> h_scores_test;
   std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
 
   std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<M, TEMP_KEY_NUM> h_metas_temp;
+  std::array<S, TEMP_KEY_NUM> h_scores_temp;
   std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
 
   K* d_keys_temp;
-  M* d_metas_temp = nullptr;
+  S* d_scores_temp = nullptr;
   V* d_vectors_temp;
 
   CUDA_CHECK(cudaMalloc(&d_keys_temp, TEMP_KEY_NUM * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas_temp, TEMP_KEY_NUM * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores_temp, TEMP_KEY_NUM * sizeof(S)));
   CUDA_CHECK(
       cudaMalloc(&d_vectors_temp, TEMP_KEY_NUM * sizeof(V) * options.dim));
 
-  test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-      h_keys_base.data(), h_metas_base.data(), h_vectors_base.data(),
+  test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+      h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
 
-  const M base_meta_start = 1000;
+  const S base_score_start = 1000;
   for (int i = 0; i < BASE_KEY_NUM; i++) {
-    h_metas_base[i] = base_meta_start + i;
+    h_scores_base[i] = base_score_start + i;
   }
 
-  test_util::create_keys_in_one_buckets<K, M, V, DIM>(
-      h_keys_test.data(), h_metas_test.data(), h_vectors_test.data(),
+  test_util::create_keys_in_one_buckets<K, S, V, DIM>(
+      h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
       TEST_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0x3FFFFFFFFFFFFFFF,
       0xFFFFFFFFFFFFFFFD);
 
@@ -1905,17 +1906,17 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   h_keys_test[6] = h_keys_base[74];
   h_keys_test[7] = h_keys_base[75];
 
-  // replace four new keys to lower metas, would not be inserted.
-  h_metas_test[0] = 20;
-  h_metas_test[1] = 78;
-  h_metas_test[2] = 97;
-  h_metas_test[3] = 98;
+  // replace four new keys to lower scores, would not be inserted.
+  h_scores_test[0] = 20;
+  h_scores_test[1] = 78;
+  h_scores_test[2] = 97;
+  h_scores_test[3] = 98;
 
-  // replace three exist keys to new metas, just refresh the meta for them.
-  h_metas_test[4] = 99;
-  h_metas_test[5] = 1010;
-  h_metas_test[6] = 1020;
-  h_metas_test[7] = 1035;
+  // replace three exist keys to new scores, just refresh the score for them.
+  h_scores_test[4] = 99;
+  h_scores_test[5] = 1010;
+  h_scores_test[6] = 1020;
+  h_scores_test[7] = 1035;
 
   for (int i = 4; i < TEST_KEY_NUM; i++) {
     for (int j = 0; j < options.dim; j++) {
@@ -1940,8 +1941,8 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
     {
       CUDA_CHECK(cudaMemcpy(d_keys_temp, h_keys_base.data(),
                             BASE_KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-      CUDA_CHECK(cudaMemcpy(d_metas_temp, h_metas_base.data(),
-                            BASE_KEY_NUM * sizeof(M), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_scores_temp, h_scores_base.data(),
+                            BASE_KEY_NUM * sizeof(S), cudaMemcpyHostToDevice));
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_base.data(),
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
@@ -1953,7 +1954,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
         test_util::array2ptr(d_vectors_ptr, d_vectors_temp, options.dim,
                              BASE_KEY_NUM, stream);
         table->find_or_insert(BASE_KEY_NUM, d_keys_temp, d_vectors_ptr, d_found,
-                              d_metas_temp, stream);
+                              d_scores_temp, stream);
         test_util::read_or_write_ptr(d_vectors_ptr, d_vectors_temp, d_found,
                                      options.dim, BASE_KEY_NUM, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -1968,22 +1969,22 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
       ASSERT_EQ(total_size, BUCKET_MAX_SIZE);
 
       dump_counter = table->export_batch(table->capacity(), 0, d_keys_temp,
-                                         d_vectors_temp, d_metas_temp, stream);
+                                         d_vectors_temp, d_scores_temp, stream);
       ASSERT_EQ(dump_counter, BUCKET_MAX_SIZE);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp.data(), d_keys_temp,
                             BASE_KEY_NUM * sizeof(K), cudaMemcpyDefault));
-      CUDA_CHECK(cudaMemcpy(h_metas_temp.data(), d_metas_temp,
-                            BASE_KEY_NUM * sizeof(M), cudaMemcpyDefault));
+      CUDA_CHECK(cudaMemcpy(h_scores_temp.data(), d_scores_temp,
+                            BASE_KEY_NUM * sizeof(S), cudaMemcpyDefault));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp.data(), d_vectors_temp,
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
-      std::array<M, BASE_KEY_NUM> h_metas_temp_sorted(h_metas_temp);
-      std::sort(h_metas_temp_sorted.begin(), h_metas_temp_sorted.end());
+      std::array<S, BASE_KEY_NUM> h_scores_temp_sorted(h_scores_temp);
+      std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
-      ASSERT_TRUE((h_metas_temp_sorted ==
-                   test_util::range<M, TEMP_KEY_NUM>(base_meta_start)));
+      ASSERT_TRUE((h_scores_temp_sorted ==
+                   test_util::range<S, TEMP_KEY_NUM>(base_score_start)));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -1995,12 +1996,12 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
     {
       CUDA_CHECK(cudaMemcpy(d_keys_temp, h_keys_test.data(),
                             TEST_KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
-      CUDA_CHECK(cudaMemcpy(d_metas_temp, h_metas_test.data(),
-                            TEST_KEY_NUM * sizeof(M), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(d_scores_temp, h_scores_test.data(),
+                            TEST_KEY_NUM * sizeof(S), cudaMemcpyHostToDevice));
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_test.data(),
                             TEST_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
-      table->assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp, d_metas_temp,
+      table->assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp, d_scores_temp,
                     stream);
       {
         V** d_vectors_ptr = nullptr;
@@ -2010,7 +2011,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
         test_util::array2ptr(d_vectors_ptr, d_vectors_temp, options.dim,
                              TEST_KEY_NUM, stream);
         table->find_or_insert(TEST_KEY_NUM, d_keys_temp, d_vectors_ptr, d_found,
-                              d_metas_temp, stream);
+                              d_scores_temp, stream);
         test_util::read_or_write_ptr(d_vectors_ptr, d_vectors_temp, d_found,
                                      options.dim, TEST_KEY_NUM, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -2025,13 +2026,13 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
       ASSERT_EQ(total_size, BUCKET_MAX_SIZE);
 
       dump_counter = table->export_batch(table->capacity(), 0, d_keys_temp,
-                                         d_vectors_temp, d_metas_temp, stream);
+                                         d_vectors_temp, d_scores_temp, stream);
       ASSERT_EQ(dump_counter, BUCKET_MAX_SIZE);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp.data(), d_keys_temp,
                             TEMP_KEY_NUM * sizeof(K), cudaMemcpyDefault));
-      CUDA_CHECK(cudaMemcpy(h_metas_temp.data(), d_metas_temp,
-                            TEMP_KEY_NUM * sizeof(M), cudaMemcpyDefault));
+      CUDA_CHECK(cudaMemcpy(h_scores_temp.data(), d_scores_temp,
+                            TEMP_KEY_NUM * sizeof(S), cudaMemcpyDefault));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp.data(), d_vectors_temp,
                             TEMP_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
@@ -2049,13 +2050,13 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
       }
       for (int i = 0; i < TEMP_KEY_NUM; i++) {
         if (h_keys_temp[i] == h_keys_test[4])
-          ASSERT_EQ(h_metas_temp[i], h_metas_test[4]);
+          ASSERT_EQ(h_scores_temp[i], h_scores_test[4]);
         if (h_keys_temp[i] == h_keys_test[5])
-          ASSERT_EQ(h_metas_temp[i], h_metas_test[5]);
+          ASSERT_EQ(h_scores_temp[i], h_scores_test[5]);
         if (h_keys_temp[i] == h_keys_test[6])
-          ASSERT_EQ(h_metas_temp[i], h_metas_test[6]);
+          ASSERT_EQ(h_scores_temp[i], h_scores_test[6]);
         if (h_keys_temp[i] == h_keys_test[7])
-          ASSERT_EQ(h_metas_temp[i], h_metas_test[7]);
+          ASSERT_EQ(h_scores_temp[i], h_scores_test[7]);
 
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -2067,7 +2068,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   CUDA_CHECK(cudaStreamDestroy(stream));
 
   CUDA_CHECK(cudaFree(d_keys_temp));
-  CUDA_CHECK(cudaFree(d_metas_temp));
+  CUDA_CHECK(cudaFree(d_scores_temp));
   CUDA_CHECK(cudaFree(d_vectors_temp));
 
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -2095,20 +2096,20 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
   K* h_keys_base = test_util::HostBuffer<K>(BATCH_SIZE).ptr();
-  M* h_metas_base = test_util::HostBuffer<M>(BATCH_SIZE).ptr();
+  S* h_scores_base = test_util::HostBuffer<S>(BATCH_SIZE).ptr();
   V* h_vectors_base = test_util::HostBuffer<V>(BATCH_SIZE * options.dim).ptr();
 
   K* h_keys_temp = test_util::HostBuffer<K>(MAX_CAPACITY).ptr();
-  M* h_metas_temp = test_util::HostBuffer<M>(MAX_CAPACITY).ptr();
+  S* h_scores_temp = test_util::HostBuffer<S>(MAX_CAPACITY).ptr();
   V* h_vectors_temp =
       test_util::HostBuffer<V>(MAX_CAPACITY * options.dim).ptr();
 
   K* d_keys_temp;
-  M* d_metas_temp = nullptr;
+  S* d_scores_temp = nullptr;
   V* d_vectors_temp;
 
   CUDA_CHECK(cudaMalloc(&d_keys_temp, MAX_CAPACITY * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_metas_temp, MAX_CAPACITY * sizeof(M)));
+  CUDA_CHECK(cudaMalloc(&d_scores_temp, MAX_CAPACITY * sizeof(S)));
   CUDA_CHECK(
       cudaMalloc(&d_vectors_temp, MAX_CAPACITY * sizeof(V) * options.dim));
 
@@ -2134,18 +2135,18 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
                    : INIT_CAPACITY;
 
       for (int s = 0; s < STEPS; s++) {
-        test_util::create_continuous_keys<K, M, V, DIM>(
-            h_keys_base, h_metas_base, h_vectors_base, BATCH_SIZE, start_key);
+        test_util::create_continuous_keys<K, S, V, DIM>(
+            h_keys_base, h_scores_base, h_vectors_base, BATCH_SIZE, start_key);
         start_key += BATCH_SIZE;
 
         CUDA_CHECK(cudaMemcpy(d_keys_temp, h_keys_base, BATCH_SIZE * sizeof(K),
                               cudaMemcpyHostToDevice));
-        CUDA_CHECK(cudaMemcpy(d_metas_temp, h_metas_base,
-                              BATCH_SIZE * sizeof(M), cudaMemcpyHostToDevice));
+        CUDA_CHECK(cudaMemcpy(d_scores_temp, h_scores_base,
+                              BATCH_SIZE * sizeof(S), cudaMemcpyHostToDevice));
         CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_base,
                               BATCH_SIZE * sizeof(V) * options.dim,
                               cudaMemcpyHostToDevice));
-        table->assign(BATCH_SIZE, d_keys_temp, d_vectors_temp, d_metas_temp,
+        table->assign(BATCH_SIZE, d_keys_temp, d_vectors_temp, d_scores_temp,
                       stream);
         {
           V** d_vectors_ptr = nullptr;
@@ -2155,7 +2156,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
           test_util::array2ptr(d_vectors_ptr, d_vectors_temp, options.dim,
                                BATCH_SIZE, stream);
           table->find_or_insert(BATCH_SIZE, d_keys_temp, d_vectors_ptr, d_found,
-                                d_metas_temp, stream);
+                                d_scores_temp, stream);
           test_util::read_or_write_ptr(d_vectors_ptr, d_vectors_temp, d_found,
                                        options.dim, BATCH_SIZE, stream);
           CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -2171,23 +2172,23 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
       ASSERT_EQ(MAX_CAPACITY, table->capacity());
 
       size_t dump_counter = table->export_batch(
-          MAX_CAPACITY, 0, d_keys_temp, d_vectors_temp, d_metas_temp, stream);
+          MAX_CAPACITY, 0, d_keys_temp, d_vectors_temp, d_scores_temp, stream);
 
       CUDA_CHECK(cudaMemcpy(h_keys_temp, d_keys_temp, MAX_CAPACITY * sizeof(K),
                             cudaMemcpyDeviceToHost));
-      CUDA_CHECK(cudaMemcpy(h_metas_temp, d_metas_temp,
-                            MAX_CAPACITY * sizeof(M), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(h_scores_temp, d_scores_temp,
+                            MAX_CAPACITY * sizeof(S), cudaMemcpyDeviceToHost));
       CUDA_CHECK(cudaMemcpy(h_vectors_temp, d_vectors_temp,
                             MAX_CAPACITY * sizeof(V) * options.dim,
                             cudaMemcpyDeviceToHost));
 
-      size_t bigger_meta_counter = 0;
+      size_t bigger_score_counter = 0;
       K max_key = 0;
       size_t values_error_counter = 0;
       for (int i = 0; i < dump_counter; i++) {
-        ASSERT_EQ(h_keys_temp[i], h_metas_temp[i]);
+        ASSERT_EQ(h_keys_temp[i], h_scores_temp[i]);
         max_key = std::max(max_key, h_keys_temp[i]);
-        if (h_metas_temp[i] >= expected_min_key) bigger_meta_counter++;
+        if (h_scores_temp[i] >= expected_min_key) bigger_score_counter++;
         for (int j = 0; j < options.dim; j++) {
           if (h_vectors_temp[i * options.dim + j] !=
               static_cast<float>(h_keys_temp[i] * 0.00001)) {
@@ -2197,7 +2198,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
       }
 
       ASSERT_EQ(values_error_counter, 0);
-      float correct_rate = (bigger_meta_counter * 1.0) / MAX_CAPACITY;
+      float correct_rate = (bigger_score_counter * 1.0) / MAX_CAPACITY;
       std::cout << std::setprecision(3) << "[Round " << r << "]"
                 << "correct_rate=" << correct_rate << std::endl;
       ASSERT_GE(max_key, expected_max_key);
@@ -2207,7 +2208,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   CUDA_CHECK(cudaStreamDestroy(stream));
 
   CUDA_CHECK(cudaFree(d_keys_temp));
-  CUDA_CHECK(cudaFree(d_metas_temp));
+  CUDA_CHECK(cudaFree(d_scores_temp));
   CUDA_CHECK(cudaFree(d_vectors_temp));
 
   CUDA_CHECK(cudaDeviceSynchronize());
@@ -2267,7 +2268,7 @@ void test_find_or_insert_multi_threads(size_t max_hbm_for_vectors,
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
 
-    test_util::create_random_keys<K, M, V, DIM>(h_keys, nullptr, h_vectors,
+    test_util::create_random_keys<K, S, V, DIM>(h_keys, nullptr, h_vectors,
                                                 KEY_NUM);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
                           cudaMemcpyHostToDevice));
@@ -2437,7 +2438,7 @@ void test_find_or_insert_multi_threads(size_t max_hbm_for_vectors,
     cudaStream_t stream;
     CUDA_CHECK(cudaStreamCreate(&stream));
 
-    test_util::create_random_keys<K, M, V, DIM>(h_keys, nullptr, h_vectors,
+    test_util::create_random_keys<K, S, V, DIM>(h_keys, nullptr, h_vectors,
                                                 KEY_NUM);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
                           cudaMemcpyHostToDevice));
@@ -2596,18 +2597,18 @@ void test_find_or_insert_multi_threads(size_t max_hbm_for_vectors,
   ASSERT_EQ(table->capacity(), MAX_CAPACITY);
 }
 
-template <typename K, typename V, typename M, size_t dim = 64>
-void CheckFindOrInsertValues(Table* table, K* keys, V* values, M* metas,
+template <typename K, typename V, typename S, size_t dim = 64>
+void CheckFindOrInsertValues(Table* table, K* keys, V* values, S* scores,
                              size_t len, cudaStream_t stream) {
   std::map<K, test_util::ValueArray<V, dim>> map_before_insert;
   std::map<K, test_util::ValueArray<V, dim>> map_after_insert;
   K* h_tmp_keys = nullptr;
   V* h_tmp_values = nullptr;
-  M* h_tmp_metas = nullptr;
+  S* h_tmp_scores = nullptr;
 
   K* d_tmp_keys = nullptr;
   V* d_tmp_values = nullptr;
-  M* d_tmp_metas = nullptr;
+  S* d_tmp_scores = nullptr;
 
   size_t table_size_before = table->size(stream);
   size_t cap = table_size_before + len;
@@ -2616,14 +2617,14 @@ void CheckFindOrInsertValues(Table* table, K* keys, V* values, M* metas,
   CUDA_CHECK(cudaMemsetAsync(d_tmp_keys, 0, cap * sizeof(K), stream));
   CUDA_CHECK(cudaMallocAsync(&d_tmp_values, cap * dim * sizeof(V), stream));
   CUDA_CHECK(cudaMemsetAsync(d_tmp_values, 0, cap * dim * sizeof(V), stream));
-  CUDA_CHECK(cudaMallocAsync(&d_tmp_metas, cap * sizeof(M), stream));
-  CUDA_CHECK(cudaMemsetAsync(d_tmp_metas, 0, cap * sizeof(M), stream));
+  CUDA_CHECK(cudaMallocAsync(&d_tmp_scores, cap * sizeof(S), stream));
+  CUDA_CHECK(cudaMemsetAsync(d_tmp_scores, 0, cap * sizeof(S), stream));
   h_tmp_keys = (K*)malloc(cap * sizeof(K));
   h_tmp_values = (V*)malloc(cap * dim * sizeof(V));
-  h_tmp_metas = (M*)malloc(cap * sizeof(M));
+  h_tmp_scores = (S*)malloc(cap * sizeof(S));
 
   size_t table_size_verify0 = table->export_batch(
-      table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_metas, stream);
+      table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_scores, stream);
   ASSERT_EQ(table_size_before, table_size_verify0);
 
   CUDA_CHECK(cudaMemcpyAsync(h_tmp_keys, d_tmp_keys,
@@ -2632,8 +2633,8 @@ void CheckFindOrInsertValues(Table* table, K* keys, V* values, M* metas,
   CUDA_CHECK(cudaMemcpyAsync(h_tmp_values, d_tmp_values,
                              table_size_before * dim * sizeof(V),
                              cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_tmp_metas, d_tmp_metas,
-                             table_size_before * sizeof(M),
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_scores, d_tmp_scores,
+                             table_size_before * sizeof(S),
                              cudaMemcpyDeviceToHost, stream));
 
   CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -2669,7 +2670,7 @@ void CheckFindOrInsertValues(Table* table, K* keys, V* values, M* metas,
 
   size_t table_size_after = table->size(stream);
   size_t table_size_verify1 = table->export_batch(
-      table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_metas, stream);
+      table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_scores, stream);
 
   ASSERT_EQ(table_size_verify1, table_size_after);
 
@@ -2680,8 +2681,8 @@ void CheckFindOrInsertValues(Table* table, K* keys, V* values, M* metas,
   CUDA_CHECK(cudaMemcpyAsync(h_tmp_values, d_tmp_values,
                              table_size_after * dim * sizeof(V),
                              cudaMemcpyDeviceToHost, stream));
-  CUDA_CHECK(cudaMemcpyAsync(h_tmp_metas, d_tmp_metas,
-                             table_size_after * sizeof(M),
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_scores, d_tmp_scores,
+                             table_size_after * sizeof(S),
                              cudaMemcpyDeviceToHost, stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
   int64_t new_cap_K = (int64_t)new_cap;
@@ -2711,10 +2712,10 @@ void CheckFindOrInsertValues(Table* table, K* keys, V* values, M* metas,
 
   CUDA_CHECK(cudaFreeAsync(d_tmp_keys, stream));
   CUDA_CHECK(cudaFreeAsync(d_tmp_values, stream));
-  CUDA_CHECK(cudaFreeAsync(d_tmp_metas, stream));
+  CUDA_CHECK(cudaFreeAsync(d_tmp_scores, stream));
   free(h_tmp_keys);
   free(h_tmp_values);
-  free(h_tmp_metas);
+  free(h_tmp_scores);
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
@@ -2738,23 +2739,23 @@ void test_find_or_insert_values_check(size_t max_hbm_for_vectors) {
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(opt);
 
-  test_util::KVMSBuffer<K, V, M> data_buffer;
+  test_util::KVMSBuffer<K, V, S> data_buffer;
   data_buffer.Reserve(B, dim, stream);
 
   size_t offset = 0;
-  M meta = 0;
+  S score = 0;
   for (int i = 0; i < 20; i++) {
-    test_util::create_random_keys<K, M, V, dim>(
-        data_buffer.keys_ptr(false), data_buffer.metas_ptr(false),
+    test_util::create_random_keys<K, S, V, dim>(
+        data_buffer.keys_ptr(false), data_buffer.scores_ptr(false),
         data_buffer.values_ptr(false), (int)B, B * 16);
     data_buffer.SyncData(true, stream);
 
-    CheckFindOrInsertValues<K, V, M, dim>(table.get(), data_buffer.keys_ptr(),
+    CheckFindOrInsertValues<K, V, S, dim>(table.get(), data_buffer.keys_ptr(),
                                           data_buffer.values_ptr(),
-                                          data_buffer.metas_ptr(), B, stream);
+                                          data_buffer.scores_ptr(), B, stream);
 
     offset += B;
-    meta += 1;
+    score += 1;
   }
 }
 
