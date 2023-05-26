@@ -105,23 +105,27 @@
 <p>
 Example for erase_if:</p>
 <p><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">K</span><span class="p">,</span> <span class="k">class</span> <span class="nc">M</span><span class="o">&gt;</span>
-<span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">erase_if_pred</span><span class="p">(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
-                                              <span class="n">M</span><span class="o">&amp;</span> <span class="n">meta</span><span class="p">,</span>
-                                              <span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">pattern</span><span class="p">,</span>
-                                              <span class="n">const</span> <span class="n">M</span><span class="o">&amp;</span> <span class="n">threshold</span><span class="p">)</span> <span class="p">{</span>
-  <span class="k">return</span> <span class="p">((</span><span class="n">key</span> <span class="o">&amp;</span> <span class="mh">0xFFFF000000000000</span> <span class="o">==</span> <span class="n">pattern</span><span class="p">)</span> <span class="o">&amp;&amp;</span>
-          <span class="p">(</span><span class="n">meta</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">));</span>
-<span class="p">}</span>
+<span class="n">struct</span> <span class="n">EraseIfPredFunctor</span> <span class="p">{</span>
+  <span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">operator</span><span class="p">()(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
+                                             <span class="n">M</span><span class="o">&amp;</span> <span class="n">meta</span><span class="p">,</span>
+                                             <span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">pattern</span><span class="p">,</span>
+                                             <span class="n">const</span> <span class="n">M</span><span class="o">&amp;</span> <span class="n">threshold</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="p">((</span><span class="n">key</span> <span class="o">&amp;</span> <span class="mh">0xFFFF000000000000</span> <span class="o">==</span> <span class="n">pattern</span><span class="p">)</span> <span class="o">&amp;&amp;</span>
+            <span class="p">(</span><span class="n">meta</span> <span class="o">&lt;</span> <span class="n">threshold</span><span class="p">));</span>
+  <span class="p">}</span>
+<span class="p">};</span>
 </pre></div>
 </div>
 </p>
 <p>Example for export_batch_if: <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">K</span><span class="p">,</span> <span class="k">class</span> <span class="nc">M</span><span class="o">&gt;</span>
-<span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">export_if_pred</span><span class="p">(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
-                                               <span class="n">M</span><span class="o">&amp;</span> <span class="n">meta</span><span class="p">,</span>
-                                               <span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">pattern</span><span class="p">,</span>
-                                               <span class="n">const</span> <span class="n">M</span><span class="o">&amp;</span> <span class="n">threshold</span><span class="p">)</span> <span class="p">{</span>
-  <span class="k">return</span> <span class="n">meta</span> <span class="o">&gt;=</span> <span class="n">threshold</span><span class="p">;</span>
-<span class="p">}</span>
+<span class="n">struct</span> <span class="n">ExportIfPredFunctor</span> <span class="p">{</span>
+  <span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">operator</span><span class="p">()(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
+                                             <span class="n">M</span><span class="o">&amp;</span> <span class="n">meta</span><span class="p">,</span>
+                                             <span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">pattern</span><span class="p">,</span>
+                                             <span class="n">const</span> <span class="n">M</span><span class="o">&amp;</span> <span class="n">threshold</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">return</span> <span class="n">meta</span> <span class="o">&gt;=</span> <span class="n">threshold</span><span class="p">;</span>
+  <span class="p">}</span>
+<span class="p">};</span>
 </pre></div>
 </div>
  </p>
