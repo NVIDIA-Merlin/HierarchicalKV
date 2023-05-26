@@ -111,7 +111,7 @@ void test_dynamic_max_capcity_table() {
     }
     size_t n_exported =
         table->export_batch(search_len, offset, buffer.keys_ptr(),
-                            buffer.values_ptr(), /*metas=*/nullptr, stream);
+                            buffer.values_ptr(), /*scores=*/nullptr, stream);
     buffer.SyncData(/*h2d=*/false);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     for (size_t i = 0; i < n_exported; i++) {

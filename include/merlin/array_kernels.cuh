@@ -55,11 +55,11 @@ __global__ void gpu_cell_count(const bool* masks, Tidx* offsets, size_t n,
   }
 }
 
-template <typename K, typename V, typename M, typename Tidx, int TILE_SIZE = 8>
+template <typename K, typename V, typename S, typename Tidx, int TILE_SIZE = 8>
 __global__ void gpu_select_kvm_kernel(const bool* masks, size_t n,
                                       const Tidx* offsets, K* __restrict keys,
-                                      V* __restrict values, M* __restrict metas,
-                                      const size_t dim) {
+                                      V* __restrict values,
+                                      S* __restrict scores, const size_t dim) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
@@ -90,7 +90,7 @@ __global__ void gpu_select_kvm_kernel(const bool* masks, size_t n,
                                           cuda::std::memory_order_relaxed,
                                           cuda::std::memory_order_relaxed);
       }
-      if (metas) metas[bias] = metas[tid];
+      if (scores) scores[bias] = scores[tid];
       for (size_t j = 0; j < dim; j++) {
         values[dim * bias + j] = values[dim * tid + j];
       }
@@ -100,11 +100,11 @@ __global__ void gpu_select_kvm_kernel(const bool* masks, size_t n,
   }
 }
 
-template <typename K, typename V, typename M, typename Tidx, int TILE_SIZE = 8>
+template <typename K, typename V, typename S, typename Tidx, int TILE_SIZE = 8>
 void gpu_boolean_mask(size_t grid_size, size_t block_size, const bool* masks,
                       size_t n, size_t* n_evicted, Tidx* offsets,
                       K* __restrict keys, V* __restrict values,
-                      M* __restrict metas, size_t dim, cudaStream_t stream) {
+                      S* __restrict scores, size_t dim, cudaStream_t stream) {
   size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
   gpu_cell_count<Tidx, TILE_SIZE>
       <<<grid_size, block_size, 0, stream>>>(masks, offsets, n, n_evicted);
@@ -116,9 +116,9 @@ void gpu_boolean_mask(size_t grid_size, size_t block_size, const bool* masks,
   thrust::device_ptr<Tidx> d_src(offsets);
   thrust::device_ptr<Tidx> d_dest(offsets);
   thrust::exclusive_scan(policy, d_src, d_src + n_offsets, d_dest);
-  gpu_select_kvm_kernel<K, V, M, Tidx, TILE_SIZE>
+  gpu_select_kvm_kernel<K, V, S, Tidx, TILE_SIZE>
       <<<grid_size, block_size, 0, stream>>>(masks, n, offsets, keys, values,
-                                             metas, dim);
+                                             scores, dim);
 }
 
 }  // namespace merlin

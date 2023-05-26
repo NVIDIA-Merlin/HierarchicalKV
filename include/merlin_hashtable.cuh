@@ -39,14 +39,14 @@ namespace merlin {
 /**
  * @brief Enumeration of the eviction strategies.
  *
- * @note The `meta` is introduced to define the importance of each key, the
+ * @note The `score` is introduced to define the importance of each key, the
  * larger, the more important, the less likely they will be evicted. On `kLru`
- * mode, the `metas` parameter of the APIs should keep `nullptr`, the meta for
+ * mode, the `scores` parameter of the APIs should keep `nullptr`, the score for
  * each key is assigned internally in LRU(Least Recently Used) policy. On
- * `kCustomized` mode, the `metas` should be provided by caller.
+ * `kCustomized` mode, the `scores` should be provided by caller.
  *
  * @note Eviction occurs automatically when a bucket is full. The keys with the
- * minimum `meta` value are evicted first.
+ * minimum `score` value are evicted first.
  *
  */
 enum class EvictStrategy {
@@ -86,37 +86,37 @@ struct HashTableOptions {
  *  Example for erase_if:
  *
  *    ```
- *    template <class K, class M>
+ *    template <class K, class S>
  *    struct EraseIfPredFunctor {
  *      __forceinline__ __device__ bool operator()(const K& key,
- *                                                 M& meta,
+ *                                                 S& score,
  *                                                 const K& pattern,
- *                                                 const M& threshold) {
+ *                                                 const S& threshold) {
  *        return ((key & 0xFFFF000000000000 == pattern) &&
- *                (meta < threshold));
+ *                (score < threshold));
  *      }
  *    };
  *    ```
  *
  *  Example for export_batch_if:
  *    ```
- *    template <class K, class M>
+ *    template <class K, class S>
  *    struct ExportIfPredFunctor {
  *      __forceinline__ __device__ bool operator()(const K& key,
- *                                                 M& meta,
+ *                                                 S& score,
  *                                                 const K& pattern,
- *                                                 const M& threshold) {
- *        return meta >= threshold;
+ *                                                 const S& threshold) {
+ *        return score >= threshold;
  *      }
  *    };
  *    ```
  */
-template <class K, class M>
+template <class K, class S>
 using EraseIfPredict = bool (*)(
     const K& key,       ///< The traversed key in a hash table.
-    M& meta,            ///< The traversed meta in a hash table.
+    S& score,           ///< The traversed score in a hash table.
     const K& pattern,   ///< The key pattern to compare with the `key` argument.
-    const M& threshold  ///< The threshold to compare with the `meta` argument.
+    const S& threshold  ///< The threshold to compare with the `score` argument.
 );
 
 #if THRUST_VERSION >= 101600
@@ -130,12 +130,12 @@ static constexpr auto& thrust_par = thrust::cuda::par;
  * is powered by GPUs and can use HBM and host memory as storage for key-value
  * pairs. Support for SSD storage is a future consideration.
  *
- * The `meta` is introduced to define the importance of each key, the
+ * The `score` is introduced to define the importance of each key, the
  * larger, the more important, the less likely they will be evicted. Eviction
- * occurs automatically when a bucket is full. The keys with the minimum `meta`
+ * occurs automatically when a bucket is full. The keys with the minimum `score`
  * value are evicted first. In a customized eviction strategy, we recommend
- * using the timestamp or frequency of the key occurrence as the `meta` value
- * for each key. You can also assign a special value to the `meta` to
+ * using the timestamp or frequency of the key occurrence as the `score` value
+ * for each key. You can also assign a special value to the `score` to
  * perform a customized eviction strategy.
  *
  * @note By default configuration, this class is thread-safe.
@@ -143,21 +143,21 @@ static constexpr auto& thrust_par = thrust::cuda::par;
  * @tparam K The data type of the key.
  * @tparam V The data type of the vector's item type.
  *         The item data type should be a basic data type of C++/CUDA.
- * @tparam M The data type for `meta`.
+ * @tparam S The data type for `score`.
  *           The currently supported data type is only `uint64_t`.
  *
  */
-template <class K, class V, class M = uint64_t>
+template <class K, class V, class S = uint64_t>
 class HashTable {
  public:
   using size_type = size_t;
   using key_type = K;
   using value_type = V;
-  using meta_type = M;
-  using Pred = EraseIfPredict<key_type, meta_type>;
+  using score_type = S;
+  using Pred = EraseIfPredict<key_type, score_type>;
 
  private:
-  using TableCore = nv::merlin::Table<key_type, value_type, meta_type>;
+  using TableCore = nv::merlin::Table<key_type, value_type, score_type>;
   static constexpr unsigned int TILE_SIZE = 4;
 
   using DeviceMemoryPool = MemoryPool<DeviceAllocator<char>>;
@@ -178,7 +178,7 @@ class HashTable {
       CUDA_CHECK(cudaDeviceSynchronize());
 
       initialized_ = false;
-      destroy_table<key_type, value_type, meta_type>(&table_);
+      destroy_table<key_type, value_type, score_type>(&table_);
       CUDA_CHECK(cudaFree(d_table_));
       dev_mem_pool_.reset();
       host_mem_pool_.reset();
@@ -213,7 +213,7 @@ class HashTable {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
-    create_table<key_type, value_type, meta_type>(
+    create_table<key_type, value_type, score_type>(
         &table_, options_.dim, options_.init_capacity, options_.max_capacity,
         options_.max_hbm_for_vectors, options_.max_bucket_size);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
@@ -237,26 +237,26 @@ class HashTable {
   }
 
   /**
-   * @brief Insert new key-value-meta tuples into the hash table.
-   * If the key already exists, the values and metas are assigned new values.
+   * @brief Insert new key-value-score tuples into the hash table.
+   * If the key already exists, the values and scores are assigned new values.
    *
-   * If the target bucket is full, the keys with minimum meta will be
-   * overwritten by new key unless the meta of the new key is even less than
-   * minimum meta of the target bucket.
+   * If the target bucket is full, the keys with minimum score will be
+   * overwritten by new key unless the score of the new key is even less than
+   * minimum score of the target bucket.
    *
-   * @param n Number of key-value-meta tuples to insert or assign.
+   * @param n Number of key-value-score tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
    * (n).
    * @param values The values to insert on GPU-accessible memory with
    * shape (n, DIM).
-   * @param metas The metas to insert on GPU-accessible memory with shape
+   * @param scores The scores to insert on GPU-accessible memory with shape
    * (n).
    * @parblock
-   * The metas should be a `uint64_t` value. You can specify a value that
+   * The scores should be a `uint64_t` value. You can specify a value that
    * such as the timestamp of the key insertion, number of the key
    * occurrences, or another value to perform a custom eviction strategy.
    *
-   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * The @p scores should be `nullptr`, when the LRU eviction strategy is
    * applied.
    * @endparblock
    *
@@ -264,14 +264,14 @@ class HashTable {
    *
    * @param ignore_evict_strategy A boolean option indicating whether if
    * the insert_or_assign ignores the evict strategy of table with current
-   * metas anyway. If true, it does not check whether the metas conforms to
-   * the evict strategy. If false, it requires the metas follow the evict
+   * scores anyway. If true, it does not check whether the scores conforms to
+   * the evict strategy. If false, it requires the scores follow the evict
    * strategy of table.
    */
   void insert_or_assign(const size_type n,
-                        const key_type* keys,              // (n)
-                        const value_type* values,          // (n, DIM)
-                        const meta_type* metas = nullptr,  // (n)
+                        const key_type* keys,                // (n)
+                        const value_type* values,            // (n, DIM)
+                        const score_type* scores = nullptr,  // (n)
                         cudaStream_t stream = 0,
                         bool ignore_evict_strategy = false) {
     if (n == 0) {
@@ -284,14 +284,14 @@ class HashTable {
     }
 
     if (!ignore_evict_strategy) {
-      check_evict_strategy(metas);
+      check_evict_strategy(scores);
     }
 
     writer_shared_lock lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
-          SelectUpsertKernelWithIO<key_type, value_type, meta_type>;
+          SelectUpsertKernelWithIO<key_type, value_type, score_type>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -302,7 +302,7 @@ class HashTable {
       Selector::execute_kernel(
           load_factor, options_.block_size, options_.max_bucket_size,
           table_->buckets_num, options_.dim, stream, n, d_table_, keys,
-          reinterpret_cast<const value_type*>(values), metas);
+          reinterpret_cast<const value_type*>(values), scores);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -316,10 +316,10 @@ class HashTable {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        upsert_kernel<key_type, value_type, meta_type, TILE_SIZE>
+        upsert_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, d_dst, metas, d_src_offset, N);
+                options_.dim, keys, d_dst, scores, d_src_offset, N);
       }
 
       {
@@ -351,7 +351,7 @@ class HashTable {
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        write_kernel<key_type, value_type, meta_type>
+        write_kernel<key_type, value_type, score_type>
             <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
                                                    dim(), N);
       }
@@ -361,35 +361,35 @@ class HashTable {
   }
 
   /**
-   * @brief Insert new key-value-meta tuples into the hash table.
-   * If the key already exists, the values and metas are assigned new values.
+   * @brief Insert new key-value-score tuples into the hash table.
+   * If the key already exists, the values and scores are assigned new values.
    *
-   * If the target bucket is full, the keys with minimum meta will be
-   * overwritten by new key unless the meta of the new key is even less than
-   * minimum meta of the target bucket. The overwritten key with minimum
-   * meta will be evicted, with its values and meta, to evicted_keys,
-   * evicted_values, evcted_metas seperately in compact format.
+   * If the target bucket is full, the keys with minimum score will be
+   * overwritten by new key unless the score of the new key is even less than
+   * minimum score of the target bucket. The overwritten key with minimum
+   * score will be evicted, with its values and score, to evicted_keys,
+   * evicted_values, evcted_scores seperately in compact format.
    *
-   * @param n Number of key-value-meta tuples to insert or assign.
+   * @param n Number of key-value-score tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
    * (n).
    * @param values The values to insert on GPU-accessible memory with
    * shape (n, DIM).
-   * @param metas The metas to insert on GPU-accessible memory with shape
+   * @param scores The scores to insert on GPU-accessible memory with shape
    * (n).
-   * @param metas The metas to insert on GPU-accessible memory with shape
+   * @param scores The scores to insert on GPU-accessible memory with shape
    * (n).
-   * @params evicted_keys The output of keys replaced with minimum meta.
-   * @params evicted_values The output of values replaced with minimum meta on
+   * @params evicted_keys The output of keys replaced with minimum score.
+   * @params evicted_values The output of values replaced with minimum score on
    * keys.
-   * @params evicted_metas The output of metas replaced with minimum meta on
+   * @params evicted_scores The output of scores replaced with minimum score on
    * keys.
    * @parblock
-   * The metas should be a `uint64_t` value. You can specify a value that
+   * The scores should be a `uint64_t` value. You can specify a value that
    * such as the timestamp of the key insertion, number of the key
    * occurrences, or another value to perform a custom eviction strategy.
    *
-   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * The @p scores should be `nullptr`, when the LRU eviction strategy is
    * applied.
    * @endparblock
    *
@@ -397,17 +397,17 @@ class HashTable {
    *
    * @param ignore_evict_strategy A boolean option indicating whether if
    * the insert_or_assign ignores the evict strategy of table with current
-   * metas anyway. If true, it does not check whether the metas confroms to
-   * the evict strategy. If false, it requires the metas follow the evict
+   * scores anyway. If true, it does not check whether the scores confroms to
+   * the evict strategy. If false, it requires the scores follow the evict
    * strategy of table.
    */
   size_type insert_and_evict(const size_type n,
                              const key_type* keys,        // (n)
                              const value_type* values,    // (n, DIM)
-                             const meta_type* metas,      // (n)
+                             const score_type* scores,    // (n)
                              key_type* evicted_keys,      // (n)
                              value_type* evicted_values,  // (n, DIM)
-                             meta_type* evicted_metas,    // (n)
+                             score_type* evicted_scores,  // (n)
                              cudaStream_t stream = 0) {
     if (n == 0) {
       return 0;
@@ -426,7 +426,7 @@ class HashTable {
     }
 
     using Selector =
-        SelectUpsertAndEvictKernelWithIO<key_type, value_type, meta_type>;
+        SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type>;
     static thread_local int step_counter = 0;
     static thread_local float load_factor = 0.0;
 
@@ -458,14 +458,14 @@ class HashTable {
     Selector::execute_kernel(
         load_factor, options_.block_size, options_.max_bucket_size,
         table_->buckets_num, options_.dim, stream, n, d_table_, keys, values,
-        metas, evicted_keys, evicted_values, evicted_metas);
+        scores, evicted_keys, evicted_values, evicted_scores);
 
     keys_not_empty<K>
         <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
     size_type n_evicted = 0;
-    gpu_boolean_mask<K, V, M, int64_t, TILE_SIZE>(
+    gpu_boolean_mask<K, V, S, int64_t, TILE_SIZE>(
         grid_size, block_size, d_masks, n, dn_evicted, d_offsets, evicted_keys,
-        evicted_values, evicted_metas, dim(), stream);
+        evicted_values, evicted_scores, dim(), stream);
     CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type),
                                cudaMemcpyDeviceToHost, stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -489,19 +489,19 @@ class HashTable {
    * The algorithm assumes these situations occur while the key was modified or
    * removed by other processes just now.
    *
-   * @param n The number of key-value-meta tuples to process.
+   * @param n The number of key-value-score tuples to process.
    * @param keys The keys to insert on GPU-accessible memory with shape (n).
    * @param value_or_deltas The values or deltas to insert on GPU-accessible
    * memory with shape (n, DIM).
    * @param accum_or_assigns The operation type with shape (n). A value of
    * `true` indicates to accum and `false` indicates to assign.
-   * @param metas The metas to insert on GPU-accessible memory with shape (n).
+   * @param scores The scores to insert on GPU-accessible memory with shape (n).
    * @parblock
-   * The metas should be a `uint64_t` value. You can specify a value that
+   * The scores should be a `uint64_t` value. You can specify a value that
    * such as the timestamp of the key insertion, number of the key
    * occurrences, or another value to perform a custom eviction strategy.
    *
-   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * The @p scores should be `nullptr`, when the LRU eviction strategy is
    * applied.
    * @endparblock
    *
@@ -509,16 +509,16 @@ class HashTable {
    *
    * @param ignore_evict_strategy A boolean option indicating whether if
    * the accum_or_assign ignores the evict strategy of table with current
-   * metas anyway. If true, it does not check whether the metas confroms to
-   * the evict strategy. If false, it requires the metas follow the evict
+   * scores anyway. If true, it does not check whether the scores confroms to
+   * the evict strategy. If false, it requires the scores follow the evict
    * strategy of table.
    *
    */
   void accum_or_assign(const size_type n,
-                       const key_type* keys,               // (n)
-                       const value_type* value_or_deltas,  // (n, DIM)
-                       const bool* accum_or_assigns,       // (n)
-                       const meta_type* metas = nullptr,   // (n)
+                       const key_type* keys,                // (n)
+                       const value_type* value_or_deltas,   // (n, DIM)
+                       const bool* accum_or_assigns,        // (n)
+                       const score_type* scores = nullptr,  // (n)
                        cudaStream_t stream = 0,
                        bool ignore_evict_strategy = false) {
     if (n == 0) {
@@ -531,7 +531,7 @@ class HashTable {
     }
 
     if (!ignore_evict_strategy) {
-      check_evict_strategy(metas);
+      check_evict_strategy(scores);
     }
 
     writer_shared_lock lock(mutex_);
@@ -550,9 +550,9 @@ class HashTable {
       const size_t N = n * TILE_SIZE;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      accum_kernel<key_type, value_type, meta_type>
+      accum_kernel<key_type, value_type, score_type>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, keys, dst, metas, accum_or_assigns, table_->buckets,
+              table_, keys, dst, scores, accum_or_assigns, table_->buckets,
               table_->buckets_size, table_->bucket_max_size,
               table_->buckets_num, src_offset, founds, N);
     }
@@ -570,7 +570,7 @@ class HashTable {
       const size_t N = n * dim();
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      write_with_accum_kernel<key_type, value_type, meta_type>
+      write_with_accum_kernel<key_type, value_type, score_type>
           <<<grid_size, block_size, 0, stream>>>(value_or_deltas, dst,
                                                  accum_or_assigns, founds,
                                                  src_offset, dim(), N);
@@ -581,23 +581,23 @@ class HashTable {
 
   /**
    * @brief Searches the hash table for the specified keys.
-   * When a key is missing, the value in @p values and @p metas will be
+   * When a key is missing, the value in @p values and @p scores will be
    * inserted.
    *
-   * @param n The number of key-value-meta tuples to search or insert.
+   * @param n The number of key-value-score tuples to search or insert.
    * @param keys The keys to search on GPU-accessible memory with shape (n).
    * @param values The values to search on GPU-accessible memory with
    * shape (n, DIM).
-   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
    * @parblock
-   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void find_or_insert(const size_type n, const key_type* keys,  // (n)
                       value_type* values,                       // (n * DIM)
-                      meta_type* metas = nullptr,               // (n)
+                      score_type* scores = nullptr,             // (n)
                       cudaStream_t stream = 0,
                       bool ignore_evict_strategy = false) {
     if (n == 0) {
@@ -610,14 +610,14 @@ class HashTable {
     }
 
     if (!ignore_evict_strategy) {
-      check_evict_strategy(metas);
+      check_evict_strategy(scores);
     }
 
     writer_shared_lock lock(mutex_);
 
     if (is_fast_mode()) {
       using Selector =
-          SelectFindOrInsertKernelWithIO<key_type, value_type, meta_type>;
+          SelectFindOrInsertKernelWithIO<key_type, value_type, score_type>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -627,7 +627,7 @@ class HashTable {
       Selector::execute_kernel(load_factor, options_.block_size,
                                options_.max_bucket_size, table_->buckets_num,
                                options_.dim, stream, n, d_table_, keys, values,
-                               metas);
+                               scores);
     } else {
       const size_type dev_ws_size{
           n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -643,10 +643,10 @@ class HashTable {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        find_or_insert_kernel<key_type, value_type, meta_type, TILE_SIZE>
+        find_or_insert_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, d_table_value_addrs, metas, founds,
+                options_.dim, keys, d_table_value_addrs, scores, founds,
                 param_key_index, N);
       }
 
@@ -689,7 +689,7 @@ class HashTable {
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        read_or_write_kernel<key_type, value_type, meta_type>
+        read_or_write_kernel<key_type, value_type, score_type>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_value_addrs, values, founds, param_key_index, dim(), N);
       }
@@ -700,20 +700,20 @@ class HashTable {
 
   /**
    * @brief Searches the hash table for the specified keys and returns address
-   * of the values. When a key is missing, the value in @p values and @p metas
+   * of the values. When a key is missing, the value in @p values and @p scores
    * will be inserted.
    *
    * @warning This API returns internal addresses for high-performance but
    * thread-unsafe. The caller is responsible for guaranteeing data consistency.
    *
-   * @param n The number of key-value-meta tuples to search or insert.
+   * @param n The number of key-value-score tuples to search or insert.
    * @param keys The keys to search on GPU-accessible memory with shape (n).
    * @param values  The addresses of values to search on GPU-accessible memory
    * with shape (n).
    * @param founds The status that indicates if the keys are found on
-   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
    * @parblock
-   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    *
@@ -721,7 +721,7 @@ class HashTable {
   void find_or_insert(const size_type n, const key_type* keys,  // (n)
                       value_type** values,                      // (n)
                       bool* founds,                             // (n)
-                      meta_type* metas = nullptr,               // (n)
+                      score_type* scores = nullptr,             // (n)
                       cudaStream_t stream = 0,
                       bool ignore_evict_strategy = false) {
     if (n == 0) {
@@ -734,13 +734,13 @@ class HashTable {
     }
 
     if (!ignore_evict_strategy) {
-      check_evict_strategy(metas);
+      check_evict_strategy(scores);
     }
 
     writer_shared_lock lock(mutex_);
 
     using Selector =
-        SelectFindOrInsertPtrKernel<key_type, value_type, meta_type>;
+        SelectFindOrInsertPtrKernel<key_type, value_type, score_type>;
     static thread_local int step_counter = 0;
     static thread_local float load_factor = 0.0;
 
@@ -750,36 +750,36 @@ class HashTable {
     Selector::execute_kernel(load_factor, options_.block_size,
                              options_.max_bucket_size, table_->buckets_num,
                              options_.dim, stream, n, d_table_, keys, values,
-                             metas, founds);
+                             scores, founds);
 
     CudaCheckError();
   }
   /**
-   * @brief Assign new key-value-meta tuples into the hash table.
+   * @brief Assign new key-value-score tuples into the hash table.
    * If the key doesn't exist, the operation on the key will be ignored.
    *
-   * @param n Number of key-value-meta tuples to insert or assign.
+   * @param n Number of key-value-score tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
    * (n).
    * @param values The values to insert on GPU-accessible memory with
    * shape (n, DIM).
-   * @param metas The metas to insert on GPU-accessible memory with shape
+   * @param scores The scores to insert on GPU-accessible memory with shape
    * (n).
    * @parblock
-   * The metas should be a `uint64_t` value. You can specify a value that
+   * The scores should be a `uint64_t` value. You can specify a value that
    * such as the timestamp of the key insertion, number of the key
    * occurrences, or another value to perform a custom eviction strategy.
    *
-   * The @p metas should be `nullptr`, when the LRU eviction strategy is
+   * The @p scores should be `nullptr`, when the LRU eviction strategy is
    * applied.
    * @endparblock
    *
    * @param stream The CUDA stream that is used to execute the operation.
    */
   void assign(const size_type n,
-              const key_type* keys,              // (n)
-              const value_type* values,          // (n, DIM)
-              const meta_type* metas = nullptr,  // (n)
+              const key_type* keys,                // (n)
+              const value_type* values,            // (n, DIM)
+              const score_type* scores = nullptr,  // (n)
               cudaStream_t stream = 0) {
     if (n == 0) {
       return;
@@ -789,7 +789,7 @@ class HashTable {
 
     if (is_fast_mode()) {
       using Selector =
-          SelectUpdateKernelWithIO<key_type, value_type, meta_type>;
+          SelectUpdateKernelWithIO<key_type, value_type, score_type>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -800,7 +800,7 @@ class HashTable {
       Selector::execute_kernel(load_factor, options_.block_size,
                                options_.max_bucket_size, table_->buckets_num,
                                options_.dim, stream, n, d_table_, keys, values,
-                               metas);
+                               scores);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -814,10 +814,10 @@ class HashTable {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        update_kernel<key_type, value_type, meta_type, TILE_SIZE>
+        update_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, d_dst, metas, d_src_offset, N);
+                options_.dim, keys, d_dst, scores, d_src_offset, N);
       }
 
       {
@@ -849,7 +849,7 @@ class HashTable {
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        write_kernel<key_type, value_type, meta_type>
+        write_kernel<key_type, value_type, score_type>
             <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
                                                    dim(), N);
       }
@@ -863,15 +863,15 @@ class HashTable {
    *
    * @note When a key is missing, the value in @p values is not changed.
    *
-   * @param n The number of key-value-meta tuples to search.
+   * @param n The number of key-value-score tuples to search.
    * @param keys The keys to search on GPU-accessible memory with shape (n).
    * @param values The values to search on GPU-accessible memory with
    * shape (n, DIM).
    * @param founds The status that indicates if the keys are found on
    * GPU-accessible memory with shape (n).
-   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
    * @parblock
-   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    *
@@ -879,7 +879,7 @@ class HashTable {
   void find(const size_type n, const key_type* keys,  // (n)
             value_type* values,                       // (n, DIM)
             bool* founds,                             // (n)
-            meta_type* metas = nullptr,               // (n)
+            score_type* scores = nullptr,             // (n)
             cudaStream_t stream = 0) const {
     if (n == 0) {
       return;
@@ -891,7 +891,7 @@ class HashTable {
 
     if (is_fast_mode()) {
       using Selector =
-          SelectLookupKernelWithIO<key_type, value_type, meta_type>;
+          SelectLookupKernelWithIO<key_type, value_type, score_type>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -901,7 +901,7 @@ class HashTable {
       Selector::execute_kernel(load_factor, options_.block_size,
                                options_.max_bucket_size, table_->buckets_num,
                                options_.dim, stream, n, d_table_, keys, values,
-                               metas, founds);
+                               scores, founds);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -915,10 +915,10 @@ class HashTable {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        lookup_kernel<key_type, value_type, meta_type, TILE_SIZE>
+        lookup_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, src, metas, founds, dst_offset, N);
+                options_.dim, keys, src, scores, founds, dst_offset, N);
       }
 
       {
@@ -935,7 +935,7 @@ class HashTable {
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        read_kernel<key_type, value_type, meta_type>
+        read_kernel<key_type, value_type, score_type>
             <<<grid_size, block_size, 0, stream>>>(src, values, founds,
                                                    dst_offset, dim(), N);
       }
@@ -952,15 +952,15 @@ class HashTable {
    * @warning This API returns internal addresses for high-performance but
    * thread-unsafe. The caller is responsible for guaranteeing data consistency.
    *
-   * @param n The number of key-value-meta tuples to search.
+   * @param n The number of key-value-score tuples to search.
    * @param keys The keys to search on GPU-accessible memory with shape (n).
    * @param values The addresses of values to search on GPU-accessible memory
    * with shape (n).
    * @param founds The status that indicates if the keys are found on
    * GPU-accessible memory with shape (n).
-   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
    * @parblock
-   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    *
@@ -968,7 +968,7 @@ class HashTable {
   void find(const size_type n, const key_type* keys,  // (n)
             value_type** values,                      // (n)
             bool* founds,                             // (n)
-            meta_type* metas = nullptr,               // (n)
+            score_type* scores = nullptr,             // (n)
             cudaStream_t stream = 0) const {
     if (n == 0) {
       return;
@@ -978,7 +978,7 @@ class HashTable {
 
     reader_shared_lock lock(mutex_);
 
-    using Selector = SelectLookupPtrKernel<key_type, value_type, meta_type>;
+    using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
     static thread_local int step_counter = 0;
     static thread_local float load_factor = 0.0;
 
@@ -988,7 +988,7 @@ class HashTable {
     Selector::execute_kernel(load_factor, options_.block_size,
                              options_.max_bucket_size, table_->buckets_num,
                              options_.dim, stream, n, d_table_, keys, values,
-                             metas, founds);
+                             scores, founds);
 
     CudaCheckError();
   }
@@ -1013,7 +1013,7 @@ class HashTable {
       const size_t N = n * TILE_SIZE;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      remove_kernel<key_type, value_type, meta_type, TILE_SIZE>
+      remove_kernel<key_type, value_type, score_type, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
               table_, keys, table_->buckets, table_->buckets_size,
               table_->bucket_max_size, table_->buckets_num, N);
@@ -1027,35 +1027,35 @@ class HashTable {
    * @brief Erases all elements that satisfy the predicate @p pred from the
    * hash table.
    *
-   * @tparam PredFunctor The predicate template <typename K, typename M>
-   * function with operator signature (bool*)(const K&, const M&, const K&,
+   * @tparam PredFunctor The predicate template <typename K, typename S>
+   * function with operator signature (bool*)(const K&, const S&, const K&,
    * const threshold) that returns `true` if the element should be erased. The
    * value for @p pred should be a function with type `Pred` defined like the
    * following example:
    *
    *    ```
-   *    template <class K, class M>
+   *    template <class K, class S>
    *    struct EraseIfPredFunctor {
    *      __forceinline__ __device__ bool operator()(const K& key,
-   *                                                 M& meta,
+   *                                                 S& score,
    *                                                 const K& pattern,
-   *                                                 const M& threshold) {
-   *        return ((key & 0x1 == pattern) && (meta < threshold));
+   *                                                 const S& threshold) {
+   *        return ((key & 0x1 == pattern) && (score < threshold));
    *      }
    *    };
    *    ```
    *
    * @param pattern The third user-defined argument to @p pred with key_type
    * type.
-   * @param threshold The fourth user-defined argument to @p pred with meta_type
-   * type.
+   * @param threshold The fourth user-defined argument to @p pred with
+   * score_type type.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    * @return The number of elements removed.
    *
    */
   template <template <typename, typename> class PredFunctor>
-  size_type erase_if(const key_type& pattern, const meta_type& threshold,
+  size_type erase_if(const key_type& pattern, const score_type& threshold,
                      cudaStream_t stream = 0) {
     write_read_lock lock(mutex_);
 
@@ -1069,7 +1069,7 @@ class HashTable {
       const size_t N = table_->buckets_num;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      remove_kernel<key_type, value_type, meta_type, PredFunctor>
+      remove_kernel<key_type, value_type, score_type, PredFunctor>
           <<<grid_size, block_size, 0, stream>>>(
               table_, pattern, threshold, d_count, table_->buckets,
               table_->buckets_size, table_->bucket_max_size,
@@ -1096,7 +1096,7 @@ class HashTable {
     const size_t N = table_->buckets_num * table_->bucket_max_size;
     const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-    clear_kernel<key_type, value_type, meta_type>
+    clear_kernel<key_type, value_type, score_type>
         <<<grid_size, block_size, 0, stream>>>(table_, N);
 
     CudaCheckError();
@@ -1104,7 +1104,7 @@ class HashTable {
 
  public:
   /**
-   * @brief Exports a certain number of the key-value-meta tuples from the
+   * @brief Exports a certain number of the key-value-score tuples from the
    * hash table.
    *
    * @param n The maximum number of exported pairs.
@@ -1113,9 +1113,9 @@ class HashTable {
    * @param keys The keys to dump from GPU-accessible memory with shape (n).
    * @param values The values to dump from GPU-accessible memory with shape
    * (n, DIM).
-   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
    * @parblock
-   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    *
    * @param stream The CUDA stream that is used to execute the operation.
@@ -1127,10 +1127,10 @@ class HashTable {
    * occurs.
    */
   void export_batch(size_type n, const size_type offset,
-                    size_type* counter,          // (1)
-                    key_type* keys,              // (n)
-                    value_type* values,          // (n, DIM)
-                    meta_type* metas = nullptr,  // (n)
+                    size_type* counter,            // (1)
+                    key_type* keys,                // (n)
+                    value_type* values,            // (n, DIM)
+                    score_type* scores = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
     reader_shared_lock lock(mutex_);
 
@@ -1142,27 +1142,27 @@ class HashTable {
     size_type shared_size;
     size_type block_size;
     std::tie(shared_size, block_size) =
-        dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
+        dump_kernel_shared_memory_size<K, V, S>(shared_mem_size_);
 
     const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
 
-    dump_kernel<key_type, value_type, meta_type>
+    dump_kernel<key_type, value_type, score_type>
         <<<grid_size, block_size, shared_size, stream>>>(
-            table_, keys, values, metas, offset, n, counter);
+            table_, keys, values, scores, offset, n, counter);
 
     CudaCheckError();
   }
 
   size_type export_batch(const size_type n, const size_type offset,
-                         key_type* keys,              // (n)
-                         value_type* values,          // (n, DIM)
-                         meta_type* metas = nullptr,  // (n)
+                         key_type* keys,                // (n)
+                         value_type* values,            // (n, DIM)
+                         score_type* scores = nullptr,  // (n)
                          cudaStream_t stream = 0) const {
     auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
     auto d_counter{dev_ws.get<size_type*>(0)};
 
     CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
-    export_batch(n, offset, d_counter, keys, values, metas, stream);
+    export_batch(n, offset, d_counter, keys, values, scores, stream);
 
     size_type counter = 0;
     CUDA_CHECK(cudaMemcpyAsync(&counter, d_counter, sizeof(size_type),
@@ -1172,10 +1172,10 @@ class HashTable {
   }
 
   /**
-   * @brief Exports a certain number of the key-value-meta tuples which match
+   * @brief Exports a certain number of the key-value-score tuples which match
    *
-   * @tparam PredFunctor A functor with template <K, M> defined an operator
-   * with signature:  __device__ (bool*)(const K&, M&, const K&, const M&).
+   * @tparam PredFunctor A functor with template <K, S> defined an operator
+   * with signature:  __device__ (bool*)(const K&, S&, const K&, const S&).
    * specified condition from the hash table.
    *
    * @param n The maximum number of exported pairs.
@@ -1183,28 +1183,28 @@ class HashTable {
    * the following example:
    *
    *    ```
-   *    template <class K, class M>
+   *    template <class K, class S>
    *    struct ExportIfPredFunctor {
    *      __forceinline__ __device__ bool operator()(const K& key,
-   *                                                 M& meta,
+   *                                                 S& score,
    *                                                 const K& pattern,
-   *                                                 const M& threshold) {
-   *        return meta >= threshold;
+   *                                                 const S& threshold) {
+   *        return score >= threshold;
    *      }
    *    };
    *    ```
    *
    * @param pattern The third user-defined argument to @p pred with key_type
    * type.
-   * @param threshold The fourth user-defined argument to @p pred with meta_type
-   * type.
+   * @param threshold The fourth user-defined argument to @p pred with
+   * score_type type.
    * @param offset The position of the key to remove.
    * @param keys The keys to dump from GPU-accessible memory with shape (n).
    * @param values The values to dump from GPU-accessible memory with shape
    * (n, DIM).
-   * @param metas The metas to search on GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
    * @parblock
-   * If @p metas is `nullptr`, the meta for each key will not be returned.
+   * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    *
    * @param stream The CUDA stream that is used to execute the operation.
@@ -1216,12 +1216,12 @@ class HashTable {
    * occurs.
    */
   template <template <typename, typename> class PredFunctor>
-  void export_batch_if(const key_type& pattern, const meta_type& threshold,
+  void export_batch_if(const key_type& pattern, const score_type& threshold,
                        size_type n, const size_type offset,
                        size_type* d_counter,
-                       key_type* keys,              // (n)
-                       value_type* values,          // (n, DIM)
-                       meta_type* metas = nullptr,  // (n)
+                       key_type* keys,                // (n)
+                       value_type* values,            // (n, DIM)
+                       score_type* scores = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
     reader_shared_lock lock(mutex_);
 
@@ -1231,20 +1231,20 @@ class HashTable {
     }
     n = std::min(table_->capacity - offset, n);
 
-    const size_t meta_size = metas ? sizeof(meta_type) : 0;
+    const size_t score_size = scores ? sizeof(score_type) : 0;
     const size_t kvm_size =
-        sizeof(key_type) + sizeof(value_type) * dim() + meta_size;
+        sizeof(key_type) + sizeof(value_type) * dim() + score_size;
     const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
     MERLIN_CHECK(
         block_size > 0,
-        "[HierarchicalKV] block_size <= 0, the K-V-M size may be too large!");
+        "[HierarchicalKV] block_size <= 0, the K-V-S size may be too large!");
 
     const size_t shared_size = kvm_size * block_size;
     const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
 
-    dump_kernel<key_type, value_type, meta_type, PredFunctor>
+    dump_kernel<key_type, value_type, score_type, PredFunctor>
         <<<grid_size, block_size, shared_size, stream>>>(
-            table_, pattern, threshold, keys, values, metas, offset, n,
+            table_, pattern, threshold, keys, values, scores, offset, n,
             d_counter);
 
     CudaCheckError();
@@ -1333,7 +1333,7 @@ class HashTable {
         const size_t N = TILE_SIZE * table_->buckets_num / 2;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        rehash_kernel_for_fast_mode<key_type, value_type, meta_type, TILE_SIZE>
+        rehash_kernel_for_fast_mode<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(d_table_, N);
       }
       CUDA_CHECK(cudaDeviceSynchronize());
@@ -1401,7 +1401,7 @@ class HashTable {
   size_type bucket_count() const noexcept { return table_->buckets_num; }
 
   /**
-   * @brief Save keys, vectors, metas in table to file or files.
+   * @brief Save keys, vectors, scores in table to file or files.
    *
    * @param file A BaseKVFile object defined the file format on host filesystem.
    * @param max_workspace_size Saving is conducted in chunks. This value denotes
@@ -1411,19 +1411,19 @@ class HashTable {
    *
    * @return Number of KV pairs saved to file.
    */
-  size_type save(BaseKVFile<K, V, M>* file,
+  size_type save(BaseKVFile<K, V, S>* file,
                  const size_t max_workspace_size = 1L * 1024 * 1024,
                  cudaStream_t stream = 0) const {
-    const size_type tuple_size{sizeof(key_type) + sizeof(meta_type) +
+    const size_type tuple_size{sizeof(key_type) + sizeof(score_type) +
                                sizeof(value_type) * dim()};
     MERLIN_CHECK(max_workspace_size >= tuple_size,
                  "[HierarchicalKV] max_workspace_size is smaller than a single "
-                 "`key + metadata + value` tuple! Please set a larger value!");
+                 "`key + scoredata + value` tuple! Please set a larger value!");
 
     size_type shared_size;
     size_type block_size;
     std::tie(shared_size, block_size) =
-        dump_kernel_shared_memory_size<K, V, M>(shared_mem_size_);
+        dump_kernel_shared_memory_size<K, V, S>(shared_mem_size_);
 
     // Request exclusive access (to make sure capacity won't change anymore).
     write_read_lock lock(mutex_);
@@ -1436,15 +1436,15 @@ class HashTable {
     const size_type host_ws_size{n * tuple_size};
     auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
     auto h_keys{host_ws.get<key_type*>(0)};
-    auto h_metas{reinterpret_cast<meta_type*>(h_keys + n)};
-    auto h_values{reinterpret_cast<value_type*>(h_metas + n)};
+    auto h_scores{reinterpret_cast<score_type*>(h_keys + n)};
+    auto h_values{reinterpret_cast<value_type*>(h_scores + n)};
 
     const size_type dev_ws_size{sizeof(size_type) + host_ws_size};
     auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
     auto d_count{dev_ws.get<size_type*>(0)};
     auto d_keys{reinterpret_cast<key_type*>(d_count + 1)};
-    auto d_metas{reinterpret_cast<meta_type*>(d_keys + n)};
-    auto d_values{reinterpret_cast<value_type*>(d_metas + n)};
+    auto d_scores{reinterpret_cast<score_type*>(d_keys + n)};
+    auto d_values{reinterpret_cast<value_type*>(d_scores + n)};
 
     // Step through table, dumping contents in batches.
     size_type total_count{0};
@@ -1452,10 +1452,10 @@ class HashTable {
       // Dump the next batch to workspace, and then write it to the file.
       CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
 
-      dump_kernel<key_type, value_type, meta_type>
+      dump_kernel<key_type, value_type, score_type>
           <<<grid_size, block_size, shared_size, stream>>>(
-              table_, d_keys, d_values, d_metas, i, std::min(total_size - i, n),
-              d_count);
+              table_, d_keys, d_values, d_scores, i,
+              std::min(total_size - i, n), d_count);
 
       size_type count;
       CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
@@ -1468,7 +1468,8 @@ class HashTable {
       } else {
         CUDA_CHECK(cudaMemcpyAsync(h_keys, d_keys, sizeof(key_type) * count,
                                    cudaMemcpyDeviceToHost, stream));
-        CUDA_CHECK(cudaMemcpyAsync(h_metas, d_metas, sizeof(meta_type) * count,
+        CUDA_CHECK(cudaMemcpyAsync(h_scores, d_scores,
+                                   sizeof(score_type) * count,
                                    cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaMemcpyAsync(h_values, d_values,
                                    sizeof(value_type) * dim() * count,
@@ -1476,7 +1477,7 @@ class HashTable {
       }
 
       CUDA_CHECK(cudaStreamSynchronize(stream));
-      file->write(count, dim(), h_keys, h_values, h_metas);
+      file->write(count, dim(), h_keys, h_values, h_scores);
       total_count += count;
     }
 
@@ -1484,7 +1485,7 @@ class HashTable {
   }
 
   /**
-   * @brief Load keys, vectors, metas from file to table.
+   * @brief Load keys, vectors, scores from file to table.
    *
    * @param file An BaseKVFile defined the file format within filesystem.
    * @param max_workspace_size Loading is conducted in chunks. This value
@@ -1494,14 +1495,14 @@ class HashTable {
    *
    * @return Number of keys loaded from file.
    */
-  size_type load(BaseKVFile<K, V, M>* file,
+  size_type load(BaseKVFile<K, V, S>* file,
                  const size_t max_workspace_size = 1L * 1024 * 1024,
                  cudaStream_t stream = 0) {
-    const size_type tuple_size{sizeof(key_type) + sizeof(meta_type) +
+    const size_type tuple_size{sizeof(key_type) + sizeof(score_type) +
                                sizeof(value_type) * dim()};
     MERLIN_CHECK(max_workspace_size >= tuple_size,
                  "[HierarchicalKV] max_workspace_size is smaller than a single "
-                 "`key + metadata + value` tuple! Please set a larger value!");
+                 "`key + scoredata + value` tuple! Please set a larger value!");
 
     const size_type n{max_workspace_size / tuple_size};
     const size_type ws_size{n * tuple_size};
@@ -1509,11 +1510,11 @@ class HashTable {
     // Grab enough host memory to hold batch data.
     auto host_ws{host_mem_pool_->get_workspace<1>(ws_size, stream)};
     auto h_keys{host_ws.get<key_type*>(0)};
-    auto h_metas{reinterpret_cast<meta_type*>(h_keys + n)};
-    auto h_values{reinterpret_cast<value_type*>(h_metas + n)};
+    auto h_scores{reinterpret_cast<score_type*>(h_keys + n)};
+    auto h_values{reinterpret_cast<value_type*>(h_scores + n)};
 
     // Attempt a first read.
-    size_type count{file->read(n, dim(), h_keys, h_values, h_metas)};
+    size_type count{file->read(n, dim(), h_keys, h_values, h_scores)};
     if (count == 0) {
       return 0;
     }
@@ -1521,8 +1522,8 @@ class HashTable {
     // Grab equal amount of device memory as temporary storage.
     auto dev_ws{dev_mem_pool_->get_workspace<1>(ws_size, stream)};
     auto d_keys{dev_ws.get<key_type*>(0)};
-    auto d_metas{reinterpret_cast<meta_type*>(d_keys + n)};
-    auto d_values{reinterpret_cast<value_type*>(d_metas + n)};
+    auto d_scores{reinterpret_cast<score_type*>(d_keys + n)};
+    auto d_values{reinterpret_cast<value_type*>(d_scores + n)};
 
     size_type total_count{0};
     do {
@@ -1532,19 +1533,20 @@ class HashTable {
       } else {
         CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys, sizeof(key_type) * count,
                                    cudaMemcpyHostToDevice, stream));
-        CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas, sizeof(meta_type) * count,
+        CUDA_CHECK(cudaMemcpyAsync(d_scores, h_scores,
+                                   sizeof(score_type) * count,
                                    cudaMemcpyHostToDevice, stream));
         CUDA_CHECK(cudaMemcpyAsync(d_values, h_values,
                                    sizeof(value_type) * dim() * count,
                                    cudaMemcpyHostToDevice, stream));
       }
 
-      insert_or_assign(count, d_keys, d_values, d_metas, stream, true);
+      insert_or_assign(count, d_keys, d_values, d_scores, stream, true);
       total_count += count;
 
       // Read next batch.
       CUDA_CHECK(cudaStreamSynchronize(stream));
-      count = file->read(n, dim(), h_keys, h_values, h_metas);
+      count = file->read(n, dim(), h_keys, h_values, h_scores);
     } while (count > 0);
 
     return total_count;
@@ -1601,16 +1603,16 @@ class HashTable {
                                   (options_.max_bucket_size * N * 1.0));
   }
 
-  inline void check_evict_strategy(const meta_type* metas) {
+  inline void check_evict_strategy(const score_type* scores) {
     if (options_.evict_strategy == EvictStrategy::kLru) {
-      MERLIN_CHECK(metas == nullptr,
-                   "the metas should not be specified when running on "
+      MERLIN_CHECK(scores == nullptr,
+                   "the scores should not be specified when running on "
                    "LRU mode.");
     }
 
     if (options_.evict_strategy == EvictStrategy::kCustomized) {
-      MERLIN_CHECK(metas != nullptr,
-                   "the metas should be specified when running on "
+      MERLIN_CHECK(scores != nullptr,
+                   "the scores should be specified when running on "
                    "customized mode.");
     }
   }

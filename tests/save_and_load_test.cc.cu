@@ -23,9 +23,9 @@
 
 constexpr uint64_t DIM = 64;
 using K = int64_t;
-using M = uint64_t;
+using S = uint64_t;
 using V = float;
-using Table = nv::merlin::HashTable<K, V, M>;
+using Table = nv::merlin::HashTable<K, V, S>;
 using TableOptions = nv::merlin::HashTableOptions;
 
 void test_save_to_file() {
@@ -38,27 +38,27 @@ void test_save_to_file() {
 
   K* h_keys = nullptr;
   V* h_vectors = nullptr;
-  M* h_metas = nullptr;
+  S* h_scores = nullptr;
   CUDA_CHECK(cudaMallocHost(&h_keys, keynum * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, keynum * sizeof(V) * DIM));
-  CUDA_CHECK(cudaMallocHost(&h_metas, keynum * sizeof(M)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, keynum * sizeof(S)));
   memset(h_keys, 0, keynum * sizeof(K));
   memset(h_vectors, 0, keynum * sizeof(V) * DIM);
-  memset(h_metas, 0, keynum * sizeof(M));
-  test_util::create_random_keys<K, M>(h_keys, h_metas, keynum);
+  memset(h_scores, 0, keynum * sizeof(S));
+  test_util::create_random_keys<K, S>(h_keys, h_scores, keynum);
   printf("Pass create random keys.\n");
 
   K* d_keys = nullptr;
   V* d_vectors = nullptr;
-  M* d_metas = nullptr;
+  S* d_scores = nullptr;
   test_util::getBufferOnDevice(&d_keys, keynum * sizeof(K), stream);
   test_util::getBufferOnDevice(&d_vectors, keynum * sizeof(V) * DIM, stream);
-  test_util::getBufferOnDevice(&d_metas, keynum * sizeof(M), stream);
+  test_util::getBufferOnDevice(&d_scores, keynum * sizeof(S), stream);
   CUDA_CHECK(cudaMemcpyAsync(d_keys, h_keys, keynum * sizeof(K),
                              cudaMemcpyHostToDevice, stream));
   CUDA_CHECK(cudaMemcpyAsync(d_vectors, h_vectors, keynum * sizeof(V) * DIM,
                              cudaMemcpyHostToDevice, stream));
-  CUDA_CHECK(cudaMemcpyAsync(d_metas, h_metas, keynum * sizeof(M),
+  CUDA_CHECK(cudaMemcpyAsync(d_scores, h_scores, keynum * sizeof(S),
                              cudaMemcpyHostToDevice, stream));
   printf("Create buffers.\n");
 
@@ -74,25 +74,25 @@ void test_save_to_file() {
   table_1->init(options);
   printf("Init tables.\n");
 
-  table_0->insert_or_assign(keynum, d_keys, d_vectors, /*metas=*/nullptr,
+  table_0->insert_or_assign(keynum, d_keys, d_vectors, /*scores=*/nullptr,
                             stream);
   printf("Fill table_0.\n");
-  nv::merlin::LocalKVFile<K, V, M> file;
+  nv::merlin::LocalKVFile<K, V, S> file;
   std::string keys_path = prefix + ".keys";
   std::string values_path = prefix + ".values";
-  std::string metas_path = prefix + ".metas";
-  file.open(keys_path, values_path, metas_path, "wb");
+  std::string scores_path = prefix + ".scores";
+  file.open(keys_path, values_path, scores_path, "wb");
   table_0->save(&file, buffer_size, stream);
   file.close();
   printf("table_0 saves.\n");
-  file.open(keys_path, values_path, metas_path, "rb");
+  file.open(keys_path, values_path, scores_path, "rb");
   table_1->load(&file, buffer_size, stream);
   file.close();
   printf("table_1 loads.\n");
   ASSERT_TRUE(test_util::tables_equal(table_0.get(), table_1.get(), stream));
   printf("table_0 and table_1 are equal.\n");
-  CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_metas, h_keys, h_vectors,
-                     h_metas);
+  CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_scores, h_keys, h_vectors,
+                     h_scores);
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
