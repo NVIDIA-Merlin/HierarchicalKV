@@ -453,7 +453,7 @@ static Test_Mode test_mode = Test_Mode::pure_hbm;
 
 void print_title() {
   cout << endl
-       << "| load_factor "
+       << "|    λ "
        << "| insert_or_assign "
        << "|   find "
        << "| find_or_insert "
@@ -466,7 +466,7 @@ void print_title() {
   cout << "|\n";
 
   //<< "| load_factor "
-  cout << "|------------:"
+  cout << "|-----:"
        //<< "| insert_or_assign "
        << "|-----------------:"
        //<< "|   find "
@@ -490,7 +490,7 @@ void test_main(const size_t dim,
                const size_t init_capacity = 64 * 1024 * 1024UL,
                const size_t key_num_per_op = 1 * 1024 * 1024UL,
                const size_t hbm4values = 16, const float load_factor = 1.0f) {
-  std::cout << "|" << rep(8) << fixed << setprecision(2) << load_factor << " ";
+  std::cout << "|" << rep(1) << fixed << setprecision(2) << load_factor << " ";
   std::vector<API_Select> apis{
       API_Select::insert_or_assign, API_Select::find,
       API_Select::find_or_insert,   API_Select::assign,
@@ -557,6 +557,13 @@ int main() {
        << "* Key Type = uint64_t" << endl
        << "* Value Type = float32 * {dim}" << endl
        << "* Key-Values per OP = " << key_num_per_op << endl
+       << "* `λ`: load factor" << endl
+       << "* `find*` means the `find` API that directly returns the addresses "
+          "of values."
+       << endl
+       << "* `find_or_insert*` means the `find_or_insert` API that directly "
+          "returns the addresses of values."
+       << endl
        << "* ***Throughput Unit: Billion-KV/second***" << endl
        << endl;
   auto print_configuration = [](const size_t dim, const size_t init_capacity,
