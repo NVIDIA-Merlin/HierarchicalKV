@@ -104,11 +104,11 @@
 <dd><p>Enumeration of the eviction strategies. </p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">meta</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. On <code class="docutils literal notranslate"><span class="pre">kLru</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">metas</span></code> parameter of the APIs should keep <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the meta for each key is assigned internally in LRU(Least Recently Used) policy. On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be provided by caller.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">score</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. On <code class="docutils literal notranslate"><span class="pre">kLru</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> parameter of the APIs should keep <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key is assigned internally in LRU(Least Recently Used) policy. On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be provided by caller.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">meta</span></code> value are evicted first. </p>
+<p>Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">score</span></code> value are evicted first. </p>
 </div>
 <p><em>Values:</em></p>
 <dl class="cpp enumerator">
@@ -166,6 +166,10 @@
       <dd><a href="../../v0.1.0-beta.2/index.html">v0.1.0-beta.2</a></dd>
       <dd><a href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html">v0.1.0-beta.3</a></dd>
       <dd><a href="../../v0.1.0-beta.4/index.html">v0.1.0-beta.4</a></dd>
+    </dl>
+    <dl>
+      <dt>Branches</dt>
+      <dd><a href="../../master/index.html">master</a></dd>
     </dl>
   </div>
 </div><script>
