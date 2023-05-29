@@ -12,7 +12,7 @@ The key capability of HierarchicalKV is to store key-value (feature-embedding) o
 
 You can also use the library for generic key-value storage.
 
-## Benefits of HierarchicalKV
+## Benefits
 
 When building large recommender systems, machine learning (ML) engineers face the following challenges:
 
@@ -29,23 +29,48 @@ HierarchicalKV alleviates these challenges and helps the machine learning engine
   The strategies are implemented by CUDA kernels.
 - Operates at a high working-status load factor that is close to 1.0.
 
+
+## Key ideas
+
+- Buckets are locally ordered
+- Store keys and values separately
+- Store all the keys in HBM
+- Build-in and customizable eviction strategy
+
 HierarchicalKV makes NVIDIA GPUs more suitable for training large and super-large models of ***search, recommendations, and advertising***.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.
 
 ## API Documentation
 
-The main classes and structs are below, and it's recommended to read the comments in the source code directly:
+The main classes and structs are below, but reading the comments in the source code is recommended:
 
-- [`class HashTable`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L101)
-- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106)
-- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L34)
-- [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106)
+- [`class HashTable`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L151)
+- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L52)
+- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60)
 
 For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html)
 
+## API Maturity Matrix
+
+`Industrial verified` means the API has been well-tested and verified in at least one real-world scenario.
+
+| Name                 | Description                                                                                                           | Function            |
+|:---------------------|:----------------------------------------------------------------------------------------------------------------------|:--------------------|
+| __insert_or_assign__ | Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.    | Well-tested         |
+| __insert_and_evict__ | Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key. | Industrial verified |
+| __find_or_insert__   | Search for the specified keys. If missing, insert it.                                                                 | Well-tested         |
+| __assign__           | Update for each key and ignore the missed one.                                                                        | Well-tested         |
+| __accum_or_assign__  | Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.      | Well-tested         |
+| __find_or_insert\*__ | Search for the specified keys and return the pointers of values. If missing, insert it.                               | Well-tested         |
+| __find__             | Search for the specified keys.                                                                                        | Industrial verified |
+| __find\*__           | Search and return the pointers of values, thread-unsafe but with high performance.                                    | Well-tested         |
+| __export_batch__     | Exports a certain number of the key-value-score tuples.                                                               | Industrial verified |
+| __export_batch_if__  | Exports a certain number of the key-value-score tuples which match specific conditions.                               | Industrial verified |
+| __warmup__           | Move the hot key-values from HMEM to HBM                                                                              | June 15, 2023       |
+
 ## Usage restrictions
 
-- The `key_type` and `meta_type` must be `uint64_t`.
+- The `key_type` and `score_type` must be `uint64_t`.
 - The keys of `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
 
 ## Contributors
@@ -97,46 +122,46 @@ Your environment must meet the following requirements:
 * Key Type = uint64_t
 * Value Type = float32 * {dim}
 * Key-Values per OP = 1048576
-* Hit rate = 0.60
+* `λ`: load factor
 * `find*` means the `find` API that directly returns the addresses of values.
+* `find_or_insert*` means the `find_or_insert` API that directly returns the addresses of values.
 * ***Throughput Unit: Billion-KV/second***
 
-### On pure HBM mode: 
+### On pure HBM mode:
 
 * dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign |  find* | insert_and_evict |
-|------------:|-----------------:|-------:|---------------:|-------:|-------:|-----------------:|
-|        0.50 |            1.402 |  2.958 |          1.743 |  1.954 |  3.632 |            1.178 |
-|        0.75 |            1.072 |  1.629 |          0.617 |  0.914 |  1.851 |            0.906 |
-|        1.00 |            0.352 |  0.826 |          0.342 |  0.552 |  0.895 |            0.303 |
+|    λ | insert_or_assign |  find | find_or_insert | assign | find* | find_or_insert* | insert_and_evict |
+|-----:|-----------------:|------:|---------------:|-------:|------:|----------------:|-----------------:|
+| 0.50 |            1.397 | 2.923 |          1.724 |  1.945 | 3.609 |           1.756 |            1.158 |
+| 0.75 |            1.062 | 1.607 |          0.615 |  0.910 | 1.836 |           1.175 |            0.900 |
+| 1.00 |            0.352 | 0.826 |          0.342 |  0.551 | 0.894 |           0.357 |            0.302 |
 
 * dim = 64, capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign |  find* | insert_and_evict |
-|------------:|-----------------:|-------:|---------------:|-------:|-------:|-----------------:|
-|        0.50 |            0.925 |  1.584 |          0.890 |  1.128 |  3.645 |            0.795 |
-|        0.75 |            0.665 |  1.115 |          0.541 |  0.834 |  1.849 |            0.569 |
-|        1.00 |            0.323 |  0.640 |          0.314 |  0.512 |  0.896 |            0.179 |
+|    λ | insert_or_assign |  find | find_or_insert | assign | find* | find_or_insert* | insert_and_evict |
+|-----:|-----------------:|------:|---------------:|-------:|------:|----------------:|-----------------:|
+| 0.50 |            0.924 | 1.587 |          0.888 |  1.125 | 3.628 |           1.756 |            0.789 |
+| 0.75 |            0.662 | 1.115 |          0.540 |  0.833 | 1.844 |           1.177 |            0.566 | 
+| 1.00 |            0.323 | 0.642 |          0.314 |  0.512 | 0.897 |           0.358 |            0.177 |
 
 ### On HBM+HMEM hybrid mode:
 
 * dim = 64, capacity = 128 Million-KV, HBM = 16 GB, HMEM = 16 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign |  find* |
-|------------:|-----------------:|-------:|---------------:|-------:|-------:|
-|        0.50 |            0.121 |  0.149 |          0.120 |  0.147 |  3.397 |
-|        0.75 |            0.116 |  0.145 |          0.115 |  0.143 |  1.800 |
-|        1.00 |            0.087 |  0.125 |          0.087 |  0.114 |  0.883 |
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
+| 0.50 |            0.122 |  0.149 |          0.120 |  0.148 |  3.414 |           1.690 |
+| 0.75 |            0.117 |  0.145 |          0.115 |  0.143 |  1.808 |           1.161 |
+| 1.00 |            0.088 |  0.125 |          0.087 |  0.114 |  0.884 |           0.355 |
 
 * dim = 64, capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
 
-| load_factor | insert_or_assign |   find | find_or_insert | assign |  find* |
-|------------:|-----------------:|-------:|---------------:|-------:|-------:|
-|        0.50 |            0.036 |  0.054 |          0.035 |  0.045 |  2.809 |
-|        0.75 |            0.035 |  0.055 |          0.034 |  0.047 |  1.930 |
-|        1.00 |            0.034 |  0.051 |          0.031 |  0.047 |  0.855 |
-
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
+| 0.50 |            0.037 |  0.053 |          0.034 |  0.050 |  2.822 |           1.715 |
+| 0.75 |            0.036 |  0.053 |          0.033 |  0.049 |  1.920 |           1.082 |
+| 1.00 |            0.032 |  0.049 |          0.030 |  0.044 |  0.855 |           0.351 |
 
 ### Support and Feedback:
 
