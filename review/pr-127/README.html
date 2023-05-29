@@ -59,8 +59,10 @@
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#about-hierarchicalkv">About HierarchicalKV</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#benefits-of-hierarchicalkv">Benefits of HierarchicalKV</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benefits">Benefits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#key-ideas">Key ideas</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#api-documentation">API Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api-maturity-matrix">API Maturity Matrix</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#usage-restrictions">Usage restrictions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#contributors">Contributors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-to-build">How to build</a></li>
@@ -105,8 +107,8 @@
 <p>The key capability of HierarchicalKV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.</p>
 <p>You can also use the library for generic key-value storage.</p>
 </div>
-<div class="section" id="benefits-of-hierarchicalkv">
-<h2>Benefits of HierarchicalKV<a class="headerlink" href="#benefits-of-hierarchicalkv" title="Permalink to this headline"></a></h2>
+<div class="section" id="benefits">
+<h2>Benefits<a class="headerlink" href="#benefits" title="Permalink to this headline"></a></h2>
 <p>When building large recommender systems, machine learning (ML) engineers face the following challenges:</p>
 <ul class="simple">
 <li><p>GPUs are needed, but HBM on a single GPU is too small for the large DLRMs that scale to several terabytes.</p></li>
@@ -122,24 +124,90 @@
 The strategies are implemented by CUDA kernels.</p></li>
 <li><p>Operates at a high working-status load factor that is close to 1.0.</p></li>
 </ul>
+</div>
+<div class="section" id="key-ideas">
+<h2>Key ideas<a class="headerlink" href="#key-ideas" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p>Buckets are locally ordered</p></li>
+<li><p>Store keys and values separately</p></li>
+<li><p>Store all the keys in HBM</p></li>
+<li><p>Build-in and customizable eviction strategy</p></li>
+</ul>
 <p>HierarchicalKV makes NVIDIA GPUs more suitable for training large and super-large models of <em><strong>search, recommendations, and advertising</strong></em>.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.</p>
 </div>
 <div class="section" id="api-documentation">
 <h2>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline"></a></h2>
-<p>The main classes and structs are below, and it’s recommended to read the comments in the source code directly:</p>
+<p>The main classes and structs are below, but reading the comments in the source code is recommended:</p>
 <ul class="simple">
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L101"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">HashTable</span></code></a></p></li>
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">EvictStrategy</span></code></a></p></li>
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L34"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a></p></li>
-<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106"><code class="docutils literal notranslate"><span class="pre">Struct</span> <span class="pre">HashTable::Vector</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L151"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">HashTable</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L52"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">EvictStrategy</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a></p></li>
 </ul>
 <p>For regular API doc, please refer to <a class="reference external" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html">API Docs</a></p>
+</div>
+<div class="section" id="api-maturity-matrix">
+<h2>API Maturity Matrix<a class="headerlink" href="#api-maturity-matrix" title="Permalink to this headline"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">Industrial</span> <span class="pre">verified</span></code> means the API has been well-tested and verified in at least one real-world scenario.</p>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-left head"><p>Name</p></th>
+<th class="text-left head"><p>Description</p></th>
+<th class="text-left head"><p>Function</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-left"><p><strong>insert_or_assign</strong></p></td>
+<td class="text-left"><p>Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.</p></td>
+<td class="text-left"><p>Well-tested</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>insert_and_evict</strong></p></td>
+<td class="text-left"><p>Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key.</p></td>
+<td class="text-left"><p>Industrial verified</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>find_or_insert</strong></p></td>
+<td class="text-left"><p>Search for the specified keys. If missing, insert it.</p></td>
+<td class="text-left"><p>Well-tested</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>assign</strong></p></td>
+<td class="text-left"><p>Update for each key and ignore the missed one.</p></td>
+<td class="text-left"><p>Well-tested</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>accum_or_assign</strong></p></td>
+<td class="text-left"><p>Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.</p></td>
+<td class="text-left"><p>Well-tested</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>find_or_insert*</strong></p></td>
+<td class="text-left"><p>Search for the specified keys and return the pointers of values. If missing, insert it.</p></td>
+<td class="text-left"><p>Well-tested</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>find</strong></p></td>
+<td class="text-left"><p>Search for the specified keys.</p></td>
+<td class="text-left"><p>Industrial verified</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>find*</strong></p></td>
+<td class="text-left"><p>Search and return the pointers of values, thread-unsafe but with high performance.</p></td>
+<td class="text-left"><p>Well-tested</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>export_batch</strong></p></td>
+<td class="text-left"><p>Exports a certain number of the key-value-score tuples.</p></td>
+<td class="text-left"><p>Industrial verified</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>export_batch_if</strong></p></td>
+<td class="text-left"><p>Exports a certain number of the key-value-score tuples which match specific conditions.</p></td>
+<td class="text-left"><p>Industrial verified</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>warmup</strong></p></td>
+<td class="text-left"><p>Move the hot key-values from HMEM to HBM</p></td>
+<td class="text-left"><p>June 15, 2023</p></td>
+</tr>
+</tbody>
+</table>
 </div>
 <div class="section" id="usage-restrictions">
 <h2>Usage restrictions<a class="headerlink" href="#usage-restrictions" title="Permalink to this headline"></a></h2>
 <ul class="simple">
-<li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> and <code class="docutils literal notranslate"><span class="pre">meta_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> and <code class="docutils literal notranslate"><span class="pre">score_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
 <li><p>The keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFC</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFD</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> are reserved for internal using.</p></li>
 </ul>
 </div>
@@ -191,8 +259,9 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <li><p>Key Type = uint64_t</p></li>
 <li><p>Value Type = float32 * {dim}</p></li>
 <li><p>Key-Values per OP = 1048576</p></li>
-<li><p>Hit rate = 0.60</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">λ</span></code>: load factor</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">find*</span></code> means the <code class="docutils literal notranslate"><span class="pre">find</span></code> API that directly returns the addresses of values.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">find_or_insert*</span></code> means the <code class="docutils literal notranslate"><span class="pre">find_or_insert</span></code> API that directly returns the addresses of values.</p></li>
 <li><p><em><strong>Throughput Unit: Billion-KV/second</strong></em></p></li>
 </ul>
 <div class="section" id="on-pure-hbm-mode">
@@ -202,39 +271,43 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
-<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
 <th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
 <th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 <th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
 <th class="text-right head"><p>insert_and_evict</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>1.402</p></td>
-<td class="text-right"><p>2.958</p></td>
-<td class="text-right"><p>1.743</p></td>
-<td class="text-right"><p>1.954</p></td>
-<td class="text-right"><p>3.632</p></td>
-<td class="text-right"><p>1.178</p></td>
+<td class="text-right"><p>1.397</p></td>
+<td class="text-right"><p>2.923</p></td>
+<td class="text-right"><p>1.724</p></td>
+<td class="text-right"><p>1.945</p></td>
+<td class="text-right"><p>3.609</p></td>
+<td class="text-right"><p>1.756</p></td>
+<td class="text-right"><p>1.158</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>1.072</p></td>
-<td class="text-right"><p>1.629</p></td>
-<td class="text-right"><p>0.617</p></td>
-<td class="text-right"><p>0.914</p></td>
-<td class="text-right"><p>1.851</p></td>
-<td class="text-right"><p>0.906</p></td>
+<td class="text-right"><p>1.062</p></td>
+<td class="text-right"><p>1.607</p></td>
+<td class="text-right"><p>0.615</p></td>
+<td class="text-right"><p>0.910</p></td>
+<td class="text-right"><p>1.836</p></td>
+<td class="text-right"><p>1.175</p></td>
+<td class="text-right"><p>0.900</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>0.352</p></td>
 <td class="text-right"><p>0.826</p></td>
 <td class="text-right"><p>0.342</p></td>
-<td class="text-right"><p>0.552</p></td>
-<td class="text-right"><p>0.895</p></td>
-<td class="text-right"><p>0.303</p></td>
+<td class="text-right"><p>0.551</p></td>
+<td class="text-right"><p>0.894</p></td>
+<td class="text-right"><p>0.357</p></td>
+<td class="text-right"><p>0.302</p></td>
 </tr>
 </tbody>
 </table>
@@ -243,39 +316,43 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
-<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
 <th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
 <th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 <th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
 <th class="text-right head"><p>insert_and_evict</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.925</p></td>
-<td class="text-right"><p>1.584</p></td>
-<td class="text-right"><p>0.890</p></td>
-<td class="text-right"><p>1.128</p></td>
-<td class="text-right"><p>3.645</p></td>
-<td class="text-right"><p>0.795</p></td>
+<td class="text-right"><p>0.924</p></td>
+<td class="text-right"><p>1.587</p></td>
+<td class="text-right"><p>0.888</p></td>
+<td class="text-right"><p>1.125</p></td>
+<td class="text-right"><p>3.628</p></td>
+<td class="text-right"><p>1.756</p></td>
+<td class="text-right"><p>0.789</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.665</p></td>
+<td class="text-right"><p>0.662</p></td>
 <td class="text-right"><p>1.115</p></td>
-<td class="text-right"><p>0.541</p></td>
-<td class="text-right"><p>0.834</p></td>
-<td class="text-right"><p>1.849</p></td>
-<td class="text-right"><p>0.569</p></td>
+<td class="text-right"><p>0.540</p></td>
+<td class="text-right"><p>0.833</p></td>
+<td class="text-right"><p>1.844</p></td>
+<td class="text-right"><p>1.177</p></td>
+<td class="text-right"><p>0.566</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>0.323</p></td>
-<td class="text-right"><p>0.640</p></td>
+<td class="text-right"><p>0.642</p></td>
 <td class="text-right"><p>0.314</p></td>
 <td class="text-right"><p>0.512</p></td>
-<td class="text-right"><p>0.896</p></td>
-<td class="text-right"><p>0.179</p></td>
+<td class="text-right"><p>0.897</p></td>
+<td class="text-right"><p>0.358</p></td>
+<td class="text-right"><p>0.177</p></td>
 </tr>
 </tbody>
 </table>
@@ -287,35 +364,39 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
-<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
 <th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
 <th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 <th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.121</p></td>
+<td class="text-right"><p>0.122</p></td>
 <td class="text-right"><p>0.149</p></td>
 <td class="text-right"><p>0.120</p></td>
-<td class="text-right"><p>0.147</p></td>
-<td class="text-right"><p>3.397</p></td>
+<td class="text-right"><p>0.148</p></td>
+<td class="text-right"><p>3.414</p></td>
+<td class="text-right"><p>1.690</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.116</p></td>
+<td class="text-right"><p>0.117</p></td>
 <td class="text-right"><p>0.145</p></td>
 <td class="text-right"><p>0.115</p></td>
 <td class="text-right"><p>0.143</p></td>
-<td class="text-right"><p>1.800</p></td>
+<td class="text-right"><p>1.808</p></td>
+<td class="text-right"><p>1.161</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.087</p></td>
+<td class="text-right"><p>0.088</p></td>
 <td class="text-right"><p>0.125</p></td>
 <td class="text-right"><p>0.087</p></td>
 <td class="text-right"><p>0.114</p></td>
-<td class="text-right"><p>0.883</p></td>
+<td class="text-right"><p>0.884</p></td>
+<td class="text-right"><p>0.355</p></td>
 </tr>
 </tbody>
 </table>
@@ -324,35 +405,39 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
-<tr class="row-odd"><th class="text-right head"><p>load_factor</p></th>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
 <th class="text-right head"><p>insert_or_assign</p></th>
 <th class="text-right head"><p>find</p></th>
 <th class="text-right head"><p>find_or_insert</p></th>
 <th class="text-right head"><p>assign</p></th>
 <th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
 </tr>
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.036</p></td>
-<td class="text-right"><p>0.054</p></td>
-<td class="text-right"><p>0.035</p></td>
-<td class="text-right"><p>0.045</p></td>
-<td class="text-right"><p>2.809</p></td>
+<td class="text-right"><p>0.037</p></td>
+<td class="text-right"><p>0.053</p></td>
+<td class="text-right"><p>0.034</p></td>
+<td class="text-right"><p>0.050</p></td>
+<td class="text-right"><p>2.822</p></td>
+<td class="text-right"><p>1.715</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.035</p></td>
-<td class="text-right"><p>0.055</p></td>
-<td class="text-right"><p>0.034</p></td>
-<td class="text-right"><p>0.047</p></td>
-<td class="text-right"><p>1.930</p></td>
+<td class="text-right"><p>0.036</p></td>
+<td class="text-right"><p>0.053</p></td>
+<td class="text-right"><p>0.033</p></td>
+<td class="text-right"><p>0.049</p></td>
+<td class="text-right"><p>1.920</p></td>
+<td class="text-right"><p>1.082</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.034</p></td>
-<td class="text-right"><p>0.051</p></td>
-<td class="text-right"><p>0.031</p></td>
-<td class="text-right"><p>0.047</p></td>
+<td class="text-right"><p>0.032</p></td>
+<td class="text-right"><p>0.049</p></td>
+<td class="text-right"><p>0.030</p></td>
+<td class="text-right"><p>0.044</p></td>
 <td class="text-right"><p>0.855</p></td>
+<td class="text-right"><p>0.351</p></td>
 </tr>
 </tbody>
 </table>
