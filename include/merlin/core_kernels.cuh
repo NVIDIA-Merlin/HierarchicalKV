@@ -848,6 +848,12 @@ __device__ __inline__ OccupyResult find_and_lock_when_vacant(
         key_pos = g.shfl(key_pos, src_lane);
         return OccupyResult::OCCUPIED_EMPTY;
       }
+      result = g.shfl((expected_key == desired_key ||
+                       expected_key == static_cast<K>(LOCKED_KEY)),
+                      src_lane);
+      if (result) {
+        return OccupyResult::CONTINUE;
+      }
       vote -= ((unsigned(0x1)) << src_lane);
     }
   }
@@ -1347,7 +1353,7 @@ __global__ void upsert_kernel(const Table<K, V, S>* __restrict table,
             key_pos, src_lane, bucket_max_size);
       } else {
         start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
-        occupy_result = find_and_lock_when_vacant<K, V, S, TILE_SIZE>(
+        occupy_result = find_and_lock_when_full<K, V, S, TILE_SIZE>(
             g, bucket, insert_key, insert_score, evicted_key, start_idx,
             key_pos, src_lane, bucket_max_size);
       }
