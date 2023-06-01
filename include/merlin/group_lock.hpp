@@ -15,12 +15,14 @@
  */
 
 /*
- * Implementing a group mutex and relative lock guard for better E2E performance:
- * - Allow multiple writers (like `insert_or_assign` `assign` `insert_and_evict` etc.)
- *   The CUDA kernels guarantee the data consistency in this situation.
+ * Implementing a group mutex and relative lock guard for better E2E
+ * performance:
+ * - Allow multiple writers (like `insert_or_assign` `assign` `insert_and_evict`
+ * etc.) The CUDA kernels guarantee the data consistency in this situation.
  * - Allow multiple readers (like `find` 'size` etc.)
  * - Not allow readers and writers to run concurrently
- * - The `write_read_lock` is used for special APIs (like `reserve` `erase` `clear` etc.)
+ * - The `write_read_lock` is used for special APIs (like `reserve` `erase`
+ * `clear` etc.)
  */
 #include <atomic>
 #include <cassert>
@@ -203,7 +205,8 @@ class write_read_lock {
     owns_ = true;
   }
 
-  explicit write_read_lock(group_shared_mutex& mutex, std::defer_lock_t) noexcept
+  explicit write_read_lock(group_shared_mutex& mutex,
+                           std::defer_lock_t) noexcept
       : mutex_(&mutex), owns_(false) {}
 
   ~write_read_lock() {

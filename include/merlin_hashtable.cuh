@@ -147,7 +147,8 @@ static constexpr auto& thrust_par = thrust::cuda::par;
  *           The currently supported data type is only `uint64_t`.
  *
  */
-template <class K, class V, class S = uint64_t>
+template <typename K, typename V, typename S = uint64_t,
+          typename ArchTag = Sm80>
 class HashTable {
  public:
   using size_type = size_t;
@@ -197,7 +198,7 @@ class HashTable {
    *
    * @param options The configuration options.
    */
-  void init(const HashTableOptions options) {
+  void init(const HashTableOptions& options) {
     if (initialized_) {
       return;
     }
@@ -208,6 +209,16 @@ class HashTable {
     } else {
       CUDA_CHECK(cudaGetDevice(&(options_.device_id)));
     }
+
+    MERLIN_CHECK(ispow2(static_cast<uint32_t>(options_.max_bucket_size)),
+                 "Bucket size should be the pow of 2");
+
+    MERLIN_CHECK(
+        (options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
+                128 ==
+            0,
+        "Storage size of keys and scores in one bucket should be the mutiple "
+        "of cache line size");
 
     // Construct table.
     cudaDeviceProp deviceProp;
@@ -889,19 +900,33 @@ class HashTable {
 
     reader_shared_lock lock(mutex_);
 
-    if (is_fast_mode()) {
-      using Selector =
-          SelectLookupKernelWithIO<key_type, value_type, score_type>;
-      static thread_local int step_counter = 0;
-      static thread_local float load_factor = 0.0;
+    const uint32_t value_size = options_.dim * sizeof(V);
 
-      if (((step_counter++) % kernel_select_interval_) == 0) {
-        load_factor = fast_load_factor(0, stream, false);
+    if (is_fast_mode()) {
+      using Selector = SelectLookupKernelWithIOPipeline<key_type, value_type,
+                                                        score_type, ArchTag>;
+      const uint32_t pipeline_max_size = Selector::max_value_size();
+      // Only support bucket_size = 128
+      if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
+        LookupKernelParams<key_type, value_type, score_type> lookupParams(
+            table_->buckets, table_->buckets_num,
+            static_cast<uint32_t>(options_.dim), keys, values, scores, founds,
+            n);
+        Selector::select_kernel(lookupParams, stream);
+      } else {
+        using Selector =
+            SelectLookupKernelWithIO<key_type, value_type, score_type>;
+        static thread_local int step_counter = 0;
+        static thread_local float load_factor = 0.0;
+
+        if (((step_counter++) % kernel_select_interval_) == 0) {
+          load_factor = fast_load_factor(0, stream, false);
+        }
+        Selector::execute_kernel(load_factor, options_.block_size,
+                                 options_.max_bucket_size, table_->buckets_num,
+                                 options_.dim, stream, n, d_table_, keys,
+                                 values, scores, founds);
       }
-      Selector::execute_kernel(load_factor, options_.block_size,
-                               options_.max_bucket_size, table_->buckets_num,
-                               options_.dim, stream, n, d_table_, keys, values,
-                               scores, founds);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};

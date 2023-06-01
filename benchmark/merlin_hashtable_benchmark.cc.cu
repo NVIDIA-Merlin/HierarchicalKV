@@ -38,114 +38,17 @@ using std::setfill;
 using std::setprecision;
 using std::setw;
 
-const float EPSILON = 0.001f;
-
 using namespace nv::merlin;
-
-inline uint64_t getTimestamp() {
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
-
-enum class API_Select {
-  find = 0,
-  insert_or_assign = 1,
-  find_or_insert = 2,
-  assign = 3,
-  insert_and_evict = 4,
-  find_ptr = 5,
-  find_or_insert_ptr = 6,
-};
-
-enum class Hit_Mode {
-  random = 0,
-  last_insert = 1,
-};
+using namespace benchmark;
 
 enum class Test_Mode {
   pure_hbm = 0,
   hybrid = 1,
 };
 
-template <class K, class S>
-void create_random_keys(K* h_keys, S* h_scores, const int key_num_per_op) {
-  std::unordered_set<K> numbers;
-  std::random_device rd;
-  std::mt19937_64 eng(rd());
-  std::uniform_int_distribution<K> distr;
-  int i = 0;
-
-  while (numbers.size() < key_num_per_op) {
-    numbers.insert(distr(eng));
-  }
-  for (const K num : numbers) {
-    h_keys[i] = num;
-    h_scores[i] = getTimestamp();
-    i++;
-  }
-}
+const float EPSILON = 0.001f;
 
 std::string rep(int n) { return std::string(n, ' '); }
-
-template <class K, class S>
-void create_continuous_keys(K* h_keys, S* h_scores, const int key_num_per_op,
-                            const K start = 0) {
-  for (K i = 0; i < key_num_per_op; i++) {
-    h_keys[i] = start + static_cast<K>(i);
-    h_scores[i] = getTimestamp();
-  }
-}
-
-template <typename K, typename S>
-void create_keys_for_hitrate(K* h_keys, S* h_scores, const int key_num_per_op,
-                             const float hitrate = 0.6f,
-                             const Hit_Mode hit_mode = Hit_Mode::last_insert,
-                             const K end = 0, const bool reset = false) {
-  int divide = static_cast<int>(key_num_per_op * hitrate);
-  if (Hit_Mode::random == hit_mode) {
-    std::random_device rd;
-    std::mt19937_64 eng(rd());
-    K existed_max = end == 0 ? 1 : (end - 1);
-    std::uniform_int_distribution<K> distr(0, existed_max);
-
-    if (existed_max < divide) {
-      std::cout << "# Can not generate enough keys for hit!";
-      exit(-1);
-    }
-    std::unordered_set<K> numbers;
-    while (numbers.size() < divide) {
-      numbers.insert(distr(eng));
-    }
-    int i = 0;
-    for (auto existed_value : numbers) {
-      h_keys[i] = existed_value;
-      h_scores[i] = getTimestamp();
-      i++;
-    }
-  } else {
-    // else keep its original value, but update scores
-    for (int i = 0; i < divide; i++) {
-      h_scores[i] = getTimestamp();
-    }
-  }
-
-  static K new_value = std::numeric_limits<K>::max();
-  if (reset) {
-    new_value = std::numeric_limits<K>::max();
-  }
-  for (int i = divide; i < key_num_per_op; i++) {
-    h_keys[i] = new_value--;
-    h_scores[i] = getTimestamp();
-  }
-}
-
-template <typename S>
-void refresh_scores(S* h_scores, const int key_num_per_op) {
-  for (int i = 0; i < key_num_per_op; i++) {
-    h_scores[i] = getTimestamp();
-  }
-}
 
 float test_one_api(const API_Select api, const size_t dim,
                    const size_t init_capacity, const size_t key_num_per_op,
