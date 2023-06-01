@@ -287,6 +287,7 @@ void test_basic(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaFreeHost(h_keys));
   CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
@@ -388,6 +389,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaFreeHost(h_keys));
   CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
@@ -525,6 +527,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaFreeHost(h_keys));
   CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
@@ -666,6 +669,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaFreeHost(h_keys));
   CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
@@ -809,6 +813,7 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaFreeHost(h_keys));
   CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
@@ -1106,6 +1111,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaFreeHost(h_keys));
   CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
@@ -1253,6 +1259,7 @@ void test_basic_for_cpu_io() {
 
   CUDA_CHECK(cudaFreeHost(h_keys));
   CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));

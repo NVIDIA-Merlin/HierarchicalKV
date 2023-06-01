@@ -365,5 +365,7 @@ static inline size_t MB(size_t n) { return n << 20; }
 
 static inline size_t KB(size_t n) { return n << 10; }
 
+constexpr inline bool ispow2(unsigned x) { return x && (!(x & (x - 1))); }
+
 }  // namespace merlin
 }  // namespace nv

@@ -164,6 +164,33 @@ void create_random_keys(K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
   }
 }
 
+template <class K, class S, class V>
+void create_random_keys(size_t dim, K* h_keys, S* h_scores, V* h_vectors,
+                        int KEY_NUM,
+                        size_t range = std::numeric_limits<uint64_t>::max()) {
+  std::unordered_set<K> numbers;
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<K> distr;
+  int i = 0;
+
+  while (numbers.size() < KEY_NUM) {
+    numbers.insert(distr(eng) % range);
+  }
+  for (const K num : numbers) {
+    h_keys[i] = num;
+    if (h_scores != nullptr) {
+      h_scores[i] = num;
+    }
+    if (h_vectors != nullptr) {
+      for (size_t j = 0; j < dim; j++) {
+        h_vectors[i * dim + j] = static_cast<float>(num * 0.00001);
+      }
+    }
+    i++;
+  }
+}
+
 inline uint64_t Murmur3HashHost(const uint64_t& key) {
   uint64_t k = key;
   k ^= k >> 33;

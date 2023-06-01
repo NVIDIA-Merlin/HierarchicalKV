@@ -56,7 +56,10 @@ using AtomicPos = cuda::atomic<T, cuda::thread_scope_device>;
 template <class K, class V, class S>
 struct Bucket {
   AtomicKey<K>* keys_;
+  /// TODO: compute the pointer of scores and digests using bucket_max_size
   AtomicScore<S>* scores_;
+  /// @brief not visible to users
+  uint8_t* digests_;
   V* vectors;  // Pinned memory or HBM
 
   /* min_score and min_pos is for or upsert_kernel
@@ -65,12 +68,20 @@ struct Bucket {
   AtomicScore<S> min_score;
   AtomicPos<int> min_pos;
 
+  __forceinline__ __device__ uint8_t* digests(int index) const {
+    return digests_ + index;
+  }
+
   __forceinline__ __device__ AtomicKey<K>* keys(int index) const {
     return keys_ + index;
   }
 
   __forceinline__ __device__ AtomicScore<S>* scores(int index) const {
     return scores_ + index;
+  }
+
+  __forceinline__ __device__ K** keys_addr() {
+    return reinterpret_cast<K**>(&keys_);
   }
 };
 
@@ -206,6 +217,26 @@ enum class OverrideResult {
   CONTINUE,  ///< Override did not succeed, continue trying to override
   SUCCESS,   ///< Override successfully
   REFUSED,   ///< Override is refused.
+};
+
+struct Sm70 {
+  static int const kComputeCapability = 70;
+};
+struct Sm72 {
+  static int const kComputeCapability = 72;
+};
+struct Sm75 {
+  static int const kComputeCapability = 75;
+};
+struct Sm80 {
+  static int const kComputeCapability = 80;
+};
+struct Sm86 {
+  static int const kComputeCapability = 86;
+};
+
+struct Sm90 {
+  static int const kComputeCapability = 90;
 };
 
 }  // namespace merlin
