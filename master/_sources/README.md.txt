@@ -122,6 +122,7 @@ Your environment must meet the following requirements:
 * Key Type = uint64_t
 * Value Type = float32 * {dim}
 * Key-Values per OP = 1048576
+* Evict strategy: LRU
 * `λ`: load factor
 * `find*` means the `find` API that directly returns the addresses of values.
 * `find_or_insert*` means the `find_or_insert` API that directly returns the addresses of values.
@@ -131,19 +132,19 @@ Your environment must meet the following requirements:
 
 * dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
 
-|    λ | insert_or_assign |  find | find_or_insert | assign | find* | find_or_insert* | insert_and_evict |
-|-----:|-----------------:|------:|---------------:|-------:|------:|----------------:|-----------------:|
-| 0.50 |            1.397 | 2.923 |          1.724 |  1.945 | 3.609 |           1.756 |            1.158 |
-| 0.75 |            1.062 | 1.607 |          0.615 |  0.910 | 1.836 |           1.175 |            0.900 |
-| 1.00 |            0.352 | 0.826 |          0.342 |  0.551 | 0.894 |           0.357 |            0.302 |
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
+| 0.50 |            1.418 |  3.616 |          1.925 |  1.973 |  4.522 |           1.943 |            1.186 |
+| 0.75 |            1.095 |  1.829 |          0.686 |  0.915 |  2.106 |           1.291 |            0.923 |
+| 1.00 |            0.360 |  0.887 |          0.362 |  0.546 |  0.963 |           0.380 |            0.311 |
 
 * dim = 64, capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
 
-|    λ | insert_or_assign |  find | find_or_insert | assign | find* | find_or_insert* | insert_and_evict |
-|-----:|-----------------:|------:|---------------:|-------:|------:|----------------:|-----------------:|
-| 0.50 |            0.924 | 1.587 |          0.888 |  1.125 | 3.628 |           1.756 |            0.789 |
-| 0.75 |            0.662 | 1.115 |          0.540 |  0.833 | 1.844 |           1.177 |            0.566 | 
-| 1.00 |            0.323 | 0.642 |          0.314 |  0.512 | 0.897 |           0.358 |            0.177 |
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
+| 0.50 |            0.943 |  1.766 |          0.936 |  1.134 |  4.569 |           1.954 |            0.806 |
+| 0.75 |            0.675 |  1.216 |          0.589 |  0.825 |  2.107 |           1.293 |            0.577 |
+| 1.00 |            0.328 |  0.678 |          0.329 |  0.503 |  0.963 |           0.380 |            0.179 |
 
 ### On HBM+HMEM hybrid mode:
 
@@ -151,17 +152,17 @@ Your environment must meet the following requirements:
 
 |    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
-| 0.50 |            0.122 |  0.149 |          0.120 |  0.148 |  3.414 |           1.690 |
-| 0.75 |            0.117 |  0.145 |          0.115 |  0.143 |  1.808 |           1.161 |
-| 1.00 |            0.088 |  0.125 |          0.087 |  0.114 |  0.884 |           0.355 |
+| 0.50 |            0.121 |  0.150 |          0.121 |  0.147 |  4.254 |           1.875 |
+| 0.75 |            0.116 |  0.146 |          0.116 |  0.143 |  2.054 |           1.281 |
+| 1.00 |            0.088 |  0.126 |          0.088 |  0.114 |  0.949 |           0.377 |
 
 * dim = 64, capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
 
 |    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
 | 0.50 |            0.037 |  0.053 |          0.034 |  0.050 |  2.822 |           1.715 |
-| 0.75 |            0.036 |  0.053 |          0.033 |  0.049 |  1.920 |           1.082 |
-| 1.00 |            0.032 |  0.049 |          0.030 |  0.044 |  0.855 |           0.351 |
+| 0.75 |            0.027 |  0.040 |          0.025 |  0.037 |  1.744 |           0.905 |
+| 1.00 |            0.033 |  0.050 |          0.030 |  0.044 |  0.917 |           0.373 |
 
 ### Support and Feedback:
 
