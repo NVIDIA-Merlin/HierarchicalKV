@@ -1843,15 +1843,16 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table, K* d_key,
                             const size_t offset, const size_t search_length,
                             size_t* d_dump_counter) {
   extern __shared__ unsigned char s[];
-  KVM<K, V, S>* const block_tuples{reinterpret_cast<KVM<K, V, S>*>(s)};
-
-  const size_t bucket_max_size{table->bucket_max_size};
-  const size_t dim{table->dim};
-
+  const size_t bucket_max_size = table->bucket_max_size;
+  const size_t dim = table->dim;
+  K* smem = (K*)s;
+  K* block_result_key = smem;
+  V* block_result_val = (V*)&(smem[blockDim.x]);
+  S* block_result_score = (S*)&(block_result_val[blockDim.x * dim]);
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
 
-  const size_t tid{blockIdx.x * blockDim.x + threadIdx.x};
+  const size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
 
   if (threadIdx.x == 0) {
     block_acc = 0;
@@ -1859,17 +1860,24 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table, K* d_key,
   __syncthreads();
 
   if (tid < search_length) {
-    Bucket<K, V, S>* const bucket{
-        &table->buckets[(tid + offset) / bucket_max_size]};
+    int bkt_idx = (tid + offset) / bucket_max_size;
+    int key_idx = (tid + offset) % bucket_max_size;
+    Bucket<K, V, S>* bucket = &(table->buckets[bkt_idx]);
 
-    const int key_idx{static_cast<int>((tid + offset) % bucket_max_size)};
-    const K key{(bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed)};
+    const K key =
+        (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
+    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
 
     if (!IS_RESERVED_KEY(key)) {
-      size_t local_index{atomicAdd(&block_acc, 1)};
-      block_tuples[local_index] = {
-          key, &bucket->vectors[key_idx * dim],
-          bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed)};
+      size_t local_index = atomicAdd(&block_acc, 1);
+      block_result_key[local_index] = key;
+      for (int i = 0; i < dim; i++) {
+        atomicExch(&(block_result_val[local_index * dim + i]),
+                   bucket->vectors[key_idx * dim + i]);
+      }
+      if (d_score != nullptr) {
+        block_result_score[local_index] = score;
+      }
     }
   }
   __syncthreads();
@@ -1880,15 +1888,13 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table, K* d_key,
   __syncthreads();
 
   if (threadIdx.x < block_acc) {
-    const KVM<K, V, S>& tuple{block_tuples[threadIdx.x]};
-
-    const size_t j{global_acc + threadIdx.x};
-    d_key[j] = tuple.key;
-    for (int i{0}; i < dim; ++i) {
-      d_val[j * dim + i] = tuple.value[i];
+    d_key[global_acc + threadIdx.x] = block_result_key[threadIdx.x];
+    for (int i = 0; i < dim; i++) {
+      d_val[(global_acc + threadIdx.x) * dim + i] =
+          block_result_val[threadIdx.x * dim + i];
     }
     if (d_score != nullptr) {
-      d_score[j] = tuple.score;
+      d_score[global_acc + threadIdx.x] = block_result_score[threadIdx.x];
     }
   }
 }
@@ -1928,8 +1934,7 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
         (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
     S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
 
-    if (key != static_cast<K>(EMPTY_KEY) &&
-        pred(key, score, pattern, threshold)) {
+    if (!IS_RESERVED_KEY(key) && pred(key, score, pattern, threshold)) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
       for (int i = 0; i < dim; i++) {

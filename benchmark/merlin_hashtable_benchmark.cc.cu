@@ -56,6 +56,8 @@ enum class API_Select {
   insert_and_evict = 4,
   find_ptr = 5,
   find_or_insert_ptr = 6,
+  export_batch = 7,
+  export_batch_if = 8,
 };
 
 enum class Hit_Mode {
@@ -147,6 +149,24 @@ void refresh_scores(S* h_scores, const int key_num_per_op) {
   }
 }
 
+template <class K, class S>
+struct ExportIfPredFunctor {
+  __forceinline__ __device__ bool operator()(const K& key, S& score,
+                                             const K& pattern,
+                                             const S& threshold) {
+    return score > threshold;
+  }
+};
+
+template <class K, class S>
+struct ExportBatchPredFunctor {
+  __forceinline__ __device__ bool operator()(const K& key, S& score,
+                                             const K& pattern,
+                                             const S& threshold) {
+    return true;
+  }
+};
+
 float test_one_api(const API_Select api, const size_t dim,
                    const size_t init_capacity, const size_t key_num_per_op,
                    const size_t hbm4values, const float load_factor,
@@ -232,6 +252,8 @@ float test_one_api(const API_Select api, const size_t dim,
   int32_t loop_num_init = (key_num_init + key_num_per_op - 1) / key_num_per_op;
 
   K start = 0UL;
+
+  S threshold = benchmark::host_nano<S>();
   for (int i = 0; i < loop_num_init; i++) {
     uint64_t key_num_cur_insert =
         i == loop_num_init - 1 ? key_num_remain : key_num_per_op;
@@ -306,7 +328,8 @@ float test_one_api(const API_Select api, const size_t dim,
                              key_num_per_op_warmup, stream);
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
-        table->find(1, d_keys, d_vectors_ptr, d_found, d_scores, stream);
+        table->find(key_num_per_op_warmup, d_keys, d_vectors_ptr, d_found,
+                    d_scores, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         benchmark::read_from_ptr(d_vectors_ptr, d_vectors, options.dim,
                                  key_num_per_op_warmup, stream);
@@ -328,6 +351,29 @@ float test_one_api(const API_Select api, const size_t dim,
         CUDA_CHECK(cudaStreamSynchronize(stream));
         CUDA_CHECK(cudaFree(d_vectors_ptr));
         CUDA_CHECK(cudaFree(d_found));
+        break;
+      }
+      case API_Select::export_batch: {
+        size_t* d_dump_counter = nullptr;
+        CUDA_CHECK(cudaMalloc(&d_dump_counter, sizeof(size_t)));
+        CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
+
+        table->export_batch(key_num_per_op_warmup, 0, d_dump_counter, d_keys,
+                            d_vectors, d_scores, stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        CUDA_CHECK(cudaFree(d_dump_counter));
+        break;
+      }
+      case API_Select::export_batch_if: {
+        size_t* d_dump_counter = nullptr;
+        CUDA_CHECK(cudaMalloc(&d_dump_counter, sizeof(size_t)));
+        CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
+        K pattern = 0;
+        table->template export_batch_if<ExportIfPredFunctor>(
+            pattern, threshold, key_num_per_op_warmup, 0, d_dump_counter,
+            d_keys, d_vectors, d_scores, stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        CUDA_CHECK(cudaFree(d_dump_counter));
         break;
       }
       default: {
@@ -414,6 +460,42 @@ float test_one_api(const API_Select api, const size_t dim,
       CUDA_CHECK(cudaFree(d_found));
       break;
     }
+    case API_Select::export_batch: {
+      size_t* d_dump_counter;
+
+      // Try to export close to but less than `key_num_per_op` data.
+      // It's normal to happen `illegal memory access` error occasionally.
+      float safe_ratio = 0.995;
+
+      CUDA_CHECK(cudaMalloc(&d_dump_counter, sizeof(size_t)));
+      CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
+      timer.start();
+      table->export_batch(key_num_per_op / target_load_factor * safe_ratio, 0,
+                          d_dump_counter, d_keys, d_vectors, d_scores, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      CUDA_CHECK(cudaFree(d_dump_counter));
+      break;
+    }
+    case API_Select::export_batch_if: {
+      size_t* d_dump_counter;
+
+      // Try to export close to but less than `key_num_per_op` data.
+      // It's normal to happen `illegal memory access` error occasionally.
+      float safe_ratio = 0.995;
+
+      CUDA_CHECK(cudaMalloc(&d_dump_counter, sizeof(size_t)));
+      CUDA_CHECK(cudaMemset(d_dump_counter, 0, sizeof(size_t)));
+      timer.start();
+      K pattern = 0;
+      table->template export_batch_if<ExportIfPredFunctor>(
+          pattern, threshold, key_num_per_op / target_load_factor * safe_ratio,
+          0, d_dump_counter, d_keys, d_vectors, d_scores, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      CUDA_CHECK(cudaFree(d_dump_counter));
+      break;
+    }
     default: {
       std::cout << "[Unsupport API]\n";
     }
@@ -443,7 +525,7 @@ float test_one_api(const API_Select api, const size_t dim,
 
 static Test_Mode test_mode = Test_Mode::pure_hbm;
 
-void print_title() {
+void print_title_a() {
   cout << endl
        << "|    λ "
        << "| insert_or_assign "
@@ -478,18 +560,27 @@ void print_title() {
   cout << "|\n";
 }
 
-void test_main(const size_t dim,
+void print_title_b() {
+  cout << endl
+       << "|    λ "
+       << "| export_batch "
+       << "| export_batch_if ";
+  cout << "|\n";
+
+  //<< "| load_factor "
+  cout << "|-----:"
+       //<< "| export_batch "
+       << "|-------------:"
+       //<< "| export_batch_if "
+       << "|----------------:";
+  cout << "|\n";
+}
+
+void test_main(std::vector<API_Select>& apis, const size_t dim,
                const size_t init_capacity = 64 * 1024 * 1024UL,
                const size_t key_num_per_op = 1 * 1024 * 1024UL,
                const size_t hbm4values = 16, const float load_factor = 1.0f) {
   std::cout << "|" << rep(1) << fixed << setprecision(2) << load_factor << " ";
-  std::vector<API_Select> apis{
-      API_Select::insert_or_assign, API_Select::find,
-      API_Select::find_or_insert,   API_Select::assign,
-      API_Select::find_ptr,         API_Select::find_or_insert_ptr};
-  if (Test_Mode::pure_hbm == test_mode) {
-    apis.push_back(API_Select::insert_and_evict);
-  }
   for (auto api : apis) {
     // There is a sampling of load_factor after several times call to target
     // API. Two consecutive calls can avoid the impact of sampling.
@@ -525,6 +616,14 @@ void test_main(const size_t dim,
         break;
       }
       case API_Select::find_or_insert_ptr: {
+        std::cout << rep(11);
+        break;
+      }
+      case API_Select::export_batch: {
+        std::cout << rep(8);
+        break;
+      }
+      case API_Select::export_batch_if: {
         std::cout << rep(11);
         break;
       }
@@ -570,36 +669,79 @@ int main() {
          << "HBM = " << hbm4values << " GB, "
          << "HMEM = " << hmem4values << " GB\n";
   };
+
   try {
-    test_mode = Test_Mode::pure_hbm;
-    cout << "### On pure HBM mode: " << endl;
-    print_configuration(4, 64 * 1024 * 1024UL, 32);
-    print_title();
-    test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.50f);
-    test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.75f);
-    test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 1.00f);
+    {
+      std::vector<API_Select> apis_a{
+          API_Select::insert_or_assign, API_Select::find,
+          API_Select::find_or_insert,   API_Select::assign,
+          API_Select::find_ptr,         API_Select::find_or_insert_ptr,
+          API_Select::insert_and_evict};
 
-    print_configuration(64, 64 * 1024 * 1024UL, 16);
-    print_title();
-    test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
-    test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
-    test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
-    cout << endl;
+      std::vector<API_Select> apis_b{API_Select::export_batch,
+                                     API_Select::export_batch_if};
+      test_mode = Test_Mode::pure_hbm;
 
-    cout << "### On HBM+HMEM hybrid mode: " << endl;
-    test_mode = Test_Mode::hybrid;
-    print_configuration(64, 128 * 1024 * 1024UL, 16);
-    print_title();
-    test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
-    test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
-    test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
+      cout << "### On pure HBM mode: " << endl;
+      print_configuration(4, 64 * 1024 * 1024UL, 32);
+      print_title_a();
+      test_main(apis_a, 4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.50f);
+      test_main(apis_a, 4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.75f);
+      test_main(apis_a, 4, 64 * 1024 * 1024UL, key_num_per_op, 32, 1.00f);
 
-    print_configuration(64, 1024 * 1024 * 1024UL, 56);
-    print_title();
-    test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 0.50f);
-    test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 0.75f);
-    test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 1.00f);
-    cout << endl;
+      print_title_b();
+      test_main(apis_b, 4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.50f);
+      test_main(apis_b, 4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.75f);
+      test_main(apis_b, 4, 64 * 1024 * 1024UL, key_num_per_op, 32, 1.00f);
+
+      print_configuration(64, 64 * 1024 * 1024UL, 16);
+      print_title_a();
+      test_main(apis_a, 64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
+      test_main(apis_a, 64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
+      test_main(apis_a, 64, 64 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
+
+      print_title_b();
+      test_main(apis_b, 64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
+      test_main(apis_b, 64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
+      test_main(apis_b, 64, 64 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
+
+      cout << endl;
+    }
+
+    {
+      std::vector<API_Select> apis_a{
+          API_Select::insert_or_assign, API_Select::find,
+          API_Select::find_or_insert,   API_Select::assign,
+          API_Select::find_ptr,         API_Select::find_or_insert_ptr};
+
+      std::vector<API_Select> apis_b{API_Select::export_batch,
+                                     API_Select::export_batch_if};
+
+      cout << "### On HBM+HMEM hybrid mode: " << endl;
+      test_mode = Test_Mode::hybrid;
+      print_configuration(64, 128 * 1024 * 1024UL, 16);
+      print_title_a();
+      test_main(apis_a, 64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
+      test_main(apis_a, 64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
+      test_main(apis_a, 64, 128 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
+
+      print_title_b();
+      test_main(apis_b, 64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
+      test_main(apis_b, 64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
+      test_main(apis_b, 64, 128 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
+
+      print_configuration(64, 512 * 1024 * 1024UL, 32);
+      print_title_a();
+      test_main(apis_a, 64, 512 * 1024 * 1024UL, key_num_per_op, 32, 0.50f);
+      test_main(apis_a, 64, 512 * 1024 * 1024UL, key_num_per_op, 32, 0.75f);
+      test_main(apis_a, 64, 512 * 1024 * 1024UL, key_num_per_op, 32, 1.00f);
+
+      print_title_b();
+      test_main(apis_b, 64, 512 * 1024 * 1024UL, key_num_per_op, 32, 0.50f);
+      test_main(apis_b, 64, 512 * 1024 * 1024UL, key_num_per_op, 32, 0.75f);
+      test_main(apis_b, 64, 512 * 1024 * 1024UL, key_num_per_op, 32, 1.00f);
+      cout << endl;
+    }
 
     CUDA_CHECK(cudaDeviceSynchronize());
   } catch (const nv::merlin::CudaException& e) {

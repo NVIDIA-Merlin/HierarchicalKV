@@ -1109,7 +1109,7 @@ class HashTable {
    *
    * @param n The maximum number of exported pairs.
    * @param offset The position of the key to remove.
-   * @param counter Accumulates amount of successfully exported values.
+   * @param d_counter Accumulates amount of successfully exported values.
    * @param keys The keys to dump from GPU-accessible memory with shape (n).
    * @param values The values to dump from GPU-accessible memory with shape
    * (n, DIM).
@@ -1127,28 +1127,33 @@ class HashTable {
    * occurs.
    */
   void export_batch(size_type n, const size_type offset,
-                    size_type* counter,            // (1)
+                    size_type* d_counter,          // (1)
                     key_type* keys,                // (n)
                     value_type* values,            // (n, DIM)
                     score_type* scores = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
     reader_shared_lock lock(mutex_);
 
+    CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
     if (offset >= table_->capacity) {
       return;
     }
     n = std::min(table_->capacity - offset, n);
 
-    size_type shared_size;
-    size_type block_size;
-    std::tie(shared_size, block_size) =
-        dump_kernel_shared_memory_size<K, V, S>(shared_mem_size_);
+    const size_t score_size = scores ? sizeof(score_type) : 0;
+    const size_t kvm_size =
+        sizeof(key_type) + sizeof(value_type) * dim() + score_size;
+    const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
+    MERLIN_CHECK(
+        block_size > 0,
+        "[HierarchicalKV] block_size <= 0, the K-V-S size may be too large!");
 
+    const size_t shared_size = kvm_size * block_size;
     const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
 
     dump_kernel<key_type, value_type, score_type>
         <<<grid_size, block_size, shared_size, stream>>>(
-            table_, keys, values, scores, offset, n, counter);
+            d_table_, keys, values, scores, offset, n, d_counter);
 
     CudaCheckError();
   }
@@ -1224,9 +1229,9 @@ class HashTable {
                        score_type* scores = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
     reader_shared_lock lock(mutex_);
+    CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
 
     if (offset >= table_->capacity) {
-      CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
       return;
     }
     n = std::min(table_->capacity - offset, n);
@@ -1244,7 +1249,7 @@ class HashTable {
 
     dump_kernel<key_type, value_type, score_type, PredFunctor>
         <<<grid_size, block_size, shared_size, stream>>>(
-            table_, pattern, threshold, keys, values, scores, offset, n,
+            d_table_, pattern, threshold, keys, values, scores, offset, n,
             d_counter);
 
     CudaCheckError();
