@@ -59,11 +59,6 @@ struct Bucket {
   AtomicScore<S>* scores_;
   V* vectors;  // Pinned memory or HBM
 
-  /* For upsert_kernel without user specified scores
-     recording the current score, the cur_score will
-     increment by 1 when a new inserting happens. */
-  AtomicScore<S> cur_score;
-
   /* min_score and min_pos is for or upsert_kernel
      with user specified score. They record the minimum
      score and its pos in the bucket. */

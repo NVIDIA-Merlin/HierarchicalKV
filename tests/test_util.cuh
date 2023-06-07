@@ -44,6 +44,27 @@
 
 namespace test_util {
 
+template <class S>
+__global__ void host_nano_kernel(S* d_clk) {
+  S mclk;
+  asm volatile("mov.u64 %0,%%globaltimer;" : "=l"(mclk));
+  *d_clk = mclk;
+}
+
+template <class S>
+S host_nano(cudaStream_t stream = 0) {
+  S h_clk = 0;
+  S* d_clk;
+
+  CUDA_CHECK(cudaMalloc((void**)&(d_clk), sizeof(S)));
+  host_nano_kernel<S><<<1, 1, 0, stream>>>(d_clk);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  CUDA_CHECK(cudaMemcpy(&h_clk, d_clk, sizeof(S), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaFree(d_clk));
+  return h_clk;
+}
+
 __global__ void all_true(const bool* conds, size_t n, int* nfalse) {
   const size_t stripe =
       (n + gridDim.x - 1) /

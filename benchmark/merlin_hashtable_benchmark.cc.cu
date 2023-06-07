@@ -177,7 +177,7 @@ float test_one_api(const API_Select api, const size_t dim,
   options.dim = dim;
   options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
   options.io_by_cpu = io_by_cpu;
-  options.evict_strategy = EvictStrategy::kCustomized;
+  options.evict_strategy = EvictStrategy::kLru;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
@@ -203,7 +203,6 @@ float test_one_api(const API_Select api, const size_t dim,
   S* d_evict_scores;
 
   CUDA_CHECK(cudaMalloc(&d_keys, key_num_per_op * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_scores, key_num_per_op * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, key_num_per_op * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_def_val, key_num_per_op * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
@@ -239,8 +238,6 @@ float test_one_api(const API_Select api, const size_t dim,
     create_continuous_keys<K, S>(h_keys, h_scores, key_num_cur_insert, start);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_cur_insert * sizeof(K),
                           cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, key_num_cur_insert * sizeof(S),
-                          cudaMemcpyHostToDevice));
     table->insert_or_assign(key_num_cur_insert, d_keys, d_vectors, d_scores,
                             stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -257,8 +254,6 @@ float test_one_api(const API_Select api, const size_t dim,
         std::min(static_cast<int64_t>(key_num_per_op), key_num_append);
     create_continuous_keys<K, S>(h_keys, h_scores, key_num_append, start);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_append * sizeof(K),
-                          cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, key_num_append * sizeof(S),
                           cudaMemcpyHostToDevice));
     table->insert_or_assign(key_num_append, d_keys, d_vectors, d_scores,
                             stream);
@@ -343,8 +338,6 @@ float test_one_api(const API_Select api, const size_t dim,
   create_keys_for_hitrate<K, S>(h_keys, h_scores, key_num_per_op, hitrate,
                                 Hit_Mode::last_insert, start, true /*reset*/);
   CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
-                        cudaMemcpyHostToDevice));
-  CUDA_CHECK(cudaMemcpy(d_scores, h_scores, key_num_per_op * sizeof(S),
                         cudaMemcpyHostToDevice));
   auto timer = benchmark::Timer<double>();
   switch (api) {
@@ -433,7 +426,6 @@ float test_one_api(const API_Select api, const size_t dim,
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
-  CUDA_CHECK(cudaFree(d_scores));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));
@@ -557,6 +549,7 @@ int main() {
        << "* Key Type = uint64_t" << endl
        << "* Value Type = float32 * {dim}" << endl
        << "* Key-Values per OP = " << key_num_per_op << endl
+       << "* Evict strategy: LRU" << endl
        << "* `λ`: load factor" << endl
        << "* `find*` means the `find` API that directly returns the addresses "
           "of values."

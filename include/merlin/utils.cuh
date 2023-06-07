@@ -71,6 +71,13 @@ __inline__ __device__ uint64_t atomicAdd(uint64_t* address,
 namespace nv {
 namespace merlin {
 
+template <class S>
+static __forceinline__ __device__ S device_nano() {
+  S mclk;
+  asm volatile("mov.u64 %0,%%globaltimer;" : "=l"(mclk));
+  return mclk;
+}
+
 inline void __cudaCheckError(const char* file, const int line) {
 #ifdef CUDA_ERROR_CHECK
   cudaError err = cudaGetLastError();
