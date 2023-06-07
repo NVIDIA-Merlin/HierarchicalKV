@@ -103,8 +103,6 @@ __global__ void create_atomic_scores(Bucket<K, V, S>* __restrict buckets,
       new (buckets[start + tid].scores(i))
           AtomicScore<S>{static_cast<S>(EMPTY_SCORE)};
     }
-    new (&(buckets[start + tid].cur_score))
-        AtomicScore<S>{static_cast<S>(EMPTY_SCORE)};
     new (&(buckets[start + tid].min_score))
         AtomicScore<S>{static_cast<S>(EMPTY_SCORE)};
     new (&(buckets[start + tid].min_pos)) AtomicPos<int>{1};
@@ -1064,9 +1062,8 @@ __forceinline__ __device__ void update_score(Bucket<K, V, S>* __restrict bucket,
                                              const S* __restrict scores,
                                              const int key_idx) {
   if (scores == nullptr) {
-    S cur_score =
-        bucket->cur_score.fetch_add(1, cuda::std::memory_order_relaxed) + 1;
-    bucket->scores(key_pos)->store(cur_score, cuda::std::memory_order_relaxed);
+    bucket->scores(key_pos)->store(device_nano<S>(),
+                                   cuda::std::memory_order_relaxed);
   } else {
     bucket->scores(key_pos)->store(scores[key_idx],
                                    cuda::std::memory_order_relaxed);

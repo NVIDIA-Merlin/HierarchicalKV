@@ -1241,9 +1241,11 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_base.data(),
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
+      S start_ts = test_util::host_nano<S>(stream);
       table->insert_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                               nullptr, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
+      S end_ts = test_util::host_nano<S>(stream);
 
       size_t total_size = table->size(stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -1264,8 +1266,8 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
       std::array<S, BASE_KEY_NUM> h_scores_temp_sorted(h_scores_temp);
       std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
-      ASSERT_TRUE(
-          (h_scores_temp_sorted == test_util::range<S, TEMP_KEY_NUM>(1)));
+      ASSERT_GE(h_scores_temp_sorted[0], start_ts);
+      ASSERT_LE(h_scores_temp_sorted[BASE_KEY_NUM - 1], end_ts);
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -1282,9 +1284,11 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_test.data(),
                             TEST_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
+      S start_ts = test_util::host_nano<S>(stream);
       table->insert_or_assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp,
                               nullptr, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
+      S end_ts = test_util::host_nano<S>(stream);
 
       size_t total_size = table->size(stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -1310,14 +1314,14 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
           ASSERT_GT(h_scores_temp[i], BUCKET_MAX_SIZE);
           h_scores_temp_sorted[ctr++] = h_scores_temp[i];
         } else {
-          ASSERT_LE(h_scores_temp[i], BUCKET_MAX_SIZE);
+          ASSERT_LE(h_scores_temp[i], start_ts);
         }
       }
       std::sort(h_scores_temp_sorted.begin(),
                 h_scores_temp_sorted.begin() + ctr);
 
-      ASSERT_TRUE((h_scores_temp_sorted ==
-                   test_util::range<S, TEST_KEY_NUM>(BUCKET_MAX_SIZE + 1)));
+      ASSERT_GE(h_scores_temp_sorted[0], start_ts);
+      ASSERT_LE(h_scores_temp_sorted[ctr - 1], end_ts);
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
