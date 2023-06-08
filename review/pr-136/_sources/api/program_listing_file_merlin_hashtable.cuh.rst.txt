@@ -649,7 +649,7 @@ Program Listing for File merlin_hashtable.cuh
                table_->buckets, table_->buckets_num,
                static_cast<uint32_t>(options_.dim), keys, values, scores, founds,
                n);
-           Selector::execute_kernel(lookupParams, stream);
+           Selector::select_kernel(lookupParams, stream);
          } else {
            using Selector =
                SelectLookupKernelWithIO<key_type, value_type, score_type>;
