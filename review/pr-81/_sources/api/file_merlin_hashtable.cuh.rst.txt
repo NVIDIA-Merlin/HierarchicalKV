@@ -31,11 +31,13 @@ Includes
 
 - ``limits``
 
+- ``merlin/array_kernels.cuh``
+
 - ``merlin/core_kernels.cuh``
 
-- ``merlin/external_storage.cuh``
-
 - ``merlin/flexible_buffer.cuh``
+
+- ``merlin/group_lock.hpp``
 
 - ``merlin/memory_pool.cuh``
 
@@ -89,5 +91,12 @@ Typedefs
 --------
 
 
-- :ref:`exhale_typedef_merlin__hashtable_8cuh_1a20afe66b4f5d4690391f7ef8845223e5`
+- :ref:`exhale_typedef_merlin__hashtable_8cuh_1a5001706db6e977358e7f76ad6773703a`
+
+
+Variables
+---------
+
+
+- :ref:`exhale_variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da`
 

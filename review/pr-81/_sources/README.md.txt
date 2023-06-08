@@ -1,6 +1,6 @@
 # [NVIDIA HierarchicalKV(Beta)](https://github.com/NVIDIA-Merlin/HierarchicalKV)
 
-[![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange)](https://github.com/NVIDIA-Merlin/HierarchicalKV/releases)
+[![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange&include_prereleases)](https://github.com/NVIDIA-Merlin/HierarchicalKV/releases)
 [![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/HierarchicalKV)](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/LICENSE)
 [![Documentation](https://img.shields.io/badge/documentation-blue.svg)](https://nvidia-merlin.github.io/HierarchicalKV/master/README.html)
 
@@ -12,7 +12,7 @@ The key capability of HierarchicalKV is to store key-value (feature-embedding) o
 
 You can also use the library for generic key-value storage.
 
-## Benefits of HierarchicalKV
+## Benefits
 
 When building large recommender systems, machine learning (ML) engineers face the following challenges:
 
@@ -29,24 +29,49 @@ HierarchicalKV alleviates these challenges and helps the machine learning engine
   The strategies are implemented by CUDA kernels.
 - Operates at a high working-status load factor that is close to 1.0.
 
+
+## Key ideas
+
+- Buckets are locally ordered
+- Store keys and values separately
+- Store all the keys in HBM
+- Build-in and customizable eviction strategy
+
 HierarchicalKV makes NVIDIA GPUs more suitable for training large and super-large models of ***search, recommendations, and advertising***.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.
 
 ## API Documentation
 
-The main classes and structs are below, and it's recommended to read the comments in the source code directly:
+The main classes and structs are below, but reading the comments in the source code is recommended:
 
-- [`class HashTable`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L101)
-- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106)
-- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L34)
-- [`Struct HashTable::Vector`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L106)
+- [`class HashTable`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L151)
+- [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L52)
+- [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60)
 
 For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html)
 
+## API Maturity Matrix
+
+`Industrial verified` means the API has been well-tested and verified in at least one real-world scenario.
+
+| Name                 | Description                                                                                                           | Function            |
+|:---------------------|:----------------------------------------------------------------------------------------------------------------------|:--------------------|
+| __insert_or_assign__ | Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.    | Well-tested         |
+| __insert_and_evict__ | Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key. | Industrial verified |
+| __find_or_insert__   | Search for the specified keys. If missing, insert it.                                                                 | Well-tested         |
+| __assign__           | Update for each key and ignore the missed one.                                                                        | Well-tested         |
+| __accum_or_assign__  | Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.      | Well-tested         |
+| __find_or_insert\*__ | Search for the specified keys and return the pointers of values. If missing, insert it.                               | Well-tested         |
+| __find__             | Search for the specified keys.                                                                                        | Industrial verified |
+| __find\*__           | Search and return the pointers of values, thread-unsafe but with high performance.                                    | Well-tested         |
+| __export_batch__     | Exports a certain number of the key-value-score tuples.                                                               | Industrial verified |
+| __export_batch_if__  | Exports a certain number of the key-value-score tuples which match specific conditions.                               | Industrial verified |
+| __warmup__           | Move the hot key-values from HMEM to HBM                                                                              | June 15, 2023       |
+
 ## Usage restrictions
 
-- The `key_type` and `meta_type` must be `uint64_t`.
-- The keys of `0xFFFFFFFFFFFFFFFF` and `0xFFFFFFFFFFFFFFFE` are reserved for internal using.
+- The `key_type` and `score_type` must be `uint64_t`.
+- The keys of `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
 
 ## Contributors
 
@@ -57,6 +82,7 @@ and also open for public contributions, bug fixes, and documentation. [[Contribu
 
 Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
+### with cmake
 ```shell
 git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 cd HierarchicalKV && mkdir -p build && cd build
@@ -73,6 +99,17 @@ For Unit Test:
 ./merlin_hashtable_test
 ```
 
+### with bazel
+```shell
+git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+cd HierarchicalKV && bazel build --config=cuda //...
+```
+
+For Benchmark:
+```shell
+./benchmark_util
+```
+
 Your environment must meet the following requirements:
 
 - CUDA version >= 11.2
@@ -81,47 +118,51 @@ Your environment must meet the following requirements:
 
 ## Benchmark & Performance(W.I.P)
 
-* GPU: 1 x NVIDIA A100-PCIE-80GB: 8.0
+* GPU: 1 x NVIDIA A100 80GB PCIe: 8.0
 * Key Type = uint64_t
 * Value Type = float32 * {dim}
-* Key-Values per OP = 1,048,576
+* Key-Values per OP = 1048576
+* Evict strategy: LRU
+* `λ`: load factor
+* `find*` means the `find` API that directly returns the addresses of values.
+* `find_or_insert*` means the `find_or_insert` API that directly returns the addresses of values.
 * ***Throughput Unit: Billion-KV/second***
 
 ### On pure HBM mode:
 
-| dim |    capacity | load_factor | HBM(GB) | HMEM(GB) | insert |   find |  erase |
-|----:|------------:|------------:|--------:|---------:|-------:|-------:|-------:|
-|   4 |    67108864 |        0.50 |      32 |        0 |  1.620 |  3.156 |  4.026 |
-|   4 |    67108864 |        0.75 |      32 |        0 |  1.052 |  2.159 |  2.901 |
-|   4 |    67108864 |        1.00 |      32 |        0 |  0.225 |  0.891 |  0.805 |
-|  16 |    67108864 |        0.50 |      16 |        0 |  1.402 |  2.237 |  4.219 |
-|  16 |    67108864 |        0.75 |      16 |        0 |  0.999 |  1.636 |  2.863 |
-|  16 |    67108864 |        1.00 |      16 |        0 |  0.224 |  0.856 |  0.819 |
-|  64 |    67108864 |        0.50 |      16 |        0 |  0.686 |  0.859 |  4.200 |
-|  64 |    67108864 |        0.75 |      16 |        0 |  0.637 |  0.705 |  2.911 |
-|  64 |    67108864 |        1.00 |      16 |        0 |  0.205 |  0.718 |  0.804 |
-| 128 |   134217728 |        0.50 |      64 |        0 |  0.403 |  0.472 |  3.783 |
-| 128 |   134217728 |        0.75 |      64 |        0 |  0.445 |  0.425 |  2.684 |
-| 128 |   134217728 |        1.00 |      64 |        0 |  0.183 |  0.557 |  0.766 |
+* dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
+
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
+| 0.50 |            1.418 |  3.616 |          1.925 |  1.973 |  4.522 |           1.943 |            1.186 |
+| 0.75 |            1.095 |  1.829 |          0.686 |  0.915 |  2.106 |           1.291 |            0.923 |
+| 1.00 |            0.360 |  0.887 |          0.362 |  0.546 |  0.963 |           0.380 |            0.311 |
+
+* dim = 64, capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
+
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
+| 0.50 |            0.943 |  1.766 |          0.936 |  1.134 |  4.569 |           1.954 |            0.806 |
+| 0.75 |            0.675 |  1.216 |          0.589 |  0.825 |  2.107 |           1.293 |            0.577 |
+| 1.00 |            0.328 |  0.678 |          0.329 |  0.503 |  0.963 |           0.380 |            0.179 |
 
 ### On HBM+HMEM hybrid mode:
 
-| dim |    capacity | load_factor | HBM(GB) | HMEM(GB) | insert |   find |  erase |
-|----:|------------:|------------:|--------:|---------:|-------:|-------:|-------:|
-|  64 |   134217728 |        0.50 |      16 |       16 |  0.105 |  0.125 |  3.620 |
-|  64 |   134217728 |        0.75 |      16 |       16 |  0.107 |  0.123 |  2.610 |
-|  64 |   134217728 |        1.00 |      16 |       16 |  0.073 |  0.112 |  0.770 |
-|  64 |  1073741824 |        0.50 |      56 |      200 |  0.037 |  0.042 |  2.362 |
-|  64 |  1073741824 |        0.75 |      56 |      200 |  0.037 |  0.042 |  2.106 |
-|  64 |  1073741824 |        1.00 |      56 |      200 |  0.031 |  0.040 |  0.727 |
-| 128 |    67108864 |        0.50 |      16 |       16 |  0.064 |  0.072 |  4.039 |
-| 128 |    67108864 |        0.75 |      16 |       16 |  0.069 |  0.071 |  2.834 |
-| 128 |    67108864 |        1.00 |      16 |       16 |  0.052 |  0.067 |  0.805 |
-| 128 |   536870912 |        0.50 |      56 |      200 |  0.037 |  0.042 |  2.866 |
-| 128 |   536870912 |        0.75 |      56 |      200 |  0.038 |  0.043 |  2.225 |
-| 128 |   536870912 |        1.00 |      56 |      200 |  0.033 |  0.041 |  0.734 |
+* dim = 64, capacity = 128 Million-KV, HBM = 16 GB, HMEM = 16 GB
 
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
+| 0.50 |            0.121 |  0.150 |          0.121 |  0.147 |  4.254 |           1.875 |
+| 0.75 |            0.116 |  0.146 |          0.116 |  0.143 |  2.054 |           1.281 |
+| 1.00 |            0.088 |  0.126 |          0.088 |  0.114 |  0.949 |           0.377 |
 
+* dim = 64, capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
+
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
+|-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
+| 0.50 |            0.037 |  0.053 |          0.034 |  0.050 |  2.822 |           1.715 |
+| 0.75 |            0.027 |  0.040 |          0.025 |  0.037 |  1.744 |           0.905 |
+| 1.00 |            0.033 |  0.050 |          0.030 |  0.044 |  0.917 |           0.373 |
 
 ### Support and Feedback:
 

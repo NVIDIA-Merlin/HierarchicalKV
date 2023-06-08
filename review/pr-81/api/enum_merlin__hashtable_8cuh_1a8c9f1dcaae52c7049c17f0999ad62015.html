@@ -25,7 +25,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Typedef nv::merlin::EraseIfPredict" href="typedef_merlin__hashtable_8cuh_1a20afe66b4f5d4690391f7ef8845223e5.html" />
+    <link rel="next" title="Variable nv::merlin::thrust_par" href="variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html" />
     <link rel="prev" title="Template Class HashTable" href="classnv_1_1merlin_1_1HashTable.html" /> 
 </head>
 
@@ -104,11 +104,11 @@
 <dd><p>Enumeration of the eviction strategies. </p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">meta</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. On <code class="docutils literal notranslate"><span class="pre">kLru</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">metas</span></code> parameter of the APIs should keep <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the meta for each key is assigned internally in LRU(Least Recently Used) policy. On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">metas</span></code> should be provided by caller.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">score</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. On <code class="docutils literal notranslate"><span class="pre">kLru</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> parameter of the APIs should keep <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key is assigned internally in LRU(Least Recently Used) policy. On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be provided by caller.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">meta</span></code> value are evicted first. </p>
+<p>Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">score</span></code> value are evicted first. </p>
 </div>
 <p><em>Values:</em></p>
 <dl class="cpp enumerator">
@@ -133,7 +133,7 @@
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="classnv_1_1merlin_1_1HashTable.html" class="btn btn-neutral float-left" title="Template Class HashTable" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="typedef_merlin__hashtable_8cuh_1a20afe66b4f5d4690391f7ef8845223e5.html" class="btn btn-neutral float-right" title="Typedef nv::merlin::EraseIfPredict" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html" class="btn btn-neutral float-right" title="Variable nv::merlin::thrust_par" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
