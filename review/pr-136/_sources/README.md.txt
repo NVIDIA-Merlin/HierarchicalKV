@@ -118,10 +118,11 @@ Your environment must meet the following requirements:
 
 ## Benchmark & Performance(W.I.P)
 
-* GPU: 1 x NVIDIA A100-SXM4-80GB: 8.0
+* GPU: 1 x NVIDIA A100 80GB PCIe: 8.0
 * Key Type = uint64_t
 * Value Type = float32 * {dim}
 * Key-Values per OP = 1048576
+* Evict strategy: LRU
 * `λ`: load factor
 * `find*` means the `find` API that directly returns the addresses of values.
 * `find_or_insert*` means the `find_or_insert` API that directly returns the addresses of values.
@@ -133,17 +134,17 @@ Your environment must meet the following requirements:
 
 |    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
-| 0.50 |            1.058 |  2.365 |          1.305 |  1.796 |  3.334 |           1.328 |            0.910 |
-| 0.75 |            0.868 |  2.349 |          0.490 |  0.801 |  1.543 |           0.937 |            0.735 |
-| 1.00 |            0.294 |  2.431 |          0.283 |  0.502 |  0.774 |           0.295 |            0.251 |
+| 0.50 |            1.182 |  2.597 |          1.434 |  1.994 |  3.579 |           1.489 |            1.015 |
+| 0.75 |            0.979 |  2.554 |          0.554 |  0.891 |  1.732 |           1.052 |            0.825 |
+| 1.00 |            0.321 |  2.612 |          0.313 |  0.523 |  0.873 |           0.325 |            0.277 |
 
 * dim = 64, capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
 
 |    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
-| 0.50 |            0.749 |  1.887 |          0.702 |  0.925 |  3.350 |           1.327 |            0.646 |
-| 0.75 |            0.552 |  1.919 |          0.434 |  0.733 |  1.542 |           0.931 |            0.475 |
-| 1.00 |            0.272 |  1.930 |          0.262 |  0.469 |  0.775 |           0.294 |            0.159 |
+| 0.50 |            0.838 |  1.950 |          0.803 |  1.100 |  3.613 |           1.488 |            0.716 |
+| 0.75 |            0.623 |  1.931 |          0.487 |  0.810 |  1.730 |           1.051 |            0.530 |
+| 1.00 |            0.296 |  1.953 |          0.288 |  0.485 |  0.875 |           0.325 |            0.175 |
 
 ### On HBM+HMEM hybrid mode: 
 
@@ -151,9 +152,9 @@ Your environment must meet the following requirements:
 
 |    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
-| 0.50 |            0.102 |  0.125 |          0.102 |  0.126 |  3.159 |           1.285 |
-| 0.75 |            0.099 |  0.124 |          0.099 |  0.123 |  1.510 |           0.921 |
-| 1.00 |            0.074 |  0.101 |          0.074 |  0.093 |  0.765 |           0.293 |
+| 0.50 |            0.038 |  0.150 |          0.083 |  0.062 |  3.397 |           1.433 |
+| 0.75 |            0.037 |  0.145 |          0.081 |  0.061 |  1.681 |           1.042 |
+| 1.00 |            0.034 |  0.126 |          0.066 |  0.055 |  0.860 |           0.323 |
 
 * dim = 64, capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
 
