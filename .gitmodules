@@ -2,3 +2,6 @@
 	path = tests/googletest
 	url = https://github.com/google/googletest.git
 	ignore = dirty
+[submodule "third_party/rocksdb"]
+	path = third_party/rocksdb
+	url = https://github.com/facebook/rocksdb.git
