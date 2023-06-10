@@ -50,49 +50,27 @@ const float EPSILON = 0.001f;
 
 std::string rep(int n) { return std::string(n, ' '); }
 
-float test_one_api(const API_Select api, const size_t dim,
+using K = uint64_t;
+using S = uint64_t;
+using V = float;
+using MerlinHashTable = nv::merlin::HashTable<K, V, S>;
+using TableOptions = nv::merlin::HashTableOptions;
+
+float test_one_api(std::shared_ptr<MerlinHashTable>& table,
+                   const API_Select api, const size_t dim,
                    const size_t init_capacity, const size_t key_num_per_op,
-                   const size_t hbm4values, const float load_factor,
-                   const float hitrate = 0.6f, const bool io_by_cpu = false) {
-  using K = uint64_t;
-  using S = uint64_t;
-  using V = float;
-  using Table = nv::merlin::HashTable<K, float, S>;
-  using TableOptions = nv::merlin::HashTableOptions;
-
-  size_t free, total;
-  CUDA_CHECK(cudaSetDevice(0));
-  CUDA_CHECK(cudaMemGetInfo(&free, &total));
-
-  if (free / (1 << 30) < hbm4values) {
-    return 0.0f;
-  }
-
+                   const float load_factor, const float hitrate = 0.6f) {
   K* h_keys;
   S* h_scores;
   V* h_vectors;
   bool* h_found;
 
-  TableOptions options;
-
-  options.init_capacity = init_capacity;
-  options.max_capacity = init_capacity;
-  options.dim = dim;
-  options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
-  options.io_by_cpu = io_by_cpu;
-  options.evict_strategy = EvictStrategy::kLru;
-
-  std::unique_ptr<Table> table = std::make_unique<Table>();
-  table->init(options);
-
   CUDA_CHECK(cudaMallocHost(&h_keys, key_num_per_op * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_scores, key_num_per_op * sizeof(S)));
-  CUDA_CHECK(
-      cudaMallocHost(&h_vectors, key_num_per_op * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMallocHost(&h_vectors, key_num_per_op * sizeof(V) * dim));
   CUDA_CHECK(cudaMallocHost(&h_found, key_num_per_op * sizeof(bool)));
 
-  CUDA_CHECK(
-      cudaMemset(h_vectors, 0, key_num_per_op * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMemset(h_vectors, 0, key_num_per_op * sizeof(V) * dim));
 
   K* d_keys;
   S* d_scores = nullptr;
@@ -106,8 +84,8 @@ float test_one_api(const API_Select api, const size_t dim,
   S* d_evict_scores;
 
   CUDA_CHECK(cudaMalloc(&d_keys, key_num_per_op * sizeof(K)));
-  CUDA_CHECK(cudaMalloc(&d_vectors, key_num_per_op * sizeof(V) * options.dim));
-  CUDA_CHECK(cudaMalloc(&d_def_val, key_num_per_op * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMalloc(&d_vectors, key_num_per_op * sizeof(V) * dim));
+  CUDA_CHECK(cudaMalloc(&d_def_val, key_num_per_op * sizeof(V) * dim));
   CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
   CUDA_CHECK(cudaMalloc(&d_found, key_num_per_op * sizeof(bool)));
   CUDA_CHECK(cudaMalloc(&d_keys_out, key_num_per_op * sizeof(K)));
@@ -115,10 +93,8 @@ float test_one_api(const API_Select api, const size_t dim,
   CUDA_CHECK(cudaMalloc(&d_evict_keys, key_num_per_op * sizeof(K)));
   CUDA_CHECK(cudaMalloc(&d_evict_scores, key_num_per_op * sizeof(S)));
 
-  CUDA_CHECK(
-      cudaMemset(d_vectors, 1, key_num_per_op * sizeof(V) * options.dim));
-  CUDA_CHECK(
-      cudaMemset(d_def_val, 2, key_num_per_op * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMemset(d_vectors, 1, key_num_per_op * sizeof(V) * dim));
+  CUDA_CHECK(cudaMemset(d_def_val, 2, key_num_per_op * sizeof(V) * dim));
   CUDA_CHECK(cudaMemset(d_vectors_ptr, 0, key_num_per_op * sizeof(V*)));
   CUDA_CHECK(cudaMemset(d_found, 0, key_num_per_op * sizeof(bool)));
 
@@ -135,17 +111,20 @@ float test_one_api(const API_Select api, const size_t dim,
   int32_t loop_num_init = (key_num_init + key_num_per_op - 1) / key_num_per_op;
 
   K start = 0UL;
+
   for (int i = 0; i < loop_num_init; i++) {
     uint64_t key_num_cur_insert =
         i == loop_num_init - 1 ? key_num_remain : key_num_per_op;
     create_continuous_keys<K, S>(h_keys, h_scores, key_num_cur_insert, start);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_cur_insert * sizeof(K),
                           cudaMemcpyHostToDevice));
-    table->insert_or_assign(key_num_cur_insert, d_keys, d_vectors, d_scores,
-                            stream);
+    table->find_or_insert(key_num_cur_insert, d_keys, d_vectors_ptr, d_found,
+                          d_scores, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
+
     start += key_num_cur_insert;
   }
+
   // step 2
   float real_load_factor = table->load_factor(stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -205,13 +184,13 @@ float test_one_api(const API_Select api, const size_t dim,
         V** d_vectors_ptr = nullptr;
         CUDA_CHECK(
             cudaMalloc(&d_vectors_ptr, key_num_per_op_warmup * sizeof(V*)));
-        benchmark::array2ptr(d_vectors_ptr, d_vectors, options.dim,
+        benchmark::array2ptr(d_vectors_ptr, d_vectors, dim,
                              key_num_per_op_warmup, stream);
 
         CUDA_CHECK(cudaStreamSynchronize(stream));
         table->find(1, d_keys, d_vectors_ptr, d_found, d_scores, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
-        benchmark::read_from_ptr(d_vectors_ptr, d_vectors, options.dim,
+        benchmark::read_from_ptr(d_vectors_ptr, d_vectors, dim,
                                  key_num_per_op_warmup, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         CUDA_CHECK(cudaFree(d_vectors_ptr));
@@ -223,7 +202,7 @@ float test_one_api(const API_Select api, const size_t dim,
         CUDA_CHECK(cudaMalloc(&d_found, key_num_per_op_warmup * sizeof(bool)));
         CUDA_CHECK(
             cudaMalloc(&d_vectors_ptr, key_num_per_op_warmup * sizeof(V*)));
-        benchmark::array2ptr(d_vectors_ptr, d_vectors, options.dim,
+        benchmark::array2ptr(d_vectors_ptr, d_vectors, dim,
                              key_num_per_op_warmup, stream);
         CUDA_CHECK(cudaStreamSynchronize(stream));
         table->find_or_insert(key_num_per_op_warmup, d_keys, d_vectors_ptr,
@@ -285,8 +264,8 @@ float test_one_api(const API_Select api, const size_t dim,
     case API_Select::find_ptr: {
       V** d_vectors_ptr = nullptr;
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
-      benchmark::array2ptr(d_vectors_ptr, d_vectors, options.dim,
-                           key_num_per_op, stream);
+      benchmark::array2ptr(d_vectors_ptr, d_vectors, dim, key_num_per_op,
+                           stream);
 
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.start();
@@ -294,8 +273,8 @@ float test_one_api(const API_Select api, const size_t dim,
                   stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.end();
-      benchmark::read_from_ptr(d_vectors_ptr, d_vectors, options.dim,
-                               key_num_per_op, stream);
+      benchmark::read_from_ptr(d_vectors_ptr, d_vectors, dim, key_num_per_op,
+                               stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       CUDA_CHECK(cudaFree(d_vectors_ptr));
       break;
@@ -305,8 +284,8 @@ float test_one_api(const API_Select api, const size_t dim,
       bool* d_found;
       CUDA_CHECK(cudaMalloc(&d_found, key_num_per_op * sizeof(bool)));
       CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
-      benchmark::array2ptr(d_vectors_ptr, d_vectors, options.dim,
-                           key_num_per_op, stream);
+      benchmark::array2ptr(d_vectors_ptr, d_vectors, dim, key_num_per_op,
+                           stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
       timer.start();
       table->find_or_insert(key_num_per_op, d_keys, d_vectors_ptr, d_found,
@@ -384,8 +363,30 @@ void print_title() {
 void test_main(const size_t dim,
                const size_t init_capacity = 64 * 1024 * 1024UL,
                const size_t key_num_per_op = 1 * 1024 * 1024UL,
-               const size_t hbm4values = 16, const float load_factor = 1.0f) {
-  std::cout << "|" << rep(1) << fixed << setprecision(2) << load_factor << " ";
+               const size_t hbm4values = 16, const float load_factor = 1.0f,
+               const bool io_by_cpu = false,
+               const std::vector<float> load_factors = {0.50f, 0.75f, 1.00f}) {
+  size_t free, total;
+  CUDA_CHECK(cudaSetDevice(0));
+  CUDA_CHECK(cudaMemGetInfo(&free, &total));
+
+  if (free / (1 << 30) < hbm4values) {
+    std::cout << "free HBM is not enough, ignore current benchmark!"
+              << std::endl;
+    return;
+  }
+  TableOptions options;
+
+  options.init_capacity = init_capacity;
+  options.max_capacity = init_capacity;
+  options.dim = dim;
+  options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
+  options.io_by_cpu = io_by_cpu;
+  options.evict_strategy = EvictStrategy::kLru;
+
+  std::shared_ptr<MerlinHashTable> table = std::make_shared<MerlinHashTable>();
+  table->init(options);
+
   std::vector<API_Select> apis{
       API_Select::insert_or_assign, API_Select::find,
       API_Select::find_or_insert,   API_Select::assign,
@@ -393,51 +394,59 @@ void test_main(const size_t dim,
   if (Test_Mode::pure_hbm == test_mode) {
     apis.push_back(API_Select::insert_and_evict);
   }
-  for (auto api : apis) {
-    // There is a sampling of load_factor after several times call to target
-    // API. Two consecutive calls can avoid the impact of sampling.
-    auto res1 = test_one_api(api, dim, init_capacity, key_num_per_op,
-                             hbm4values, load_factor);
-    auto res2 = test_one_api(api, dim, init_capacity, key_num_per_op,
-                             hbm4values, load_factor);
-    auto res = std::max(res1, res2);
-    std::cout << "|";
-    switch (api) {
-      case API_Select::find: {
-        std::cout << rep(2);
-        break;
+
+  for (float load_factor : load_factors) {
+    std::cout << "|" << rep(1) << fixed << setprecision(2) << load_factor
+              << " ";
+
+    for (auto api : apis) {
+      table->clear();
+      CUDA_CHECK(cudaDeviceSynchronize());
+      // There is a sampling of load_factor after several times call to target
+      // API. Two consecutive calls can avoid the impact of sampling.
+      auto res1 = test_one_api(table, api, dim, init_capacity, key_num_per_op,
+                               load_factor);
+      auto res2 = test_one_api(table, api, dim, init_capacity, key_num_per_op,
+                               load_factor);
+      auto res = std::max(res1, res2);
+      std::cout << "|";
+      switch (api) {
+        case API_Select::find: {
+          std::cout << rep(2);
+          break;
+        }
+        case API_Select::insert_or_assign: {
+          std::cout << rep(12);
+          break;
+        }
+        case API_Select::find_or_insert: {
+          std::cout << rep(10);
+          break;
+        }
+        case API_Select::assign: {
+          std::cout << rep(2);
+          break;
+        }
+        case API_Select::insert_and_evict: {
+          std::cout << rep(12);
+          break;
+        }
+        case API_Select::find_ptr: {
+          std::cout << rep(2);
+          break;
+        }
+        case API_Select::find_or_insert_ptr: {
+          std::cout << rep(11);
+          break;
+        }
+        default: {
+          std::cout << "[Unsupport API]";
+        }
       }
-      case API_Select::insert_or_assign: {
-        std::cout << rep(12);
-        break;
-      }
-      case API_Select::find_or_insert: {
-        std::cout << rep(10);
-        break;
-      }
-      case API_Select::assign: {
-        std::cout << rep(2);
-        break;
-      }
-      case API_Select::insert_and_evict: {
-        std::cout << rep(12);
-        break;
-      }
-      case API_Select::find_ptr: {
-        std::cout << rep(2);
-        break;
-      }
-      case API_Select::find_or_insert_ptr: {
-        std::cout << rep(11);
-        break;
-      }
-      default: {
-        std::cout << "[Unsupport API]";
-      }
+      std::cout << fixed << setprecision(3) << res << " ";
     }
-    std::cout << fixed << setprecision(3) << res << " ";
+    std::cout << "|\n";
   }
-  std::cout << "|\n";
 }
 
 int main() {
@@ -478,30 +487,22 @@ int main() {
     cout << "### On pure HBM mode: " << endl;
     print_configuration(4, 64 * 1024 * 1024UL, 32);
     print_title();
-    test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.50f);
-    test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 0.75f);
-    test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32, 1.00f);
+    test_main(4, 64 * 1024 * 1024UL, key_num_per_op, 32);
 
     print_configuration(64, 64 * 1024 * 1024UL, 16);
     print_title();
-    test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
-    test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
-    test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
+    test_main(64, 64 * 1024 * 1024UL, key_num_per_op, 16);
     cout << endl;
 
     cout << "### On HBM+HMEM hybrid mode: " << endl;
     test_mode = Test_Mode::hybrid;
     print_configuration(64, 128 * 1024 * 1024UL, 16);
     print_title();
-    test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.50f);
-    test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 0.75f);
-    test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16, 1.00f);
+    test_main(64, 128 * 1024 * 1024UL, key_num_per_op, 16);
 
-    print_configuration(64, 1024 * 1024 * 1024UL, 56);
+    print_configuration(64, 512 * 1024 * 1024UL, 32);
     print_title();
-    test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 0.50f);
-    test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 0.75f);
-    test_main(64, 1024 * 1024 * 1024UL, key_num_per_op, 56, 1.00f);
+    test_main(64, 512 * 1024 * 1024UL, key_num_per_op, 32);
     cout << endl;
 
     CUDA_CHECK(cudaDeviceSynchronize());
