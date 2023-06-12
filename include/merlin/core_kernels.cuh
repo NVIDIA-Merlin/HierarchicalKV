@@ -983,8 +983,7 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
         (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
     S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
 
-    if (key != static_cast<K>(EMPTY_KEY) &&
-        pred(key, score, pattern, threshold)) {
+    if (!IS_RESERVED_KEY(key) && pred(key, score, pattern, threshold)) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
       for (int i = 0; i < dim; i++) {
