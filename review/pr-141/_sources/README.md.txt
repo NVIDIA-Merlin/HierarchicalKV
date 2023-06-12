@@ -123,7 +123,7 @@ Your environment must meet the following requirements:
 * Value Type = float32 * {dim}
 * Key-Values per OP = 1048576
 * Evict strategy: LRU
-* `?`: load factor
+* `λ`: load factor
 * `find*` means the `find` API that directly returns the addresses of values.
 * `find_or_insert*` means the `find_or_insert` API that directly returns the addresses of values.
 * ***Throughput Unit: Billion-KV/second***
@@ -132,7 +132,7 @@ Your environment must meet the following requirements:
 
 * dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB
 
-|    ? | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
 | 0.50 |            1.161 |  2.995 |          1.832 |  1.963 |  4.442 |           1.840 |            1.020 |
 | 0.75 |            1.020 |  2.945 |          0.682 |  0.886 |  1.985 |           1.301 |            0.886 |
@@ -140,7 +140,7 @@ Your environment must meet the following requirements:
 
 * dim = 64, capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB
 
-|    ? | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* | insert_and_evict |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|-----------------:|
 | 0.50 |            0.864 |  2.122 |          0.923 |  1.116 |  4.437 |           1.837 |            0.772 |
 | 0.75 |            0.671 |  2.092 |          0.571 |  0.791 |  1.981 |           1.289 |            0.582 |
@@ -150,7 +150,7 @@ Your environment must meet the following requirements:
 
 * dim = 64, capacity = 128 Million-KV, HBM = 16 GB, HMEM = 16 GB
 
-|    ? | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
 | 0.50 |            0.118 |  0.142 |          0.118 |  0.143 |  4.064 |           1.798 |
 | 0.75 |            0.114 |  0.142 |          0.115 |  0.142 |  1.918 |           1.156 |
@@ -158,7 +158,7 @@ Your environment must meet the following requirements:
 
 * dim = 64, capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
 
-|    ? | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
+|    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
 | 0.50 |            0.049 |  0.069 |          0.049 |  0.066 |  3.587 |           1.714 |
 | 0.75 |            0.048 |  0.068 |          0.048 |  0.065 |  1.863 |           1.247 |
