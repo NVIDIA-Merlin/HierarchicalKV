@@ -115,7 +115,8 @@ Your environment must meet the following requirements:
 - CUDA version >= 11.2
 - NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0
 
-## Benchmark
+## Benchmark & Performance(W.I.P)
+
 * GPU: 1 x NVIDIA A100 80GB PCIe: 8.0
 * Key Type = uint64_t
 * Value Type = float32 * {dim}
@@ -125,6 +126,7 @@ Your environment must meet the following requirements:
 * `find*` means the `find` API that directly returns the addresses of values.
 * `find_or_insert*` means the `find_or_insert` API that directly returns the addresses of values.
 * ***Throughput Unit: Billion-KV/second***
+
 ### On pure HBM mode:
 
 * dim = 8, capacity = 128 Million-KV, HBM = 4 GB, HMEM = 0 GB
