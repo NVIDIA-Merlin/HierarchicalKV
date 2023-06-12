@@ -156,7 +156,7 @@ Your environment must meet the following requirements:
 | 0.75 |            0.114 |  0.142 |          0.115 |  0.142 |  1.918 |           1.156 |
 | 1.00 |            0.091 |  0.126 |          0.092 |  0.114 |  0.927 |           0.392 |
 
-* dim = 64, capacity = 1024 Million-KV, HBM = 56 GB, HMEM = 200 GB
+* dim = 64, capacity = 512 Million-KV, HBM = 32 GB, HMEM = 96 GB
 
 |    λ | insert_or_assign |   find | find_or_insert | assign |  find* | find_or_insert* |
 |-----:|-----------------:|-------:|---------------:|-------:|-------:|----------------:|
