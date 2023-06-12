@@ -972,7 +972,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
-  options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+  options.evict_strategy = nv::merlin::EvictStrategy::kLru;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
@@ -1001,6 +1001,8 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   CUDA_CHECK(cudaStreamCreate(&stream));
 
   uint64_t total_size = 0;
+
+  S threshold = test_util::host_nano<S>();
   for (int i = 0; i < TEST_TIMES; i++) {
     test_util::create_random_keys<K, S, V, DIM>(h_keys, h_scores, h_vectors,
                                                 KEY_NUM);
@@ -1017,7 +1019,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ(total_size, 0);
 
-    table->find_or_insert(KEY_NUM, d_keys, d_vectors, d_scores, stream);
+    table->find_or_insert(KEY_NUM, d_keys, d_vectors, nullptr, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     total_size = table->size(stream);
@@ -1062,7 +1064,6 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
     ASSERT_EQ(found_num, KEY_NUM);
 
     K pattern = 100;
-    S threshold = h_scores[size_t(KEY_NUM / 2)];
 
     table->template export_batch_if<ExportIfPredFunctor>(
         pattern, threshold, table->capacity(), 0, d_dump_counter, d_keys,
@@ -1071,12 +1072,23 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CUDA_CHECK(cudaMemcpy(&h_dump_counter, d_dump_counter, sizeof(size_t),
                           cudaMemcpyDeviceToHost));
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
+                          cudaMemcpyDeviceToHost));
 
     size_t expected_export_count = 0;
     for (int i = 0; i < KEY_NUM; i++) {
       if (h_scores[i] > threshold) expected_export_count++;
     }
     ASSERT_EQ(expected_export_count, h_dump_counter);
+
+    table->template export_batch_if<ExportIfPredFunctor>(
+        pattern, test_util::host_nano<S>(), table->capacity(), 0,
+        d_dump_counter, d_keys, d_vectors, d_scores, stream);
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaMemcpy(&h_dump_counter, d_dump_counter, sizeof(size_t),
+                          cudaMemcpyDeviceToHost));
+    ASSERT_EQ(0, h_dump_counter);
 
     CUDA_CHECK(cudaMemset(h_keys, 0, KEY_NUM * sizeof(K)));
     CUDA_CHECK(cudaMemset(h_scores, 0, KEY_NUM * sizeof(S)));

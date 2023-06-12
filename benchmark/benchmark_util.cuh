@@ -38,6 +38,8 @@ enum class API_Select {
   insert_and_evict = 4,
   find_ptr = 5,
   find_or_insert_ptr = 6,
+  export_batch = 7,
+  export_batch_if = 8,
 };
 
 enum class Hit_Mode {
@@ -233,4 +235,35 @@ void array2ptr(V** ptr, V* __restrict array, const size_t dim, size_t n,
 
   array2ptr_kernel<V><<<grid_size, block_size, 0, stream>>>(ptr, array, dim, N);
 }
+
+template <class S>
+__global__ void host_nano_kernel(S* d_clk) {
+  S mclk;
+  asm volatile("mov.u64 %0,%%globaltimer;" : "=l"(mclk));
+  *d_clk = mclk;
+}
+
+template <class S>
+S host_nano(cudaStream_t stream = 0) {
+  S h_clk = 0;
+  S* d_clk;
+
+  CUDA_CHECK(cudaMalloc((void**)&(d_clk), sizeof(S)));
+  host_nano_kernel<S><<<1, 1, 0, stream>>>(d_clk);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  CUDA_CHECK(cudaMemcpy(&h_clk, d_clk, sizeof(S), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaFree(d_clk));
+  return h_clk;
+}
+
+template <class K, class S>
+struct ExportIfPredFunctor {
+  __forceinline__ __device__ bool operator()(const K& key, S& score,
+                                             const K& pattern,
+                                             const S& threshold) {
+    return score > threshold;
+  }
+};
+
 }  // namespace benchmark
