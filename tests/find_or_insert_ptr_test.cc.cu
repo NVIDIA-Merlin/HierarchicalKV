@@ -2783,6 +2783,103 @@ void test_find_or_insert_values_check(size_t max_hbm_for_vectors) {
   }
 }
 
+void test_duplicated_keys(size_t max_hbm_for_vectors) {
+  constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
+  constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
+  constexpr uint64_t KEY_NUM = 1024UL;
+  constexpr uint64_t TEST_TIMES = 3;
+
+  K* h_keys;
+  S* h_scores;
+  V* h_vectors;
+  bool* h_found;
+
+  TableOptions options;
+
+  options.init_capacity = INIT_CAPACITY;
+  options.max_capacity = MAX_CAPACITY;
+  options.dim = DIM;
+  options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
+  options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+
+  CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
+  CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
+
+  CUDA_CHECK(cudaMemset(h_keys, 1, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMemset(h_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
+
+  K* d_keys;
+  S* d_scores = nullptr;
+  V* d_vectors;
+  V* d_new_vectors;
+  bool* d_found;
+
+  CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
+  CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMalloc(&d_new_vectors, KEY_NUM * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
+
+  CUDA_CHECK(
+      cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K), cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors, KEY_NUM * sizeof(V) * options.dim,
+                        cudaMemcpyHostToDevice));
+
+  CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  uint64_t total_size = 0;
+  for (int i = 0; i < TEST_TIMES; i++) {
+    std::unique_ptr<Table> table = std::make_unique<Table>();
+    table->init(options);
+    total_size = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_EQ(total_size, 0);
+
+    {
+      V** d_vectors_ptr = nullptr;
+      bool* d_found;
+      CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
+      CUDA_CHECK(cudaMalloc(&d_vectors_ptr, KEY_NUM * sizeof(V*)));
+
+      test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
+                           stream);
+      table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
+                            stream);
+      test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
+                                   options.dim, KEY_NUM, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      CUDA_CHECK(cudaFree(d_vectors_ptr));
+      CUDA_CHECK(cudaFree(d_found));
+    }
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    total_size = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_EQ(total_size, 1);
+  }
+  CUDA_CHECK(cudaStreamDestroy(stream));
+
+  CUDA_CHECK(cudaFreeHost(h_keys));
+  CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_found));
+
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_scores));
+  CUDA_CHECK(cudaFree(d_vectors));
+  CUDA_CHECK(cudaFree(d_new_vectors));
+  CUDA_CHECK(cudaFree(d_found));
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  CudaCheckError();
+}
+
 TEST(FindOrInsertPtrTest, test_export_batch_if) {
   test_export_batch_if(16);
   test_export_batch_if(0);
@@ -2840,9 +2937,12 @@ TEST(FindOrInsertPtrTest, test_evict_strategy_customized_correct_rate) {
     std::cout << "The HMEM check is skipped in blossom CI!" << std::endl;
   }
 }
-
 TEST(FindOrInsertPtrTest, test_find_or_insert_values_check) {
   test_find_or_insert_values_check(16);
   // TODO(rhdong): Add back when diff error issue fixed in hybrid mode.
   // test_insert_or_assign_values_check(0);
+}
+TEST(FindOrInsertPtrTest, test_duplicated_keys) {
+  test_duplicated_keys(16);
+  test_duplicated_keys(0);
 }

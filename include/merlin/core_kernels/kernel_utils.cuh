@@ -251,9 +251,10 @@ __device__ __inline__ OccupyResult find_and_lock_when_vacant(
         key_pos = g.shfl(key_pos, src_lane);
         return OccupyResult::DUPLICATE;
       }
+      vote = g.ballot(expected_key == static_cast<K>(LOCKED_KEY));
+      if (vote) continue;
       vote = g.ballot(expected_key == static_cast<K>(EMPTY_KEY));
       if (vote) break;
-      vote = g.ballot(expected_key == static_cast<K>(LOCKED_KEY));
     } while (vote != 0);
 
     // Step 2: (TBD)try find empty location.
@@ -269,6 +270,12 @@ __device__ __inline__ OccupyResult find_and_lock_when_vacant(
       if (result) {
         key_pos = g.shfl(key_pos, src_lane);
         return OccupyResult::OCCUPIED_EMPTY;
+      }
+      result = g.shfl((expected_key == desired_key ||
+                       expected_key == static_cast<K>(LOCKED_KEY)),
+                      src_lane);
+      if (result) {
+        return OccupyResult::CONTINUE;
       }
       vote -= ((unsigned(0x1)) << src_lane);
     }
