@@ -268,7 +268,7 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <div class="section" id="on-pure-hbm-mode">
 <h3>On pure HBM mode:<a class="headerlink" href="#on-pure-hbm-mode" title="Permalink to this headline"></a></h3>
 <ul class="simple">
-<li><p>dim = 4, capacity = 64 Million-KV, HBM = 32 GB, HMEM = 0 GB</p></li>
+<li><p>dim = 8, capacity = 128 Million-KV, HBM = 4 GB, HMEM = 0 GB</p></li>
 </ul>
 <table class="colwidths-auto docutils align-default">
 <thead>
@@ -285,30 +285,119 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>1.161</p></td>
-<td class="text-right"><p>2.995</p></td>
-<td class="text-right"><p>1.832</p></td>
-<td class="text-right"><p>1.963</p></td>
-<td class="text-right"><p>4.442</p></td>
-<td class="text-right"><p>1.840</p></td>
-<td class="text-right"><p>1.020</p></td>
+<td class="text-right"><p>2.813</p></td>
+<td class="text-right"><p>1.708</p></td>
+<td class="text-right"><p>1.942</p></td>
+<td class="text-right"><p>4.147</p></td>
+<td class="text-right"><p>1.801</p></td>
+<td class="text-right"><p>1.023</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>1.020</p></td>
-<td class="text-right"><p>2.945</p></td>
-<td class="text-right"><p>0.682</p></td>
-<td class="text-right"><p>0.886</p></td>
-<td class="text-right"><p>1.985</p></td>
-<td class="text-right"><p>1.301</p></td>
-<td class="text-right"><p>0.886</p></td>
+<td class="text-right"><p>1.004</p></td>
+<td class="text-right"><p>2.785</p></td>
+<td class="text-right"><p>0.669</p></td>
+<td class="text-right"><p>0.865</p></td>
+<td class="text-right"><p>1.939</p></td>
+<td class="text-right"><p>1.302</p></td>
+<td class="text-right"><p>0.873</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.364</p></td>
+<td class="text-right"><p>2.801</p></td>
 <td class="text-right"><p>0.370</p></td>
-<td class="text-right"><p>3.001</p></td>
-<td class="text-right"><p>0.372</p></td>
-<td class="text-right"><p>0.507</p></td>
-<td class="text-right"><p>0.942</p></td>
-<td class="text-right"><p>0.393</p></td>
-<td class="text-right"><p>0.323</p></td>
+<td class="text-right"><p>0.499</p></td>
+<td class="text-right"><p>0.930</p></td>
+<td class="text-right"><p>0.392</p></td>
+<td class="text-right"><p>0.315</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>2.213</p></td>
+<td class="text-right"><p>19.096</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>2.165</p></td>
+<td class="text-right"><p>19.825</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>2.067</p></td>
+<td class="text-right"><p>2.818</p></td>
+</tr>
+</tbody>
+</table>
+<ul class="simple">
+<li><p>dim = 32, capacity = 128 Million-KV, HBM = 16 GB, HMEM = 0 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+<th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
+<th class="text-right head"><p>insert_and_evict</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>1.071</p></td>
+<td class="text-right"><p>2.490</p></td>
+<td class="text-right"><p>1.264</p></td>
+<td class="text-right"><p>1.602</p></td>
+<td class="text-right"><p>4.136</p></td>
+<td class="text-right"><p>1.801</p></td>
+<td class="text-right"><p>0.949</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.866</p></td>
+<td class="text-right"><p>2.462</p></td>
+<td class="text-right"><p>0.637</p></td>
+<td class="text-right"><p>0.853</p></td>
+<td class="text-right"><p>1.939</p></td>
+<td class="text-right"><p>1.302</p></td>
+<td class="text-right"><p>0.740</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.359</p></td>
+<td class="text-right"><p>2.573</p></td>
+<td class="text-right"><p>0.348</p></td>
+<td class="text-right"><p>0.492</p></td>
+<td class="text-right"><p>0.925</p></td>
+<td class="text-right"><p>0.377</p></td>
+<td class="text-right"><p>0.278</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.709</p></td>
+<td class="text-right"><p>15.918</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.575</p></td>
+<td class="text-right"><p>14.923</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.567</p></td>
+<td class="text-right"><p>0.758</p></td>
 </tr>
 </tbody>
 </table>
@@ -329,31 +418,53 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.864</p></td>
+<td class="text-right"><p>0.868</p></td>
 <td class="text-right"><p>2.122</p></td>
-<td class="text-right"><p>0.923</p></td>
+<td class="text-right"><p>0.916</p></td>
 <td class="text-right"><p>1.116</p></td>
-<td class="text-right"><p>4.437</p></td>
-<td class="text-right"><p>1.837</p></td>
-<td class="text-right"><p>0.772</p></td>
+<td class="text-right"><p>4.451</p></td>
+<td class="text-right"><p>1.838</p></td>
+<td class="text-right"><p>0.773</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.671</p></td>
-<td class="text-right"><p>2.092</p></td>
-<td class="text-right"><p>0.571</p></td>
-<td class="text-right"><p>0.791</p></td>
-<td class="text-right"><p>1.981</p></td>
+<td class="text-right"><p>0.670</p></td>
+<td class="text-right"><p>2.112</p></td>
+<td class="text-right"><p>0.570</p></td>
+<td class="text-right"><p>0.790</p></td>
+<td class="text-right"><p>1.984</p></td>
 <td class="text-right"><p>1.289</p></td>
-<td class="text-right"><p>0.582</p></td>
+<td class="text-right"><p>0.587</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.323</p></td>
-<td class="text-right"><p>2.165</p></td>
-<td class="text-right"><p>0.323</p></td>
-<td class="text-right"><p>0.471</p></td>
-<td class="text-right"><p>0.939</p></td>
+<td class="text-right"><p>0.333</p></td>
+<td class="text-right"><p>2.162</p></td>
+<td class="text-right"><p>0.335</p></td>
+<td class="text-right"><p>0.467</p></td>
+<td class="text-right"><p>0.940</p></td>
 <td class="text-right"><p>0.393</p></td>
-<td class="text-right"><p>0.233</p></td>
+<td class="text-right"><p>0.240</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.321</p></td>
+<td class="text-right"><p>11.050</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.301</p></td>
+<td class="text-right"><p>10.965</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.292</p></td>
+<td class="text-right"><p>0.390</p></td>
 </tr>
 </tbody>
 </table>
@@ -377,19 +488,19 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>0.118</p></td>
-<td class="text-right"><p>0.142</p></td>
-<td class="text-right"><p>0.118</p></td>
-<td class="text-right"><p>0.143</p></td>
-<td class="text-right"><p>4.064</p></td>
-<td class="text-right"><p>1.798</p></td>
+<td class="text-right"><p>0.145</p></td>
+<td class="text-right"><p>0.119</p></td>
+<td class="text-right"><p>0.147</p></td>
+<td class="text-right"><p>4.097</p></td>
+<td class="text-right"><p>1.807</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.114</p></td>
-<td class="text-right"><p>0.142</p></td>
+<td class="text-right"><p>0.116</p></td>
+<td class="text-right"><p>0.144</p></td>
 <td class="text-right"><p>0.115</p></td>
 <td class="text-right"><p>0.142</p></td>
-<td class="text-right"><p>1.918</p></td>
-<td class="text-right"><p>1.156</p></td>
+<td class="text-right"><p>1.932</p></td>
+<td class="text-right"><p>1.300</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>0.091</p></td>
@@ -397,7 +508,29 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <td class="text-right"><p>0.092</p></td>
 <td class="text-right"><p>0.114</p></td>
 <td class="text-right"><p>0.927</p></td>
-<td class="text-right"><p>0.392</p></td>
+<td class="text-right"><p>0.379</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.322</p></td>
+<td class="text-right"><p>11.206</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.300</p></td>
+<td class="text-right"><p>11.072</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.292</p></td>
+<td class="text-right"><p>0.388</p></td>
 </tr>
 </tbody>
 </table>
@@ -418,27 +551,49 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>0.049</p></td>
-<td class="text-right"><p>0.069</p></td>
-<td class="text-right"><p>0.049</p></td>
-<td class="text-right"><p>0.066</p></td>
-<td class="text-right"><p>3.587</p></td>
-<td class="text-right"><p>1.714</p></td>
+<td class="text-right"><p>0.072</p></td>
+<td class="text-right"><p>0.047</p></td>
+<td class="text-right"><p>0.068</p></td>
+<td class="text-right"><p>3.559</p></td>
+<td class="text-right"><p>1.718</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
 <td class="text-right"><p>0.048</p></td>
-<td class="text-right"><p>0.068</p></td>
+<td class="text-right"><p>0.072</p></td>
 <td class="text-right"><p>0.048</p></td>
-<td class="text-right"><p>0.065</p></td>
-<td class="text-right"><p>1.863</p></td>
-<td class="text-right"><p>1.247</p></td>
+<td class="text-right"><p>0.069</p></td>
+<td class="text-right"><p>1.854</p></td>
+<td class="text-right"><p>1.251</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.043</p></td>
-<td class="text-right"><p>0.066</p></td>
-<td class="text-right"><p>0.043</p></td>
-<td class="text-right"><p>0.059</p></td>
-<td class="text-right"><p>0.915</p></td>
-<td class="text-right"><p>0.392</p></td>
+<td class="text-right"><p>0.044</p></td>
+<td class="text-right"><p>0.067</p></td>
+<td class="text-right"><p>0.044</p></td>
+<td class="text-right"><p>0.061</p></td>
+<td class="text-right"><p>0.912</p></td>
+<td class="text-right"><p>0.360</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.319</p></td>
+<td class="text-right"><p>10.175</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.298</p></td>
+<td class="text-right"><p>11.606</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.292</p></td>
+<td class="text-right"><p>0.388</p></td>
 </tr>
 </tbody>
 </table>
