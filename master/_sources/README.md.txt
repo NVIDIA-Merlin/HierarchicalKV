@@ -52,21 +52,21 @@ For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/
 
 ## API Maturity Matrix
 
-`Industrial verified` means the API has been well-tested and verified in at least one real-world scenario.
+`industry-validated` means the API has been well-tested and verified in at least one real-world scenario.
 
-| Name                 | Description                                                                                                           | Function            |
-|:---------------------|:----------------------------------------------------------------------------------------------------------------------|:--------------------|
-| __insert_or_assign__ | Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.    | Well-tested         |
-| __insert_and_evict__ | Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key. | Industrial verified |
-| __find_or_insert__   | Search for the specified keys. If missing, insert it.                                                                 | Well-tested         |
-| __assign__           | Update for each key and ignore the missed one.                                                                        | Well-tested         |
-| __accum_or_assign__  | Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.      | Well-tested         |
-| __find_or_insert\*__ | Search for the specified keys and return the pointers of values. If missing, insert it.                               | Well-tested         |
-| __find__             | Search for the specified keys.                                                                                        | Industrial verified |
-| __find\*__           | Search and return the pointers of values, thread-unsafe but with high performance.                                    | Well-tested         |
-| __export_batch__     | Exports a certain number of the key-value-score tuples.                                                               | Industrial verified |
-| __export_batch_if__  | Exports a certain number of the key-value-score tuples which match specific conditions.                               | Industrial verified |
-| __warmup__           | Move the hot key-values from HMEM to HBM                                                                              | June 15, 2023       |
+| Name                 | Description                                                                                                           | Function           |
+|:---------------------|:----------------------------------------------------------------------------------------------------------------------|:-------------------|
+| __insert_or_assign__ | Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.    | industry-validated |
+| __insert_and_evict__ | Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key. | industry-validated |
+| __find_or_insert__   | Search for the specified keys. If missing, insert it.                                                                 | well-tested        |
+| __assign__           | Update for each key and ignore the missed one.                                                                        | well-tested        |
+| __accum_or_assign__  | Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.      | well-tested        |
+| __find_or_insert\*__ | Search for the specified keys and return the pointers of values. If missing, insert it.                               | well-tested        |
+| __find__             | Search for the specified keys.                                                                                        | industry-validated |
+| __find\*__           | Search and return the pointers of values, thread-unsafe but with high performance.                                    | well-tested        |
+| __export_batch__     | Exports a certain number of the key-value-score tuples.                                                               | industry-validated |
+| __export_batch_if__  | Exports a certain number of the key-value-score tuples which match specific conditions.                               | industry-validated |
+| __warmup__           | Move the hot key-values from HMEM to HBM                                                                              | June 15, 2023      |
 
 ## Usage restrictions
 

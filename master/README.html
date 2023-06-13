@@ -148,7 +148,7 @@ The library simplifies the common challenges to building, evaluating, and servin
 </div>
 <div class="section" id="api-maturity-matrix">
 <h2>API Maturity Matrix<a class="headerlink" href="#api-maturity-matrix" title="Permalink to this headline"></a></h2>
-<p><code class="docutils literal notranslate"><span class="pre">Industrial</span> <span class="pre">verified</span></code> means the API has been well-tested and verified in at least one real-world scenario.</p>
+<p><code class="docutils literal notranslate"><span class="pre">industry-validated</span></code> means the API has been well-tested and verified in at least one real-world scenario.</p>
 <table class="colwidths-auto docutils align-default">
 <thead>
 <tr class="row-odd"><th class="text-left head"><p>Name</p></th>
@@ -159,43 +159,43 @@ The library simplifies the common challenges to building, evaluating, and servin
 <tbody>
 <tr class="row-even"><td class="text-left"><p><strong>insert_or_assign</strong></p></td>
 <td class="text-left"><p>Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.</p></td>
-<td class="text-left"><p>Well-tested</p></td>
+<td class="text-left"><p>industry-validated</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>insert_and_evict</strong></p></td>
 <td class="text-left"><p>Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key.</p></td>
-<td class="text-left"><p>Industrial verified</p></td>
+<td class="text-left"><p>industry-validated</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>find_or_insert</strong></p></td>
 <td class="text-left"><p>Search for the specified keys. If missing, insert it.</p></td>
-<td class="text-left"><p>Well-tested</p></td>
+<td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>assign</strong></p></td>
 <td class="text-left"><p>Update for each key and ignore the missed one.</p></td>
-<td class="text-left"><p>Well-tested</p></td>
+<td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>accum_or_assign</strong></p></td>
 <td class="text-left"><p>Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.</p></td>
-<td class="text-left"><p>Well-tested</p></td>
+<td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>find_or_insert*</strong></p></td>
 <td class="text-left"><p>Search for the specified keys and return the pointers of values. If missing, insert it.</p></td>
-<td class="text-left"><p>Well-tested</p></td>
+<td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>find</strong></p></td>
 <td class="text-left"><p>Search for the specified keys.</p></td>
-<td class="text-left"><p>Industrial verified</p></td>
+<td class="text-left"><p>industry-validated</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>find*</strong></p></td>
 <td class="text-left"><p>Search and return the pointers of values, thread-unsafe but with high performance.</p></td>
-<td class="text-left"><p>Well-tested</p></td>
+<td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>export_batch</strong></p></td>
 <td class="text-left"><p>Exports a certain number of the key-value-score tuples.</p></td>
-<td class="text-left"><p>Industrial verified</p></td>
+<td class="text-left"><p>industry-validated</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>export_batch_if</strong></p></td>
 <td class="text-left"><p>Exports a certain number of the key-value-score tuples which match specific conditions.</p></td>
-<td class="text-left"><p>Industrial verified</p></td>
+<td class="text-left"><p>industry-validated</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>warmup</strong></p></td>
 <td class="text-left"><p>Move the hot key-values from HMEM to HBM</p></td>
