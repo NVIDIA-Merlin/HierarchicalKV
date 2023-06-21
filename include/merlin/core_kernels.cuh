@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "merlin/allocator.cuh"
 #include "merlin/core_kernels/find_or_insert.cuh"
 #include "merlin/core_kernels/find_ptr_or_insert.cuh"
 #include "merlin/core_kernels/kernel_utils.cuh"
@@ -108,10 +109,52 @@ __global__ void create_atomic_scores(Bucket<K, V, S>* __restrict buckets,
   }
 }
 
+template <class P, class A>
+void realloc(P* ptr, size_t old_size, size_t new_size, A& allocator) {
+  // Truncate old_size to limit dowstream copy ops.
+  old_size = std::min(old_size, new_size);
+
+  // Alloc new buffer and copy at old data.
+  char* new_ptr;
+  allocator.alloc(MemoryType::Device, (void**)&new_ptr, new_size);
+  if (*ptr != nullptr) {
+    CUDA_CHECK(cudaMemcpy(new_ptr, *ptr, old_size, cudaMemcpyDefault));
+    allocator.free(MemoryType::Device, *ptr);
+  }
+
+  // Zero-fill remainder.
+  CUDA_CHECK(cudaMemset(new_ptr + old_size, 0, new_size - old_size));
+
+  // Switch to new pointer.
+  *ptr = reinterpret_cast<P>(new_ptr);
+  return;
+}
+
+template <class P, class A>
+void realloc_managed(P* ptr, size_t old_size, size_t new_size, A& allocator) {
+  // Truncate old_size to limit dowstream copy ops.
+  old_size = std::min(old_size, new_size);
+
+  // Alloc new buffer and copy at old data.
+  char* new_ptr;
+  allocator.alloc(MemoryType::Managed, (void**)&new_ptr, new_size);
+  if (*ptr != nullptr) {
+    CUDA_CHECK(cudaMemcpy(new_ptr, *ptr, old_size, cudaMemcpyDefault));
+    allocator.free(MemoryType::Managed, *ptr);
+  }
+
+  // Zero-fill remainder.
+  CUDA_CHECK(cudaMemset(new_ptr + old_size, 0, new_size - old_size));
+
+  // Switch to new pointer.
+  *ptr = reinterpret_cast<P>(new_ptr);
+  return;
+}
+
 /* Initialize the buckets with index from start to end. */
-template <class K, class V, class S>
-void initialize_buckets(Table<K, V, S>** table, const size_t start,
-                        const size_t end) {
+template <class K, class V, class S, class A>
+void initialize_buckets(Table<K, V, S>** table, A& allocator,
+                        const size_t start, const size_t end) {
   /* As testing results show us, when the number of buckets is greater than
    * the 4 million the performance will drop significantly, we believe the
    * to many pinned memory allocation causes this issue, so we change the
@@ -130,9 +173,10 @@ void initialize_buckets(Table<K, V, S>** table, const size_t start,
       ((*table)->bucket_max_size * sizeof(V) * (*table)->dim);
   size_t num_of_allocated_buckets = 0;
 
-  realloc_managed<V**>(
+  realloc_managed<V**, A>(
       &((*table)->slices), (*table)->num_of_memory_slices * sizeof(V*),
-      ((*table)->num_of_memory_slices + num_of_memory_slices) * sizeof(V*));
+      ((*table)->num_of_memory_slices + num_of_memory_slices) * sizeof(V*),
+      allocator);
 
   for (size_t i = (*table)->num_of_memory_slices;
        i < (*table)->num_of_memory_slices + num_of_memory_slices; i++) {
@@ -143,12 +187,13 @@ void initialize_buckets(Table<K, V, S>** table, const size_t start,
                              (*table)->bucket_max_size * sizeof(V) *
                              (*table)->dim;
     if ((*table)->remaining_hbm_for_vectors >= slice_real_size) {
-      CUDA_CHECK(cudaMalloc(&((*table)->slices[i]), slice_real_size));
+      allocator.alloc(MemoryType::Device, (void**)&((*table)->slices[i]),
+                      slice_real_size);
       (*table)->remaining_hbm_for_vectors -= slice_real_size;
     } else {
       (*table)->is_pure_hbm = false;
-      CUDA_CHECK(cudaMallocHost(&((*table)->slices[i]), slice_real_size,
-                                cudaHostAllocMapped));
+      allocator.alloc(MemoryType::Pinned, (void**)&((*table)->slices[i]),
+                      slice_real_size, cudaHostAllocMapped);
     }
     for (int j = 0; j < num_of_buckets_in_one_slice; j++) {
       if ((*table)->is_pure_hbm) {
@@ -174,8 +219,9 @@ void initialize_buckets(Table<K, V, S>** table, const size_t start,
       ((bucket_max_size + 127) / 128) * 128 * sizeof(uint8_t);
   bucket_memory_size += reserve_digest;
   for (int i = start; i < end; i++) {
-    CUDA_CHECK(
-        cudaMalloc(&((*table)->buckets[i].digests_), bucket_memory_size));
+    allocator.alloc(MemoryType::Device,
+                    (void**)&((*table)->buckets[i].digests_),
+                    bucket_memory_size);
     (*table)->buckets[i].keys_ =
         reinterpret_cast<AtomicKey<K>*>((*table)->buckets[i].digests_ + 128);
     (*table)->buckets[i].scores_ = reinterpret_cast<AtomicScore<S>*>(
@@ -240,14 +286,14 @@ size_t get_slice_size(Table<K, V, S>** table) {
       or occurrence frequency or any thing for eviction.
    DIM: Vector dimension.
 */
-template <class K, class V, class S>
-void create_table(Table<K, V, S>** table, const size_t dim,
+template <class K, class V, class S, class A>
+void create_table(Table<K, V, S>** table, A& allocator, const size_t dim,
                   const size_t init_size = 134217728,
                   const size_t max_size = std::numeric_limits<size_t>::max(),
                   const size_t max_hbm_for_vectors = 0,
                   const size_t bucket_max_size = 128,
                   const size_t tile_size = 32, const bool primary = true) {
-  CUDA_CHECK(cudaMallocManaged((void**)table, sizeof(Table<K, V, S>)));
+  allocator.alloc(MemoryType::Managed, (void**)table, sizeof(Table<K, V, S>));
   CUDA_CHECK(cudaMemset(*table, 0, sizeof(Table<K, V, S>)));
   (*table)->dim = dim;
   (*table)->bucket_max_size = bucket_max_size;
@@ -273,58 +319,58 @@ void create_table(Table<K, V, S>** table, const size_t dim,
   (*table)->remaining_hbm_for_vectors = max_hbm_for_vectors;
   (*table)->primary = primary;
 
-  CUDA_CHECK(cudaMalloc((void**)&((*table)->locks),
-                        (*table)->buckets_num * sizeof(Mutex)));
+  allocator.alloc(MemoryType::Device, (void**)&((*table)->locks),
+                  (*table)->buckets_num * sizeof(Mutex));
   CUDA_CHECK(
       cudaMemset((*table)->locks, 0, (*table)->buckets_num * sizeof(Mutex)));
 
-  CUDA_CHECK(cudaMalloc((void**)&((*table)->buckets_size),
-                        (*table)->buckets_num * sizeof(int)));
+  allocator.alloc(MemoryType::Device, (void**)&((*table)->buckets_size),
+                  (*table)->buckets_num * sizeof(int));
   CUDA_CHECK(cudaMemset((*table)->buckets_size, 0,
                         (*table)->buckets_num * sizeof(int)));
 
-  CUDA_CHECK(
-      cudaMallocManaged((void**)&((*table)->buckets),
-                        (*table)->buckets_num * sizeof(Bucket<K, V, S>)));
+  allocator.alloc(MemoryType::Managed, (void**)&((*table)->buckets),
+                  (*table)->buckets_num * sizeof(Bucket<K, V, S>));
   CUDA_CHECK(cudaMemset((*table)->buckets, 0,
                         (*table)->buckets_num * sizeof(Bucket<K, V, S>)));
 
-  initialize_buckets<K, V, S>(table, 0, (*table)->buckets_num);
+  initialize_buckets<K, V, S, A>(table, allocator, 0, (*table)->buckets_num);
   CudaCheckError();
 }
 
 /* Double the capacity on storage, must be followed by calling the
  * rehash_kernel. */
-template <class K, class V, class S>
-void double_capacity(Table<K, V, S>** table) {
-  realloc<Mutex*>(&((*table)->locks), (*table)->buckets_num * sizeof(Mutex),
-                  (*table)->buckets_num * sizeof(Mutex) * 2);
-  realloc<int*>(&((*table)->buckets_size), (*table)->buckets_num * sizeof(int),
-                (*table)->buckets_num * sizeof(int) * 2);
+template <class K, class V, class S, class A>
+void double_capacity(Table<K, V, S>** table, A& allocator) {
+  realloc<Mutex*, A>(&((*table)->locks), (*table)->buckets_num * sizeof(Mutex),
+                     (*table)->buckets_num * sizeof(Mutex) * 2, allocator);
+  realloc<int*, A>(&((*table)->buckets_size),
+                   (*table)->buckets_num * sizeof(int),
+                   (*table)->buckets_num * sizeof(int) * 2, allocator);
 
-  realloc_managed<Bucket<K, V, S>*>(
+  realloc_managed<Bucket<K, V, S>*, A>(
       &((*table)->buckets), (*table)->buckets_num * sizeof(Bucket<K, V, S>),
-      (*table)->buckets_num * sizeof(Bucket<K, V, S>) * 2);
+      (*table)->buckets_num * sizeof(Bucket<K, V, S>) * 2, allocator);
 
-  initialize_buckets<K, V, S>(table, (*table)->buckets_num,
-                              (*table)->buckets_num * 2);
+  initialize_buckets<K, V, S, A>(table, allocator, (*table)->buckets_num,
+                                 (*table)->buckets_num * 2);
 
   (*table)->capacity *= 2;
   (*table)->buckets_num *= 2;
 }
 
 /* free all of the resource of a Table. */
-template <class K, class V, class S>
-void destroy_table(Table<K, V, S>** table) {
+template <class K, class V, class S, class A>
+void destroy_table(Table<K, V, S>** table, A& allocator) {
   for (int i = 0; i < (*table)->buckets_num; i++) {
-    CUDA_CHECK(cudaFree((*table)->buckets[i].digests_));
+    allocator.free(MemoryType::Device, (*table)->buckets[i].digests_);
   }
 
   for (int i = 0; i < (*table)->num_of_memory_slices; i++) {
     if (is_on_device((*table)->slices[i])) {
-      CUDA_CHECK(cudaFree((*table)->slices[i]));
+      allocator.free(MemoryType::Device, (*table)->slices[i]);
     } else {
-      CUDA_CHECK(cudaFreeHost((*table)->slices[i]));
+      allocator.free(MemoryType::Pinned, (*table)->slices[i]);
     }
   }
   {
@@ -334,11 +380,11 @@ void destroy_table(Table<K, V, S>** table) {
     release_locks<Mutex>
         <<<grid_size, block_size>>>((*table)->locks, 0, (*table)->buckets_num);
   }
-  CUDA_CHECK(cudaFree((*table)->slices));
-  CUDA_CHECK(cudaFree((*table)->buckets_size));
-  CUDA_CHECK(cudaFree((*table)->buckets));
-  CUDA_CHECK(cudaFree((*table)->locks));
-  CUDA_CHECK(cudaFree(*table));
+  allocator.free(MemoryType::Device, (*table)->slices);
+  allocator.free(MemoryType::Device, (*table)->buckets_size);
+  allocator.free(MemoryType::Device, (*table)->buckets);
+  allocator.free(MemoryType::Device, (*table)->locks);
+  allocator.free(MemoryType::Managed, *table);
   CUDA_CHECK(cudaDeviceSynchronize());
   CudaCheckError();
 }

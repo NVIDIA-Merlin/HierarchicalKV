@@ -22,7 +22,6 @@
 #include <exception>
 #include <string>
 #include "cuda_fp16.h"
-#include "cuda_runtime_api.h"
 #include "debug.hpp"
 
 using namespace cooperative_groups;
@@ -267,48 +266,6 @@ struct TypeConvertFunc<int, unsigned int> {
     return static_cast<int>(val);
   }
 };
-
-template <class P>
-void realloc(P* ptr, size_t old_size, size_t new_size) {
-  // Truncate old_size to limit dowstream copy ops.
-  old_size = std::min(old_size, new_size);
-
-  // Alloc new buffer and copy at old data.
-  char* new_ptr;
-  CUDA_CHECK(cudaMalloc(&new_ptr, new_size));
-  if (*ptr != nullptr) {
-    CUDA_CHECK(cudaMemcpy(new_ptr, *ptr, old_size, cudaMemcpyDefault));
-    CUDA_CHECK(cudaFree(*ptr));
-  }
-
-  // Zero-fill remainder.
-  CUDA_CHECK(cudaMemset(new_ptr + old_size, 0, new_size - old_size));
-
-  // Switch to new pointer.
-  *ptr = reinterpret_cast<P>(new_ptr);
-  return;
-}
-
-template <class P>
-void realloc_managed(P* ptr, size_t old_size, size_t new_size) {
-  // Truncate old_size to limit dowstream copy ops.
-  old_size = std::min(old_size, new_size);
-
-  // Alloc new buffer and copy at old data.
-  char* new_ptr;
-  CUDA_CHECK(cudaMallocManaged(&new_ptr, new_size));
-  if (*ptr != nullptr) {
-    CUDA_CHECK(cudaMemcpy(new_ptr, *ptr, old_size, cudaMemcpyDefault));
-    CUDA_CHECK(cudaFree(*ptr));
-  }
-
-  // Zero-fill remainder.
-  CUDA_CHECK(cudaMemset(new_ptr + old_size, 0, new_size - old_size));
-
-  // Switch to new pointer.
-  *ptr = reinterpret_cast<P>(new_ptr);
-  return;
-}
 
 template <typename mutex, uint32_t TILE_SIZE, bool THREAD_SAFE = true>
 __forceinline__ __device__ void lock(

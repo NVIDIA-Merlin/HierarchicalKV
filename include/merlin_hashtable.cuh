@@ -25,6 +25,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <type_traits>
+#include "merlin/allocator.cuh"
 #include "merlin/array_kernels.cuh"
 #include "merlin/core_kernels.cuh"
 #include "merlin/flexible_buffer.cuh"
@@ -148,7 +149,7 @@ static constexpr auto& thrust_par = thrust::cuda::par;
  *
  */
 template <typename K, typename V, typename S = uint64_t,
-          typename ArchTag = Sm80>
+          typename ArchTag = Sm80, typename Allocator = DefaultAllocator>
 class HashTable {
  public:
   using size_type = size_t;
@@ -156,6 +157,7 @@ class HashTable {
   using value_type = V;
   using score_type = S;
   using Pred = EraseIfPredict<key_type, score_type>;
+  using allocator_type = Allocator;
 
  private:
   using TableCore = nv::merlin::Table<key_type, value_type, score_type>;
@@ -179,7 +181,8 @@ class HashTable {
       CUDA_CHECK(cudaDeviceSynchronize());
 
       initialized_ = false;
-      destroy_table<key_type, value_type, score_type>(&table_);
+      destroy_table<key_type, value_type, score_type, allocator_type>(
+          &table_, allocator_);
       CUDA_CHECK(cudaFree(d_table_));
       dev_mem_pool_.reset();
       host_mem_pool_.reset();
@@ -224,15 +227,17 @@ class HashTable {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
-    create_table<key_type, value_type, score_type>(
-        &table_, options_.dim, options_.init_capacity, options_.max_capacity,
-        options_.max_hbm_for_vectors, options_.max_bucket_size);
+    create_table<key_type, value_type, score_type, allocator_type>(
+        &table_, allocator_, options_.dim, options_.init_capacity,
+        options_.max_capacity, options_.max_hbm_for_vectors,
+        options_.max_bucket_size);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
     MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
                  "[HierarchicalKV] `io_by_cpu` should not be true when "
                  "`max_hbm_for_vectors` is not 0!");
-    CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
+    allocator_.alloc(MemoryType::Device, (void**)&(d_table_),
+                     sizeof(TableCore));
 
     sync_table_configuration();
 
@@ -1351,7 +1356,8 @@ class HashTable {
 
       while (capacity() < new_capacity &&
              capacity() * 2 <= options_.max_capacity) {
-        double_capacity(&table_);
+        double_capacity<key_type, value_type, score_type, allocator_type>(
+            &table_, allocator_);
         CUDA_CHECK(cudaDeviceSynchronize());
         sync_table_configuration();
 
@@ -1528,7 +1534,7 @@ class HashTable {
                                sizeof(value_type) * dim()};
     MERLIN_CHECK(max_workspace_size >= tuple_size,
                  "[HierarchicalKV] max_workspace_size is smaller than a single "
-                 "`key + scoredata + value` tuple! Please set a larger value!");
+                 "`key + score + value` tuple! Please set a larger value!");
 
     const size_type n{max_workspace_size / tuple_size};
     const size_type ws_size{n * tuple_size};
@@ -1671,6 +1677,7 @@ class HashTable {
   int c_table_index_ = -1;
   std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
   std::unique_ptr<HostMemoryPool> host_mem_pool_;
+  allocator_type allocator_;
 };
 
 }  // namespace merlin
