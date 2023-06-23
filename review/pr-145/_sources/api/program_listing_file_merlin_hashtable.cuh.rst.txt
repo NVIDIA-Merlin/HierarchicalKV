@@ -114,11 +114,15 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(cudaDeviceSynchronize());
    
          initialized_ = false;
-         destroy_table<key_type, value_type, score_type>(&table_,
-                                                         allocator_.get());
-         CUDA_CHECK(cudaFree(d_table_));
+         destroy_table<key_type, value_type, score_type>(&table_, allocator_);
+         allocator_->free(MemoryType::Device, d_table_);
          dev_mem_pool_.reset();
          host_mem_pool_.reset();
+   
+         CUDA_CHECK(cudaDeviceSynchronize());
+         if (default_allocator_ && allocator_ != nullptr) {
+           delete allocator_;
+         }
        }
      }
    
@@ -130,13 +134,14 @@ Program Listing for File merlin_hashtable.cuh
    
     public:
      void init(const HashTableOptions& options,
-               std::shared_ptr<Allocator> allocator =
-                   std::make_shared<DefaultAllocator>()) {
+               allocator_type* allocator = nullptr) {
        if (initialized_) {
          return;
        }
        options_ = options;
-       allocator_ = allocator;
+   
+       default_allocator_ = (allocator == nullptr);
+       allocator_ = (allocator == nullptr) ? (new DefaultAllocator()) : allocator;
    
        if (options_.device_id >= 0) {
          CUDA_CHECK(cudaSetDevice(options_.device_id));
@@ -159,7 +164,7 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
        shared_mem_size_ = deviceProp.sharedMemPerBlock;
        create_table<key_type, value_type, score_type>(
-           &table_, allocator_.get(), options_.dim, options_.init_capacity,
+           &table_, allocator_, options_.dim, options_.init_capacity,
            options_.max_capacity, options_.max_hbm_for_vectors,
            options_.max_bucket_size);
        options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
@@ -167,8 +172,8 @@ Program Listing for File merlin_hashtable.cuh
        MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
                     "[HierarchicalKV] `io_by_cpu` should not be true when "
                     "`max_hbm_for_vectors` is not 0!");
-       allocator_.get()->alloc(MemoryType::Device, (void**)&(d_table_),
-                               sizeof(TableCore));
+       allocator_->alloc(MemoryType::Device, (void**)&(d_table_),
+                         sizeof(TableCore));
    
        sync_table_configuration();
    
@@ -931,8 +936,7 @@ Program Listing for File merlin_hashtable.cuh
    
          while (capacity() < new_capacity &&
                 capacity() * 2 <= options_.max_capacity) {
-           double_capacity<key_type, value_type, score_type>(&table_,
-                                                             allocator_.get());
+           double_capacity<key_type, value_type, score_type>(&table_, allocator_);
            CUDA_CHECK(cudaDeviceSynchronize());
            sync_table_configuration();
    
@@ -1182,7 +1186,8 @@ Program Listing for File merlin_hashtable.cuh
      int c_table_index_ = -1;
      std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
      std::unique_ptr<HostMemoryPool> host_mem_pool_;
-     std::shared_ptr<allocator_type> allocator_;
+     allocator_type* allocator_;
+     bool default_allocator_ = true;
    };
    
    }  // namespace merlin
