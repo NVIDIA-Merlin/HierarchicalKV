@@ -273,7 +273,7 @@ Program Listing for File merlin_hashtable.cuh
                            key_type* evicted_keys,      // (n)
                            value_type* evicted_values,  // (n, DIM)
                            score_type* evicted_scores,  // (n)
-                           size_type* d_evicted, cudaStream_t stream = 0) {
+                           size_type* d_evicted_counter, cudaStream_t stream = 0) {
        if (n == 0) {
          return;
        }
@@ -311,7 +311,8 @@ Program Listing for File merlin_hashtable.cuh
    
        CUDA_CHECK(
            cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t), stream));
-       CUDA_CHECK(cudaMemsetAsync(d_evicted, 0, sizeof(size_type), stream));
+       CUDA_CHECK(
+           cudaMemsetAsync(d_evicted_counter, 0, sizeof(size_type), stream));
        CUDA_CHECK(cudaMemsetAsync(d_masks, 0, n * sizeof(bool), stream));
    
        size_type block_size = options_.block_size;
@@ -327,8 +328,8 @@ Program Listing for File merlin_hashtable.cuh
        keys_not_empty<K>
            <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
        gpu_boolean_mask<K, V, S, int64_t, TILE_SIZE>(
-           grid_size, block_size, d_masks, n, d_evicted, d_offsets, evicted_keys,
-           evicted_values, evicted_scores, dim(), stream);
+           grid_size, block_size, d_masks, n, d_evicted_counter, d_offsets,
+           evicted_keys, evicted_values, evicted_scores, dim(), stream);
        CudaCheckError();
        return;
      }
@@ -345,17 +346,19 @@ Program Listing for File merlin_hashtable.cuh
          return 0;
        }
        auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
-       size_type* d_evicted{dev_ws.get<size_type*>(0)};
+       size_type* d_evicted_counter{dev_ws.get<size_type*>(0)};
    
-       CUDA_CHECK(cudaMemsetAsync(d_evicted, 0, sizeof(size_type), stream));
+       CUDA_CHECK(
+           cudaMemsetAsync(d_evicted_counter, 0, sizeof(size_type), stream));
        insert_and_evict(n, keys, values, scores, evicted_keys, evicted_values,
-                        evicted_scores, d_evicted, stream);
+                        evicted_scores, d_evicted_counter, stream);
    
-       size_type n_evicted = 0;
-       CUDA_CHECK(cudaMemcpyAsync(&n_evicted, d_evicted, sizeof(size_type),
-                                  cudaMemcpyDeviceToHost, stream));
+       size_type h_evicted_counter = 0;
+       CUDA_CHECK(cudaMemcpyAsync(&h_evicted_counter, d_evicted_counter,
+                                  sizeof(size_type), cudaMemcpyDeviceToHost,
+                                  stream));
        CUDA_CHECK(cudaStreamSynchronize(stream));
-       return n_evicted;
+       return h_evicted_counter;
      }
    
      void accum_or_assign(const size_type n,
@@ -829,7 +832,6 @@ Program Listing for File merlin_hashtable.cuh
                        cudaStream_t stream = 0) const {
        reader_shared_lock lock(mutex_);
    
-       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
        if (offset >= table_->capacity) {
          return;
        }
@@ -876,7 +878,6 @@ Program Listing for File merlin_hashtable.cuh
                           score_type* scores = nullptr,  // (n)
                           cudaStream_t stream = 0) const {
        reader_shared_lock lock(mutex_);
-       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
    
        if (offset >= table_->capacity) {
          return;
