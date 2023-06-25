@@ -311,8 +311,6 @@ Program Listing for File merlin_hashtable.cuh
    
        CUDA_CHECK(
            cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t), stream));
-       CUDA_CHECK(
-           cudaMemsetAsync(d_evicted_counter, 0, sizeof(size_type), stream));
        CUDA_CHECK(cudaMemsetAsync(d_masks, 0, n * sizeof(bool), stream));
    
        size_type block_size = options_.block_size;
@@ -832,6 +830,7 @@ Program Listing for File merlin_hashtable.cuh
                        cudaStream_t stream = 0) const {
        reader_shared_lock lock(mutex_);
    
+       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
        if (offset >= table_->capacity) {
          return;
        }
@@ -878,6 +877,7 @@ Program Listing for File merlin_hashtable.cuh
                           score_type* scores = nullptr,  // (n)
                           cudaStream_t stream = 0) const {
        reader_shared_lock lock(mutex_);
+       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
    
        if (offset >= table_->capacity) {
          return;
