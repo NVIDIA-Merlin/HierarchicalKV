@@ -328,7 +328,6 @@ Program Listing for File merlin_hashtable.cuh
        gpu_boolean_mask<K, V, S, int64_t, TILE_SIZE>(
            grid_size, block_size, d_masks, n, d_evicted_counter, d_offsets,
            evicted_keys, evicted_values, evicted_scores, dim(), stream);
-       CudaCheckError();
        return;
      }
    
@@ -356,6 +355,7 @@ Program Listing for File merlin_hashtable.cuh
                                   sizeof(size_type), cudaMemcpyDeviceToHost,
                                   stream));
        CUDA_CHECK(cudaStreamSynchronize(stream));
+       CudaCheckError();
        return h_evicted_counter;
      }
    
