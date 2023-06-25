@@ -404,6 +404,9 @@ class HashTable {
    * applied.
    * @endparblock
    *
+   * @param d_evicted_counter The number of elements evicted on GPU-accessible
+   * memory. @notice The caller should guarantee it is set to `0` before
+   * calling.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    * @param ignore_evict_strategy A boolean option indicating whether if
@@ -412,16 +415,16 @@ class HashTable {
    * the evict strategy. If false, it requires the scores follow the evict
    * strategy of table.
    */
-  size_type insert_and_evict(const size_type n,
-                             const key_type* keys,        // (n)
-                             const value_type* values,    // (n, DIM)
-                             const score_type* scores,    // (n)
-                             key_type* evicted_keys,      // (n)
-                             value_type* evicted_values,  // (n, DIM)
-                             score_type* evicted_scores,  // (n)
-                             cudaStream_t stream = 0) {
+  void insert_and_evict(const size_type n,
+                        const key_type* keys,        // (n)
+                        const value_type* values,    // (n, DIM)
+                        const score_type* scores,    // (n)
+                        key_type* evicted_keys,      // (n)
+                        value_type* evicted_values,  // (n, DIM)
+                        score_type* evicted_scores,  // (n)
+                        size_type* d_evicted_counter, cudaStream_t stream = 0) {
     if (n == 0) {
-      return 0;
+      return;
     }
 
     while (!reach_max_capacity_ &&
@@ -453,12 +456,10 @@ class HashTable {
 
     auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
     auto d_offsets{dev_ws.get<int64_t*>(0)};
-    auto dn_evicted = reinterpret_cast<size_type*>(d_offsets + n_offsets);
-    auto d_masks = reinterpret_cast<bool*>(dn_evicted + 1);
+    auto d_masks = reinterpret_cast<bool*>(d_offsets + n_offsets);
 
     CUDA_CHECK(
         cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t), stream));
-    CUDA_CHECK(cudaMemsetAsync(dn_evicted, 0, sizeof(size_type), stream));
     CUDA_CHECK(cudaMemsetAsync(d_masks, 0, n * sizeof(bool), stream));
 
     size_type block_size = options_.block_size;
@@ -473,15 +474,81 @@ class HashTable {
 
     keys_not_empty<K>
         <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
-    size_type n_evicted = 0;
     gpu_boolean_mask<K, V, S, int64_t, TILE_SIZE>(
-        grid_size, block_size, d_masks, n, dn_evicted, d_offsets, evicted_keys,
-        evicted_values, evicted_scores, dim(), stream);
-    CUDA_CHECK(cudaMemcpyAsync(&n_evicted, dn_evicted, sizeof(size_type),
-                               cudaMemcpyDeviceToHost, stream));
+        grid_size, block_size, d_masks, n, d_evicted_counter, d_offsets,
+        evicted_keys, evicted_values, evicted_scores, dim(), stream);
+    return;
+  }
+
+  /**
+   * @brief Insert new key-value-score tuples into the hash table.
+   * If the key already exists, the values and scores are assigned new values.
+   *
+   * If the target bucket is full, the keys with minimum score will be
+   * overwritten by new key unless the score of the new key is even less than
+   * minimum score of the target bucket. The overwritten key with minimum
+   * score will be evicted, with its values and score, to evicted_keys,
+   * evicted_values, evcted_scores seperately in compact format.
+   *
+   * @param n Number of key-value-score tuples to insert or assign.
+   * @param keys The keys to insert on GPU-accessible memory with shape
+   * (n).
+   * @param values The values to insert on GPU-accessible memory with
+   * shape (n, DIM).
+   * @param scores The scores to insert on GPU-accessible memory with shape
+   * (n).
+   * @param scores The scores to insert on GPU-accessible memory with shape
+   * (n).
+   * @params evicted_keys The output of keys replaced with minimum score.
+   * @params evicted_values The output of values replaced with minimum score on
+   * keys.
+   * @params evicted_scores The output of scores replaced with minimum score on
+   * keys.
+   * @parblock
+   * The scores should be a `uint64_t` value. You can specify a value that
+   * such as the timestamp of the key insertion, number of the key
+   * occurrences, or another value to perform a custom eviction strategy.
+   *
+   * The @p scores should be `nullptr`, when the LRU eviction strategy is
+   * applied.
+   * @endparblock
+   *
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   * @param ignore_evict_strategy A boolean option indicating whether if
+   * the insert_or_assign ignores the evict strategy of table with current
+   * scores anyway. If true, it does not check whether the scores confroms to
+   * the evict strategy. If false, it requires the scores follow the evict
+   * strategy of table.
+   *
+   * @return The number of elements evicted.
+   */
+  size_type insert_and_evict(const size_type n,
+                             const key_type* keys,        // (n)
+                             const value_type* values,    // (n, DIM)
+                             const score_type* scores,    // (n)
+                             key_type* evicted_keys,      // (n)
+                             value_type* evicted_values,  // (n, DIM)
+                             score_type* evicted_scores,  // (n)
+                             cudaStream_t stream = 0) {
+    if (n == 0) {
+      return 0;
+    }
+    auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
+    size_type* d_evicted_counter{dev_ws.get<size_type*>(0)};
+
+    CUDA_CHECK(
+        cudaMemsetAsync(d_evicted_counter, 0, sizeof(size_type), stream));
+    insert_and_evict(n, keys, values, scores, evicted_keys, evicted_values,
+                     evicted_scores, d_evicted_counter, stream);
+
+    size_type h_evicted_counter = 0;
+    CUDA_CHECK(cudaMemcpyAsync(&h_evicted_counter, d_evicted_counter,
+                               sizeof(size_type), cudaMemcpyDeviceToHost,
+                               stream));
     CUDA_CHECK(cudaStreamSynchronize(stream));
     CudaCheckError();
-    return n_evicted;
+    return h_evicted_counter;
   }
 
   /**
