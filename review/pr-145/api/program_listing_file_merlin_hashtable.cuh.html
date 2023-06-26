@@ -173,7 +173,7 @@
 <span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">value_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">V</span><span class="p">;</span>
 <span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">score_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">S</span><span class="p">;</span>
 <span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">Pred</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">EraseIfPredict</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="o">&gt;</span><span class="p">;</span>
-<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">allocator_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">Allocator</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">allocator_type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">BaseAllocator</span><span class="p">;</span>
 
 <span class="w"> </span><span class="k">private</span><span class="o">:</span>
 <span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">TableCore</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nv</span><span class="o">::</span><span class="n">merlin</span><span class="o">::</span><span class="n">Table</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="o">&gt;</span><span class="p">;</span>
@@ -255,9 +255,9 @@
 
 <span class="w">    </span><span class="c1">// Create memory pools.</span>
 <span class="w">    </span><span class="n">dev_mem_pool_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">MemoryPool</span><span class="o">&lt;</span><span class="n">DeviceAllocator</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
-<span class="w">        </span><span class="n">options_</span><span class="p">.</span><span class="n">device_memory_pool</span><span class="p">);</span>
+<span class="w">        </span><span class="n">options_</span><span class="p">.</span><span class="n">device_memory_pool</span><span class="p">,</span><span class="w"> </span><span class="n">allocator_</span><span class="p">);</span>
 <span class="w">    </span><span class="n">host_mem_pool_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">MemoryPool</span><span class="o">&lt;</span><span class="n">HostAllocator</span><span class="o">&lt;</span><span class="kt">char</span><span class="o">&gt;&gt;&gt;</span><span class="p">(</span>
-<span class="w">        </span><span class="n">options_</span><span class="p">.</span><span class="n">host_memory_pool</span><span class="p">);</span>
+<span class="w">        </span><span class="n">options_</span><span class="p">.</span><span class="n">host_memory_pool</span><span class="p">,</span><span class="w"> </span><span class="n">allocator_</span><span class="p">);</span>
 
 <span class="w">    </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaDeviceSynchronize</span><span class="p">());</span>
 <span class="w">    </span><span class="n">initialized_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>

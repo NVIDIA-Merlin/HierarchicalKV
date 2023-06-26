@@ -97,7 +97,7 @@ Program Listing for File merlin_hashtable.cuh
      using value_type = V;
      using score_type = S;
      using Pred = EraseIfPredict<key_type, score_type>;
-     using allocator_type = Allocator;
+     using allocator_type = BaseAllocator;
    
     private:
      using TableCore = nv::merlin::Table<key_type, value_type, score_type>;
@@ -179,9 +179,9 @@ Program Listing for File merlin_hashtable.cuh
    
        // Create memory pools.
        dev_mem_pool_ = std::make_unique<MemoryPool<DeviceAllocator<char>>>(
-           options_.device_memory_pool);
+           options_.device_memory_pool, allocator_);
        host_mem_pool_ = std::make_unique<MemoryPool<HostAllocator<char>>>(
-           options_.host_memory_pool);
+           options_.host_memory_pool, allocator_);
    
        CUDA_CHECK(cudaDeviceSynchronize());
        initialized_ = true;
