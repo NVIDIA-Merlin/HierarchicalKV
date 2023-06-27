@@ -169,15 +169,16 @@ void initialize_buckets(Table<K, V, S>** table, const size_t start,
   uint32_t bucket_max_size = static_cast<uint32_t>((*table)->bucket_max_size);
   size_t bucket_memory_size =
       bucket_max_size * (sizeof(AtomicKey<K>) + sizeof(AtomicScore<S>));
-  // Align the digests according to the cache line size.
-  uint32_t reserve_digest =
-      ((bucket_max_size + 127) / 128) * 128 * sizeof(uint8_t);
-  bucket_memory_size += reserve_digest;
+  // Align to the cache line size.
+  constexpr uint32_t CACHE_LINE_SIZE = 128U / sizeof(uint8_t);
+  uint32_t reserve_size =
+      bucket_max_size < CACHE_LINE_SIZE ? CACHE_LINE_SIZE : bucket_max_size;
+  bucket_memory_size += reserve_size * sizeof(uint8_t);
   for (int i = start; i < end; i++) {
     CUDA_CHECK(
         cudaMalloc(&((*table)->buckets[i].digests_), bucket_memory_size));
-    (*table)->buckets[i].keys_ =
-        reinterpret_cast<AtomicKey<K>*>((*table)->buckets[i].digests_ + 128);
+    (*table)->buckets[i].keys_ = reinterpret_cast<AtomicKey<K>*>(
+        (*table)->buckets[i].digests_ + reserve_size);
     (*table)->buckets[i].scores_ = reinterpret_cast<AtomicScore<S>*>(
         (*table)->buckets[i].keys_ + bucket_max_size);
   }
