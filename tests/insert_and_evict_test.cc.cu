@@ -152,16 +152,18 @@ void test_insert_and_evict_basic() {
 template <typename K, typename V, typename S>
 void CheckInsertAndEvict(Table* table, K* keys, V* values, S* scores,
                          K* evicted_keys, V* evicted_values, S* evicted_scores,
-                         size_t len, cudaStream_t stream) {
+                         size_t len, cudaStream_t stream, TableOptions& opt) {
   std::map<i64, test_util::ValueArray<f32, dim>> map_before_insert;
   std::map<i64, test_util::ValueArray<f32, dim>> map_after_insert;
   K* h_tmp_keys = nullptr;
   V* h_tmp_values = nullptr;
   S* h_tmp_scores = nullptr;
+  bool* h_tmp_founds = nullptr;
 
   K* d_tmp_keys = nullptr;
   V* d_tmp_values = nullptr;
   S* d_tmp_scores = nullptr;
+  bool* d_tmp_founds = nullptr;
 
   size_t table_size_before = table->size(stream);
   size_t cap = table_size_before + len;
@@ -172,9 +174,12 @@ void CheckInsertAndEvict(Table* table, K* keys, V* values, S* scores,
   CUDA_CHECK(cudaMemsetAsync(d_tmp_values, 0, cap * dim * sizeof(V), stream));
   CUDA_CHECK(cudaMallocAsync(&d_tmp_scores, cap * sizeof(S), stream));
   CUDA_CHECK(cudaMemsetAsync(d_tmp_scores, 0, cap * sizeof(S), stream));
+  CUDA_CHECK(cudaMallocAsync(&d_tmp_founds, cap * sizeof(bool), stream));
+  CUDA_CHECK(cudaMemsetAsync(d_tmp_founds, 0, cap * sizeof(bool), stream));
   h_tmp_keys = (K*)malloc(cap * sizeof(K));
   h_tmp_values = (V*)malloc(cap * dim * sizeof(V));
   h_tmp_scores = (S*)malloc(cap * sizeof(S));
+  h_tmp_founds = (bool*)malloc(cap * sizeof(bool));
 
   size_t table_size_verify0 = table->export_batch(
       table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_scores, stream);
@@ -207,12 +212,26 @@ void CheckInsertAndEvict(Table* table, K* keys, V* values, S* scores,
   }
 
   auto start = std::chrono::steady_clock::now();
-  size_t filtered_len =
-      table->insert_and_evict(len, keys, values, nullptr, evicted_keys,
-                              evicted_values, evicted_scores, stream);
+  size_t filtered_len = table->insert_and_evict(
+      len, keys, values,
+      opt.evict_strategy == nv::merlin::EvictStrategy::kLru ? nullptr : scores,
+      evicted_keys, evicted_values, evicted_scores, stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
   auto end = std::chrono::steady_clock::now();
   auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+
+  {
+    table->find(len, keys, values, d_tmp_founds, scores, stream);
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    size_t found_counter = 0;
+    for (int i = 0; i < len; i++) {
+      if (h_tmp_founds[i]) found_counter++;
+    }
+    std::cout << "filtered_len:" << filtered_len
+              << ", miss counter:" << len - found_counter << std::endl;
+  }
 
   float dur = diff.count();
 
@@ -279,13 +298,15 @@ void CheckInsertAndEvict(Table* table, K* keys, V* values, S* scores,
   CUDA_CHECK(cudaFreeAsync(d_tmp_keys, stream));
   CUDA_CHECK(cudaFreeAsync(d_tmp_values, stream));
   CUDA_CHECK(cudaFreeAsync(d_tmp_scores, stream));
+  CUDA_CHECK(cudaFreeAsync(d_tmp_founds, stream));
   free(h_tmp_keys);
   free(h_tmp_values);
   free(h_tmp_scores);
+  free(h_tmp_founds);
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
-void test_insert_and_evict_advanced() {
+void test_insert_and_evict_advanced_on_lru() {
   const size_t U = 524288;
   const size_t init_capacity = U;
   const size_t B = 524288 + 13;
@@ -323,7 +344,52 @@ void test_insert_and_evict_advanced() {
     CheckInsertAndEvict<i64, f32, u64>(
         table.get(), data_buffer.keys_ptr(), data_buffer.values_ptr(),
         data_buffer.scores_ptr(), evict_buffer.keys_ptr(),
-        evict_buffer.values_ptr(), evict_buffer.scores_ptr(), B, stream);
+        evict_buffer.values_ptr(), evict_buffer.scores_ptr(), B, stream, opt);
+
+    offset += B;
+    score += 1;
+  }
+}
+
+void test_insert_and_evict_advanced_on_customized() {
+  const size_t U = 1024 * 1024;
+  const size_t init_capacity = U;
+  const size_t B = 100000;
+
+  TableOptions opt;
+
+  opt.max_capacity = U;
+  opt.init_capacity = init_capacity;
+  opt.max_hbm_for_vectors = U * dim * sizeof(f32);
+  opt.max_bucket_size = 128;
+  opt.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+  opt.dim = dim;
+
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  std::unique_ptr<Table> table = std::make_unique<Table>();
+  table->init(opt);
+
+  test_util::KVMSBuffer<i64, f32, u64> evict_buffer;
+  evict_buffer.Reserve(B, dim, stream);
+  evict_buffer.ToZeros(stream);
+
+  test_util::KVMSBuffer<i64, f32, u64> data_buffer;
+  data_buffer.Reserve(B, dim, stream);
+
+  size_t offset = 0;
+  u64 score = 0;
+  for (int i = 0; i < 16; i++) {
+    test_util::create_random_keys<i64, u64, f32, dim>(
+        data_buffer.keys_ptr(false), data_buffer.scores_ptr(false),
+        data_buffer.values_ptr(false), (int)B, (int)B * 16);
+    data_buffer.SyncData(true, stream);
+
+    CheckInsertAndEvict<i64, f32, u64>(
+        table.get(), data_buffer.keys_ptr(), data_buffer.values_ptr(),
+        data_buffer.scores_ptr(), evict_buffer.keys_ptr(),
+        evict_buffer.values_ptr(), evict_buffer.scores_ptr(), B, stream, opt);
 
     offset += B;
     score += 1;
@@ -735,8 +801,12 @@ TEST(InsertAndEvictTest, test_insert_and_evict_basic) {
   test_insert_and_evict_basic();
 }
 
-TEST(InsertAndEvictTest, test_insert_and_evict_advanced) {
-  test_insert_and_evict_advanced();
+TEST(InsertAndEvictTest, test_insert_and_evict_advanced_on_lru) {
+  test_insert_and_evict_advanced_on_lru();
+}
+
+TEST(InsertAndEvictTest, test_insert_and_evict_advanced_on_customized) {
+  test_insert_and_evict_advanced_on_customized();
 }
 
 TEST(InsertAndEvictTest, test_insert_and_evict_with_export_batch) {

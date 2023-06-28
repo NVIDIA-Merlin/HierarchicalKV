@@ -70,6 +70,8 @@ __global__ void upsert_and_evict_kernel_with_io_core(
     } while (occupy_result == OccupyResult::CONTINUE);
 
     if (occupy_result == OccupyResult::REFUSED) {
+      evicted_keys[key_idx] = insert_key;
+      evicted_scores[key_idx] = insert_score;
       copy_vector<V, TILE_SIZE>(g, insert_value, evicted_values + key_idx * dim,
                                 dim);
       continue;

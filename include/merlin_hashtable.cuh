@@ -416,13 +416,15 @@ class HashTable {
    * strategy of table.
    */
   void insert_and_evict(const size_type n,
-                        const key_type* keys,        // (n)
-                        const value_type* values,    // (n, DIM)
-                        const score_type* scores,    // (n)
-                        key_type* evicted_keys,      // (n)
-                        value_type* evicted_values,  // (n, DIM)
-                        score_type* evicted_scores,  // (n)
-                        size_type* d_evicted_counter, cudaStream_t stream = 0) {
+                        const key_type* keys,          // (n)
+                        const value_type* values,      // (n, DIM)
+                        const score_type* scores,      // (n)
+                        key_type* evicted_keys,        // (n)
+                        value_type* evicted_values,    // (n, DIM)
+                        score_type* evicted_scores,    // (n)
+                        size_type* d_evicted_counter,  // (1)
+                        cudaStream_t stream = 0,
+                        bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
     }
@@ -430,6 +432,10 @@ class HashTable {
     while (!reach_max_capacity_ &&
            fast_load_factor(n, stream) > options_.max_load_factor) {
       reserve(capacity() * 2, stream);
+    }
+
+    if (!ignore_evict_strategy) {
+      check_evict_strategy(scores);
     }
 
     writer_shared_lock lock(mutex_);
@@ -530,7 +536,8 @@ class HashTable {
                              key_type* evicted_keys,      // (n)
                              value_type* evicted_values,  // (n, DIM)
                              score_type* evicted_scores,  // (n)
-                             cudaStream_t stream = 0) {
+                             cudaStream_t stream = 0,
+                             bool ignore_evict_strategy = false) {
     if (n == 0) {
       return 0;
     }
@@ -540,7 +547,8 @@ class HashTable {
     CUDA_CHECK(
         cudaMemsetAsync(d_evicted_counter, 0, sizeof(size_type), stream));
     insert_and_evict(n, keys, values, scores, evicted_keys, evicted_values,
-                     evicted_scores, d_evicted_counter, stream);
+                     evicted_scores, d_evicted_counter, stream,
+                     ignore_evict_strategy);
 
     size_type h_evicted_counter = 0;
     CUDA_CHECK(cudaMemcpyAsync(&h_evicted_counter, d_evicted_counter,
