@@ -263,7 +263,10 @@ void test_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
+template <typename V>
 void test_find_using_pipeline(int dim, bool load_scores) {
+  using Table = nv::merlin::HashTable<K, V, S>;
+  using TableOptions = nv::merlin::HashTableOptions;
   constexpr uint64_t BUCKET_MAX_SIZE = 128;
   constexpr uint64_t INIT_CAPACITY = 128 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
@@ -354,7 +357,7 @@ void test_find_using_pipeline(int dim, bool load_scores) {
       if (load_scores) ASSERT_EQ(h_scores[i], h_keys[i]);
       for (int j = 0; j < options.dim; j++) {
         ASSERT_EQ(h_vectors[i * options.dim + j],
-                  static_cast<float>(h_keys[i] * 0.00001));
+                  static_cast<V>(h_keys[i] * 0.00001));
       }
     }
     ASSERT_EQ(found_num, KEY_NUM);
@@ -2634,21 +2637,19 @@ TEST(MerlinHashTableTest, test_basic) {
 }
 TEST(MerlinHashTableTest, test_bucket_size) { test_bucket_size(); }
 TEST(MerlinHashTableTest, test_find_using_pipeline) {
-  test_find_using_pipeline(224, true);
-  test_find_using_pipeline(202, true);
-  test_find_using_pipeline(129, true);
+  test_find_using_pipeline<int32_t>(224, true);
+  test_find_using_pipeline<uint32_t>(202, true);
+  test_find_using_pipeline<float>(129, true);
 
-  test_find_using_pipeline(224, false);
-  test_find_using_pipeline(202, false);
-  test_find_using_pipeline(129, false);
+  test_find_using_pipeline<float>(128, true);
+  test_find_using_pipeline<int32_t>(66, false);
+  test_find_using_pipeline<uint32_t>(3, false);
+  test_find_using_pipeline<double>(3, true);
 
-  test_find_using_pipeline(128, true);
-  test_find_using_pipeline(66, true);
-  test_find_using_pipeline(3, true);
-
-  test_find_using_pipeline(128, false);
-  test_find_using_pipeline(66, false);
-  test_find_using_pipeline(3, false);
+  test_find_using_pipeline<int16_t>(128, true);
+  test_find_using_pipeline<int8_t>(66, false);
+  test_find_using_pipeline<uint16_t>(3, false);
+  test_find_using_pipeline<uint8_t>(3, true);
 }
 TEST(MerlinHashTableTest, test_basic_when_full) {
   test_basic_when_full(16);

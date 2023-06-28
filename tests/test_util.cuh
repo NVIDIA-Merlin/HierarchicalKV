@@ -184,7 +184,7 @@ void create_random_keys(size_t dim, K* h_keys, S* h_scores, V* h_vectors,
     }
     if (h_vectors != nullptr) {
       for (size_t j = 0; j < dim; j++) {
-        h_vectors[i * dim + j] = static_cast<float>(num * 0.00001);
+        h_vectors[i * dim + j] = static_cast<V>(num * 0.00001);
       }
     }
     i++;
