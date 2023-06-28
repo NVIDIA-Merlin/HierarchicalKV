@@ -49,6 +49,29 @@ __forceinline__ __device__ uint8_t get_digest(const K& key) {
   return static_cast<uint8_t>(hashed_key >> 32);
 }
 
+template <typename ElementType>
+__forceinline__ __device__ void LDGSTS(ElementType* dst,
+                                       const ElementType* src);
+
+template <>
+__forceinline__ __device__ void LDGSTS<uint8_t>(
+    uint8_t* dst, const uint8_t* src) {
+  uint8_t element = *src;
+  *dst = element;
+}
+
+template <>
+__forceinline__ __device__ void LDGSTS<uint16_t>(uint16_t* dst, const uint16_t* src) {
+  uint16_t element = *src;
+  *dst = element;
+}
+
+template <typename ElementType>
+__forceinline__ __device__ void LDGSTS(ElementType* dst,
+                                       const ElementType* src) {
+  __pipeline_memcpy_async(dst, src, sizeof(ElementType));
+}
+
 template <typename S, typename K, int BUCKET_SIZE = 128>
 struct CopyScoreEmpty {
   __forceinline__ __device__ static S* get_base_ptr(K** keys_ptr, int offset) {
@@ -66,7 +89,7 @@ struct CopyScoreByPassCache {
   }
 
   __forceinline__ __device__ static void ldg_sts(S* dst, const S* src) {
-    __pipeline_memcpy_async(dst, src, sizeof(S));
+    LDGSTS<S>(dst, src);
   }
 
   __forceinline__ __device__ static S lgs(const S* src) { return src[0]; }
@@ -76,68 +99,61 @@ struct CopyScoreByPassCache {
   }
 };
 
-template <typename V = float, typename CopyUnit = float4, int GROUP_SIZE = 16,
-          int UnitSize = sizeof(CopyUnit) / sizeof(V)>
+template <typename VecV = float4, int GROUP_SIZE = 16>
 struct CopyValueOneGroup {
-  __forceinline__ __device__ static void ldg_sts(int rank, V* dst, const V* src,
-                                                 int dim) {
-    int offset = rank * UnitSize;
-    if (offset < dim)
-      __pipeline_memcpy_async(dst + offset, src + offset, sizeof(CopyUnit));
+  __forceinline__ __device__ static void ldg_sts(int rank, VecV* dst,
+                                                 const VecV* src, int dim) {
+    int offset = rank;
+    if (offset < dim) LDGSTS<VecV>(dst + offset, src + offset);
   }
 
-  __forceinline__ __device__ static void lds_stg(int rank, V* dst, const V* src,
-                                                 int dim) {
-    int offset = rank * UnitSize;
+  __forceinline__ __device__ static void lds_stg(int rank, VecV* dst,
+                                                 const VecV* src, int dim) {
+    int offset = rank;
     if (offset < dim) {
-      CopyUnit value_ = reinterpret_cast<const CopyUnit*>(src + offset)[0];
-      __stwt(reinterpret_cast<CopyUnit*>(dst + offset), value_);
+      VecV vec_v = src[offset];
+      __stwt(dst + offset, vec_v);
     }
   }
 };
 
-template <typename V = float, typename CopyUnit = float4, int GROUP_SIZE = 16,
-          int UnitSize = sizeof(CopyUnit) / sizeof(V)>
+template <typename VecV = float4, int GROUP_SIZE = 16>
 struct CopyValueTwoGroup {
-  __forceinline__ __device__ static void ldg_sts(int rank, V* dst, const V* src,
-                                                 int dim) {
-    int offset = rank * UnitSize;
-    __pipeline_memcpy_async(dst + offset, src + offset, sizeof(CopyUnit));
-    offset += GROUP_SIZE * UnitSize;
-    if (offset < dim)
-      __pipeline_memcpy_async(dst + offset, src + offset, sizeof(CopyUnit));
+  __forceinline__ __device__ static void ldg_sts(int rank, VecV* dst,
+                                                 const VecV* src, int dim) {
+    int offset = rank;
+    LDGSTS<VecV>(dst + offset, src + offset);
+    offset += GROUP_SIZE;
+    if (offset < dim) LDGSTS<VecV>(dst + offset, src + offset);
   }
 
-  __forceinline__ __device__ static void lds_stg(int rank, V* dst, const V* src,
-                                                 int dim) {
-    int offset = rank * UnitSize;
-    const CopyUnit value_ = reinterpret_cast<const CopyUnit*>(src + offset)[0];
-    __stwt(reinterpret_cast<CopyUnit*>(dst + offset), value_);
-    offset += GROUP_SIZE * UnitSize;
+  __forceinline__ __device__ static void lds_stg(int rank, VecV* dst,
+                                                 const VecV* src, int dim) {
+    int offset = rank;
+    const VecV vec_v = src[offset];
+    __stwt(dst + offset, vec_v);
+    offset += GROUP_SIZE;
     if (offset < dim) {
-      const CopyUnit value_ =
-          reinterpret_cast<const CopyUnit*>(src + offset)[0];
-      __stwt(reinterpret_cast<CopyUnit*>(dst + offset), value_);
+      const VecV vec_v = src[offset];
+      __stwt(dst + offset, vec_v);
     }
   }
 };
 
-template <typename V = float, typename CopyUnit = float4, int GROUP_SIZE = 16,
-          int UnitSize = sizeof(CopyUnit) / sizeof(V),
-          int STRIDE = GROUP_SIZE* UnitSize>
+template <typename VecV = float4, int GROUP_SIZE = 16>
 struct CopyValueMultipleGroup {
-  __forceinline__ __device__ static void ldg_sts(int rank, V* dst, const V* src,
-                                                 int dim) {
-    for (int offset = rank * UnitSize; offset < dim; offset += STRIDE) {
-      __pipeline_memcpy_async(dst + offset, src + offset, sizeof(CopyUnit));
+  __forceinline__ __device__ static void ldg_sts(int rank, VecV* dst,
+                                                 const VecV* src, int dim) {
+    for (int offset = rank; offset < dim; offset += GROUP_SIZE) {
+      LDGSTS<VecV>(dst + offset, src + offset);
     }
   }
 
-  __forceinline__ __device__ static void lds_stg(int rank, V* dst, const V* src,
-                                                 int dim) {
-    for (int offset = rank * UnitSize; offset < dim; offset += STRIDE) {
-      CopyUnit value_ = reinterpret_cast<const CopyUnit*>(src + offset)[0];
-      __stwt(reinterpret_cast<CopyUnit*>(dst + offset), value_);
+  __forceinline__ __device__ static void lds_stg(int rank, VecV* dst,
+                                                 const VecV* src, int dim) {
+    for (int offset = rank; offset < dim; offset += GROUP_SIZE) {
+      VecV vec_v = src[offset];
+      __stwt(dst + offset, vec_v);
     }
   }
 };
