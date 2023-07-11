@@ -104,7 +104,14 @@ Program Listing for File merlin_hashtable.cuh
      using HostMemoryPool = MemoryPool<HostAllocator<char>>;
    
     public:
-     HashTable(){};
+     HashTable() {
+       static_assert((std::is_same<key_type, int64_t>::value ||
+                      std::is_same<key_type, uint64_t>::value),
+                     "The key_type must be int64_t or uint64_t.");
+   
+       static_assert(std::is_same<score_type, uint64_t>::value,
+                     "The key_type must be uint64_t.");
+     };
    
      ~HashTable() {
        if (initialized_) {
