@@ -108,7 +108,19 @@
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">score</span></code> value are evicted first. </p>
+<p>Eviction occurs automatically when a bucket is full. The keys with the minimum <code class="docutils literal notranslate"><span class="pre">score</span></code> value are evicted first.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>For <code class="docutils literal notranslate"><span class="pre">kEpochLru</span></code> and <code class="docutils literal notranslate"><span class="pre">kEpochLfu</span></code>, the high 32bits would be set to <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code> while the low 32 bits is <code class="docutils literal notranslate"><span class="pre">timestamp</span></code> or <code class="docutils literal notranslate"><span class="pre">frequency</span></code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>on <code class="docutils literal notranslate"><span class="pre">kLFU</span></code>, when the scores reaches to the max of <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>, it will not increase any more.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>on <code class="docutils literal notranslate"><span class="pre">kLkEpochLfu</span></code>, when the lower 32bit stand for frequency reaches to the max of <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code>, it will not increase any more. </p>
 </div>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-attributes">Public Static Attributes</p>
@@ -127,13 +139,13 @@
 <dl class="cpp var">
 <dt id="_CPPv4N2nv6merlin13EvictStrategy9kEpochLruE">
 <span id="_CPPv3N2nv6merlin13EvictStrategy9kEpochLruE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy9kEpochLruE"></span><span id="nv::merlin::EvictStrategy::kEpochLru__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a642751a4cf5008d31a35d2c4362eb9ad"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kEpochLru</span></code> <span class="pre">=</span> <span class="pre">2</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy9kEpochLruE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Epoch + LRU mode. </p>
+<dd><p>Epoch(High 32bits) + LRU(Low 32bits) mode. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt id="_CPPv4N2nv6merlin13EvictStrategy9kEpochLfuE">
 <span id="_CPPv3N2nv6merlin13EvictStrategy9kEpochLfuE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy9kEpochLfuE"></span><span id="nv::merlin::EvictStrategy::kEpochLfu__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a11179796050916611d7c7c499269c763"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kEpochLfu</span></code> <span class="pre">=</span> <span class="pre">3</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy9kEpochLfuE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Epoch + LFU mode. </p>
+<dd><p>Epoch(High 32bits) + LFU(Low 32bits) mode. </p>
 </dd></dl>
 
 <dl class="cpp var">

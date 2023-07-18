@@ -49,10 +49,12 @@ Program Listing for File merlin_hashtable.cuh
    namespace merlin {
    
    struct EvictStrategy {
-     constexpr static int kLru = 0;         
-     constexpr static int kLfu = 1;         
-     constexpr static int kEpochLru = 2;    
-     constexpr static int kEpochLfu = 3;    
+     constexpr static int kLru = 0;  
+     constexpr static int kLfu = 1;  
+     constexpr static int kEpochLru =
+         2;  
+     constexpr static int kEpochLfu =
+         3;  
      constexpr static int kCustomized = 4;  
    };
    
@@ -108,7 +110,14 @@ Program Listing for File merlin_hashtable.cuh
      using HostMemoryPool = MemoryPool<HostAllocator<char>>;
    
     public:
-     HashTable(){};
+     HashTable() {
+       static_assert((std::is_same<key_type, int64_t>::value ||
+                      std::is_same<key_type, uint64_t>::value),
+                     "The key_type must be int64_t or uint64_t.");
+   
+       static_assert(std::is_same<score_type, uint64_t>::value,
+                     "The key_type must be uint64_t.");
+     };
    
      ~HashTable() {
        if (initialized_) {
@@ -145,9 +154,8 @@ Program Listing for File merlin_hashtable.cuh
                     "Bucket size should be the pow of 2");
    
        MERLIN_CHECK(
-           (options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
-                   128 ==
-               0,
+           (((options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
+             128) == 0),
            "Storage size of keys and scores in one bucket should be the mutiple "
            "of cache line size");
    
@@ -183,8 +191,9 @@ Program Listing for File merlin_hashtable.cuh
                            const value_type* values,            // (n, DIM)
                            const score_type* scores = nullptr,  // (n)
                            cudaStream_t stream = 0,
-                           bool ignore_evict_strategy = false,
-                           const score_type global_epoch = 0) {
+                           const score_type global_epoch =
+                               static_cast<score_type>(DEFAULT_GLOBAL_EPOCH),
+                           bool ignore_evict_strategy = false) {
        if (n == 0) {
          return;
        }
@@ -280,8 +289,9 @@ Program Listing for File merlin_hashtable.cuh
                            score_type* evicted_scores,    // (n)
                            size_type* d_evicted_counter,  // (1)
                            cudaStream_t stream = 0,
-                           bool ignore_evict_strategy = false,
-                           const score_type global_epoch = 0) {
+                           const score_type global_epoch =
+                               static_cast<score_type>(DEFAULT_GLOBAL_EPOCH),
+                           bool ignore_evict_strategy = false) {
        if (n == 0) {
          return;
        }
@@ -338,6 +348,7 @@ Program Listing for File merlin_hashtable.cuh
    
        keys_not_empty<K>
            <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
+   
        gpu_boolean_mask<K, V, S, int64_t, TILE_SIZE>(
            grid_size, block_size, d_masks, n, d_evicted_counter, d_offsets,
            evicted_keys, evicted_values, evicted_scores, dim(), stream);
@@ -352,8 +363,9 @@ Program Listing for File merlin_hashtable.cuh
                                 value_type* evicted_values,  // (n, DIM)
                                 score_type* evicted_scores,  // (n)
                                 cudaStream_t stream = 0,
-                                bool ignore_evict_strategy = false,
-                                const score_type global_epoch = 0) {
+                                const score_type global_epoch =
+                                    static_cast<score_type>(DEFAULT_GLOBAL_EPOCH),
+                                bool ignore_evict_strategy = false) {
        if (n == 0) {
          return 0;
        }
@@ -381,8 +393,9 @@ Program Listing for File merlin_hashtable.cuh
                           const bool* accum_or_assigns,        // (n)
                           const score_type* scores = nullptr,  // (n)
                           cudaStream_t stream = 0,
-                          bool ignore_evict_strategy = false,
-                          const score_type global_epoch = 0) {
+                          const score_type global_epoch =
+                              static_cast<score_type>(DEFAULT_GLOBAL_EPOCH),
+                          bool ignore_evict_strategy = false) {
        if (n == 0) {
          return;
        }
@@ -445,8 +458,9 @@ Program Listing for File merlin_hashtable.cuh
                          value_type* values,                       // (n * DIM)
                          score_type* scores = nullptr,             // (n)
                          cudaStream_t stream = 0,
-                         bool ignore_evict_strategy = false,
-                         const score_type global_epoch = 0) {
+                         const score_type global_epoch =
+                             static_cast<score_type>(DEFAULT_GLOBAL_EPOCH),
+                         bool ignore_evict_strategy = false) {
        if (n == 0) {
          return;
        }
@@ -551,8 +565,9 @@ Program Listing for File merlin_hashtable.cuh
                          bool* founds,                             // (n)
                          score_type* scores = nullptr,             // (n)
                          cudaStream_t stream = 0,
-                         bool ignore_evict_strategy = false,
-                         const score_type global_epoch = 0) {
+                         const score_type global_epoch =
+                             static_cast<score_type>(DEFAULT_GLOBAL_EPOCH),
+                         bool ignore_evict_strategy = false) {
        if (n == 0) {
          return;
        }
@@ -586,8 +601,10 @@ Program Listing for File merlin_hashtable.cuh
      void assign(const size_type n,
                  const key_type* keys,                // (n)
                  const value_type* values,            // (n, DIM)
-                 const score_type* scores = nullptr,  // (n)
-                 cudaStream_t stream = 0, const score_type global_epoch = 0) {
+                 const score_type* scores = nullptr,  // (n),
+                 cudaStream_t stream = 0,
+                 const score_type global_epoch =
+                     static_cast<score_type>(DEFAULT_GLOBAL_EPOCH)) {
        if (n == 0) {
          return;
        }
@@ -1128,7 +1145,8 @@ Program Listing for File merlin_hashtable.cuh
                                       cudaMemcpyHostToDevice, stream));
          }
    
-         insert_or_assign(count, d_keys, d_values, d_scores, stream, true);
+         insert_or_assign(count, d_keys, d_values, d_scores, stream,
+                          static_cast<S>(DEFAULT_GLOBAL_EPOCH), true);
          total_count += count;
    
          // Read next batch.
