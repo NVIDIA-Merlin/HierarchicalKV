@@ -184,7 +184,7 @@
 <p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
-<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>(=<code class="docutils literal notranslate"><span class="pre">0</span></code>), insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
+<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>, insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
 <li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores conforms to the evict strategy. If false, it requires the scores follow the evict strategy of table. </p></li>
 </ul>
 </dd>
@@ -208,7 +208,7 @@
 </p></li>
 <li><p><strong>d_evicted_counter</strong> – The number of elements evicted on GPU-accessible memory. &#64;notice The caller should guarantee it is set to <code class="docutils literal notranslate"><span class="pre">0</span></code> before calling. </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
-<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>(=<code class="docutils literal notranslate"><span class="pre">0</span></code>), insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
+<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>, insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
 <li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table. </p></li>
 </ul>
 </dd>
@@ -231,7 +231,7 @@
 <p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
-<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>(=<code class="docutils literal notranslate"><span class="pre">0</span></code>), insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
+<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>, insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
 <li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table.</p></li>
 </ul>
 </dd>
@@ -261,7 +261,7 @@
 <p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
-<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>(=<code class="docutils literal notranslate"><span class="pre">0</span></code>), insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
+<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>, insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly.</p></li>
 <li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the accum_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table. </p></li>
 </ul>
 </dd>
@@ -281,7 +281,7 @@
 <li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
-<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>(=<code class="docutils literal notranslate"><span class="pre">0</span></code>), insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly. </p></li>
+<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>, insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly. </p></li>
 </ul>
 </dd>
 </dl>
@@ -304,7 +304,7 @@
 <li><p><strong>founds</strong> – The status that indicates if the keys are found on </p></li>
 <li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
 </p></li>
-<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>(=<code class="docutils literal notranslate"><span class="pre">0</span></code>), insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly. </p></li>
+<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>, insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly. </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
 </ul>
 </dd>
@@ -325,7 +325,7 @@
 <p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
-<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>(=<code class="docutils literal notranslate"><span class="pre">0</span></code>), insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly. </p></li>
+<li><p><strong>global_epoch</strong> – The global epoch for EpochLRU, EpochLFU, when it’s set to <code class="docutils literal notranslate"><span class="pre">DEFAULT_GLOBAL_EPOCH</span></code>, insert score in <code class="docutils literal notranslate"><span class="pre">scores</span></code> directly. </p></li>
 </ul>
 </dd>
 </dl>

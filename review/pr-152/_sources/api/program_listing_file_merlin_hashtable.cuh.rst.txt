@@ -375,8 +375,8 @@ Program Listing for File merlin_hashtable.cuh
        CUDA_CHECK(
            cudaMemsetAsync(d_evicted_counter, 0, sizeof(size_type), stream));
        insert_and_evict(n, keys, values, scores, evicted_keys, evicted_values,
-                        evicted_scores, d_evicted_counter, stream,
-                        ignore_evict_strategy, global_epoch);
+                        evicted_scores, d_evicted_counter, stream, global_epoch,
+                        ignore_evict_strategy);
    
        size_type h_evicted_counter = 0;
        CUDA_CHECK(cudaMemcpyAsync(&h_evicted_counter, d_evicted_counter,
