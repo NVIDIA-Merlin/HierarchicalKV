@@ -1421,6 +1421,7 @@ class HashTable {
    */
   void reserve(const size_type new_capacity, cudaStream_t stream = 0) {
     if (reach_max_capacity_ || new_capacity > options_.max_capacity) {
+      reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
       return;
     }
 
