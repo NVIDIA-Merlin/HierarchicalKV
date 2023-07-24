@@ -25,6 +25,7 @@ cuda_library(
         "core_kernels.cuh",
         "debug.hpp",
         "flexible_buffer.cuh",
+        "group_lock.hpp",
         "initializers.cuh",
         "memory_pool.cuh",
         "optimizers.cuh",
