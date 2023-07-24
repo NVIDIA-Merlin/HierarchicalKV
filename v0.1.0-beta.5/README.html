@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NVIDIA HierarchicalKV(Beta) &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="_static/togglebutton.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/custom.css" type="text/css" />
+      <link rel="stylesheet" href="_static/css/banner.css" type="text/css" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/README.html" />
+  <!--[if lt IE 9]>
+    <script src="_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+        <script src="_static/jquery.js"></script>
+        <script src="_static/underscore.js"></script>
+        <script src="_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="HierarchicalKV C++ API Documentation" href="api/index.html" />
+    <link rel="prev" title="Merlin Key-Value Storage" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+  <div class="banner">
+    <p class="banner">
+      Beginning in January 2023, versions for all NVIDIA Merlin projects
+      will change from semantic versioning like <code>4.0</code>
+      to calendar versioning like <code>23.01</code>.</p>
+  </div>
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Introduction</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#about-hierarchicalkv">About HierarchicalKV</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benefits">Benefits</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#key-ideas">Key ideas</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api-documentation">API Documentation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#api-maturity-matrix">API Maturity Matrix</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#usage-restrictions">Usage restrictions</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#contributors">Contributors</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#how-to-build">How to build</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benchmark-performance-w-i-p">Benchmark &amp; Performance(W.I.P)</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api/index.html">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">NVIDIA HierarchicalKV(Beta)</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="tex2jax_ignore mathjax_ignore section" id="nvidia-hierarchicalkv-beta">
+<h1><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV">NVIDIA HierarchicalKV(Beta)</a><a class="headerlink" href="#nvidia-hierarchicalkv-beta" title="Permalink to this headline"></a></h1>
+<p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/releases"><img alt="Version" src="https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange&amp;include_prereleases" /></a>
+<a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/LICENSE"><img alt="GitHub License" src="https://img.shields.io/github/license/NVIDIA-Merlin/HierarchicalKV" /></a>
+<a class="reference external" href="https://nvidia-merlin.github.io/HierarchicalKV/master/README.html"><img alt="Documentation" src="https://img.shields.io/badge/documentation-blue.svg" /></a></p>
+<div class="section" id="about-hierarchicalkv">
+<h2>About HierarchicalKV<a class="headerlink" href="#about-hierarchicalkv" title="Permalink to this headline"></a></h2>
+<p>HierarchicalKV is a part of NVIDIA Merlin and provides hierarchical key-value storage to meet RecSys requirements.</p>
+<p>The key capability of HierarchicalKV is to store key-value (feature-embedding) on high-bandwidth memory (HBM) of GPUs and in host memory.</p>
+<p>You can also use the library for generic key-value storage.</p>
+</div>
+<div class="section" id="benefits">
+<h2>Benefits<a class="headerlink" href="#benefits" title="Permalink to this headline"></a></h2>
+<p>When building large recommender systems, machine learning (ML) engineers face the following challenges:</p>
+<ul class="simple">
+<li><p>GPUs are needed, but HBM on a single GPU is too small for the large DLRMs that scale to several terabytes.</p></li>
+<li><p>Improving communication performance is getting more difficult in larger and larger CPU clusters.</p></li>
+<li><p>It is difficult to efficiently control consumption growth of limited HBM with customized strategies.</p></li>
+<li><p>Most generic key-value libraries provide low HBM and host memory utilization.</p></li>
+</ul>
+<p>HierarchicalKV alleviates these challenges and helps the machine learning engineers in RecSys with the following benefits:</p>
+<ul class="simple">
+<li><p>Supports training large RecSys models on <strong>HBM and host memory</strong> at the same time.</p></li>
+<li><p>Provides better performance by <strong>full bypassing CPUs</strong> and reducing the communication workload.</p></li>
+<li><p>Implements table-size restraint strategies that are based on <strong>LRU or customized strategies</strong>.
+The strategies are implemented by CUDA kernels.</p></li>
+<li><p>Operates at a high working-status load factor that is close to 1.0.</p></li>
+</ul>
+</div>
+<div class="section" id="key-ideas">
+<h2>Key ideas<a class="headerlink" href="#key-ideas" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p>Buckets are locally ordered</p></li>
+<li><p>Store keys and values separately</p></li>
+<li><p>Store all the keys in HBM</p></li>
+<li><p>Build-in and customizable eviction strategy</p></li>
+</ul>
+<p>HierarchicalKV makes NVIDIA GPUs more suitable for training large and super-large models of <em><strong>search, recommendations, and advertising</strong></em>.
+The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.</p>
+</div>
+<div class="section" id="api-documentation">
+<h2>API Documentation<a class="headerlink" href="#api-documentation" title="Permalink to this headline"></a></h2>
+<p>The main classes and structs are below, but reading the comments in the source code is recommended:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L151"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">HashTable</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L52"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">EvictStrategy</span></code></a></p></li>
+<li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a></p></li>
+</ul>
+<p>For regular API doc, please refer to <a class="reference external" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html">API Docs</a></p>
+</div>
+<div class="section" id="api-maturity-matrix">
+<h2>API Maturity Matrix<a class="headerlink" href="#api-maturity-matrix" title="Permalink to this headline"></a></h2>
+<p><code class="docutils literal notranslate"><span class="pre">industry-validated</span></code> means the API has been well-tested and verified in at least one real-world scenario.</p>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-left head"><p>Name</p></th>
+<th class="text-left head"><p>Description</p></th>
+<th class="text-left head"><p>Function</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-left"><p><strong>insert_or_assign</strong></p></td>
+<td class="text-left"><p>Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.</p></td>
+<td class="text-left"><p>industry-validated</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>insert_and_evict</strong></p></td>
+<td class="text-left"><p>Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key.</p></td>
+<td class="text-left"><p>industry-validated</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>find_or_insert</strong></p></td>
+<td class="text-left"><p>Search for the specified keys. If missing, insert it.</p></td>
+<td class="text-left"><p>well-tested</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>assign</strong></p></td>
+<td class="text-left"><p>Update for each key and ignore the missed one.</p></td>
+<td class="text-left"><p>well-tested</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>accum_or_assign</strong></p></td>
+<td class="text-left"><p>Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.</p></td>
+<td class="text-left"><p>well-tested</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>find_or_insert*</strong></p></td>
+<td class="text-left"><p>Search for the specified keys and return the pointers of values. If missing, insert it.</p></td>
+<td class="text-left"><p>well-tested</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>find</strong></p></td>
+<td class="text-left"><p>Search for the specified keys.</p></td>
+<td class="text-left"><p>industry-validated</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>find*</strong></p></td>
+<td class="text-left"><p>Search and return the pointers of values, thread-unsafe but with high performance.</p></td>
+<td class="text-left"><p>well-tested</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>export_batch</strong></p></td>
+<td class="text-left"><p>Exports a certain number of the key-value-score tuples.</p></td>
+<td class="text-left"><p>industry-validated</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>export_batch_if</strong></p></td>
+<td class="text-left"><p>Exports a certain number of the key-value-score tuples which match specific conditions.</p></td>
+<td class="text-left"><p>industry-validated</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>warmup</strong></p></td>
+<td class="text-left"><p>Move the hot key-values from HMEM to HBM</p></td>
+<td class="text-left"><p>June 15, 2023</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="usage-restrictions">
+<h2>Usage restrictions<a class="headerlink" href="#usage-restrictions" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> or <code class="docutils literal notranslate"><span class="pre">int64_t</span></code>.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">score_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
+<li><p>The keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFC</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFD</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> are reserved for internal using.</p></li>
+</ul>
+</div>
+<div class="section" id="contributors">
+<h2>Contributors<a class="headerlink" href="#contributors" title="Permalink to this headline"></a></h2>
+<p>HierarchicalKV is co-maintianed by <a class="reference external" href="https://github.com/NVIDIA-Merlin">NVIDIA Merlin Team</a> and NVIDIA product end-users,
+and also open for public contributions, bug fixes, and documentation. [<a class="reference internal" href="CONTRIBUTING.html"><span class="doc std std-doc">Contribute</span></a>]</p>
+</div>
+<div class="section" id="how-to-build">
+<h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
+<p>Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
+<div class="section" id="with-cmake">
+<h3>with cmake<a class="headerlink" href="#with-cmake" title="Permalink to this headline"></a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
+cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-Dsm<span class="o">=</span><span class="m">80</span><span class="w"> </span>..<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>-j
+</pre></div>
+</div>
+<p>For Benchmark:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_benchmark
+</pre></div>
+</div>
+<p>For Unit Test:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./merlin_hashtable_test
+</pre></div>
+</div>
+</div>
+<div class="section" id="with-bazel">
+<h3>with bazel<a class="headerlink" href="#with-bazel" title="Permalink to this headline"></a></h3>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>bazel<span class="w"> </span>build<span class="w"> </span>--config<span class="o">=</span>cuda<span class="w"> </span>//...
+</pre></div>
+</div>
+<p>For Benchmark:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./benchmark_util
+</pre></div>
+</div>
+<p>Your environment must meet the following requirements:</p>
+<ul class="simple">
+<li><p>CUDA version &gt;= 11.2</p></li>
+<li><p>NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="benchmark-performance-w-i-p">
+<h2>Benchmark &amp; Performance(W.I.P)<a class="headerlink" href="#benchmark-performance-w-i-p" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p>GPU: 1 x NVIDIA A100 80GB PCIe: 8.0</p></li>
+<li><p>Key Type = uint64_t</p></li>
+<li><p>Value Type = float32 * {dim}</p></li>
+<li><p>Key-Values per OP = 1048576</p></li>
+<li><p>Evict strategy: LRU</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">λ</span></code>: load factor</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">find*</span></code> means the <code class="docutils literal notranslate"><span class="pre">find</span></code> API that directly returns the addresses of values.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">find_or_insert*</span></code> means the <code class="docutils literal notranslate"><span class="pre">find_or_insert</span></code> API that directly returns the addresses of values.</p></li>
+<li><p><em><strong>Throughput Unit: Billion-KV/second</strong></em></p></li>
+</ul>
+<div class="section" id="on-pure-hbm-mode">
+<h3>On pure HBM mode:<a class="headerlink" href="#on-pure-hbm-mode" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p>dim = 8, capacity = 128 Million-KV, HBM = 4 GB, HMEM = 0 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+<th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
+<th class="text-right head"><p>insert_and_evict</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>1.161</p></td>
+<td class="text-right"><p>2.813</p></td>
+<td class="text-right"><p>1.708</p></td>
+<td class="text-right"><p>1.942</p></td>
+<td class="text-right"><p>4.147</p></td>
+<td class="text-right"><p>1.801</p></td>
+<td class="text-right"><p>1.023</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>1.004</p></td>
+<td class="text-right"><p>2.785</p></td>
+<td class="text-right"><p>0.669</p></td>
+<td class="text-right"><p>0.865</p></td>
+<td class="text-right"><p>1.939</p></td>
+<td class="text-right"><p>1.302</p></td>
+<td class="text-right"><p>0.873</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.364</p></td>
+<td class="text-right"><p>2.801</p></td>
+<td class="text-right"><p>0.370</p></td>
+<td class="text-right"><p>0.499</p></td>
+<td class="text-right"><p>0.930</p></td>
+<td class="text-right"><p>0.392</p></td>
+<td class="text-right"><p>0.315</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>2.213</p></td>
+<td class="text-right"><p>19.096</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>2.165</p></td>
+<td class="text-right"><p>19.825</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>2.067</p></td>
+<td class="text-right"><p>2.818</p></td>
+</tr>
+</tbody>
+</table>
+<ul class="simple">
+<li><p>dim = 32, capacity = 128 Million-KV, HBM = 16 GB, HMEM = 0 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+<th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
+<th class="text-right head"><p>insert_and_evict</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>1.071</p></td>
+<td class="text-right"><p>2.490</p></td>
+<td class="text-right"><p>1.264</p></td>
+<td class="text-right"><p>1.602</p></td>
+<td class="text-right"><p>4.136</p></td>
+<td class="text-right"><p>1.801</p></td>
+<td class="text-right"><p>0.949</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.866</p></td>
+<td class="text-right"><p>2.462</p></td>
+<td class="text-right"><p>0.637</p></td>
+<td class="text-right"><p>0.853</p></td>
+<td class="text-right"><p>1.939</p></td>
+<td class="text-right"><p>1.302</p></td>
+<td class="text-right"><p>0.740</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.359</p></td>
+<td class="text-right"><p>2.573</p></td>
+<td class="text-right"><p>0.348</p></td>
+<td class="text-right"><p>0.492</p></td>
+<td class="text-right"><p>0.925</p></td>
+<td class="text-right"><p>0.377</p></td>
+<td class="text-right"><p>0.278</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.709</p></td>
+<td class="text-right"><p>15.918</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.575</p></td>
+<td class="text-right"><p>14.923</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.567</p></td>
+<td class="text-right"><p>0.758</p></td>
+</tr>
+</tbody>
+</table>
+<ul class="simple">
+<li><p>dim = 64, capacity = 64 Million-KV, HBM = 16 GB, HMEM = 0 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+<th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
+<th class="text-right head"><p>insert_and_evict</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.868</p></td>
+<td class="text-right"><p>2.122</p></td>
+<td class="text-right"><p>0.916</p></td>
+<td class="text-right"><p>1.116</p></td>
+<td class="text-right"><p>4.451</p></td>
+<td class="text-right"><p>1.838</p></td>
+<td class="text-right"><p>0.773</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.670</p></td>
+<td class="text-right"><p>2.112</p></td>
+<td class="text-right"><p>0.570</p></td>
+<td class="text-right"><p>0.790</p></td>
+<td class="text-right"><p>1.984</p></td>
+<td class="text-right"><p>1.289</p></td>
+<td class="text-right"><p>0.587</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.333</p></td>
+<td class="text-right"><p>2.162</p></td>
+<td class="text-right"><p>0.335</p></td>
+<td class="text-right"><p>0.467</p></td>
+<td class="text-right"><p>0.940</p></td>
+<td class="text-right"><p>0.393</p></td>
+<td class="text-right"><p>0.240</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.321</p></td>
+<td class="text-right"><p>11.050</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.301</p></td>
+<td class="text-right"><p>10.965</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.292</p></td>
+<td class="text-right"><p>0.390</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="on-hbm-hmem-hybrid-mode">
+<h3>On HBM+HMEM hybrid mode:<a class="headerlink" href="#on-hbm-hmem-hybrid-mode" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p>dim = 64, capacity = 128 Million-KV, HBM = 16 GB, HMEM = 16 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+<th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.118</p></td>
+<td class="text-right"><p>0.145</p></td>
+<td class="text-right"><p>0.119</p></td>
+<td class="text-right"><p>0.147</p></td>
+<td class="text-right"><p>4.097</p></td>
+<td class="text-right"><p>1.807</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.116</p></td>
+<td class="text-right"><p>0.144</p></td>
+<td class="text-right"><p>0.115</p></td>
+<td class="text-right"><p>0.142</p></td>
+<td class="text-right"><p>1.932</p></td>
+<td class="text-right"><p>1.300</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.091</p></td>
+<td class="text-right"><p>0.126</p></td>
+<td class="text-right"><p>0.092</p></td>
+<td class="text-right"><p>0.114</p></td>
+<td class="text-right"><p>0.927</p></td>
+<td class="text-right"><p>0.379</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.322</p></td>
+<td class="text-right"><p>11.206</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.300</p></td>
+<td class="text-right"><p>11.072</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.292</p></td>
+<td class="text-right"><p>0.388</p></td>
+</tr>
+</tbody>
+</table>
+<ul class="simple">
+<li><p>dim = 64, capacity = 512 Million-KV, HBM = 32 GB, HMEM = 96 GB</p></li>
+</ul>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>insert_or_assign</p></th>
+<th class="text-right head"><p>find</p></th>
+<th class="text-right head"><p>find_or_insert</p></th>
+<th class="text-right head"><p>assign</p></th>
+<th class="text-right head"><p>find*</p></th>
+<th class="text-right head"><p>find_or_insert*</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.049</p></td>
+<td class="text-right"><p>0.072</p></td>
+<td class="text-right"><p>0.047</p></td>
+<td class="text-right"><p>0.068</p></td>
+<td class="text-right"><p>3.559</p></td>
+<td class="text-right"><p>1.718</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.048</p></td>
+<td class="text-right"><p>0.072</p></td>
+<td class="text-right"><p>0.048</p></td>
+<td class="text-right"><p>0.069</p></td>
+<td class="text-right"><p>1.854</p></td>
+<td class="text-right"><p>1.251</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.044</p></td>
+<td class="text-right"><p>0.067</p></td>
+<td class="text-right"><p>0.044</p></td>
+<td class="text-right"><p>0.061</p></td>
+<td class="text-right"><p>0.912</p></td>
+<td class="text-right"><p>0.360</p></td>
+</tr>
+</tbody>
+</table>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-right head"><p>λ</p></th>
+<th class="text-right head"><p>export_batch</p></th>
+<th class="text-right head"><p>export_batch_if</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-right"><p>0.50</p></td>
+<td class="text-right"><p>0.319</p></td>
+<td class="text-right"><p>10.175</p></td>
+</tr>
+<tr class="row-odd"><td class="text-right"><p>0.75</p></td>
+<td class="text-right"><p>0.298</p></td>
+<td class="text-right"><p>11.606</p></td>
+</tr>
+<tr class="row-even"><td class="text-right"><p>1.00</p></td>
+<td class="text-right"><p>0.292</p></td>
+<td class="text-right"><p>0.388</p></td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="support-and-feedback">
+<h3>Support and Feedback:<a class="headerlink" href="#support-and-feedback" title="Permalink to this headline"></a></h3>
+<p>If you encounter any issues or have questions, go to <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/issues">https://github.com/NVIDIA-Merlin/HierarchicalKV/issues</a> and submit an issue so that we can provide you with the necessary resolutions and answers.</p>
+</div>
+<div class="section" id="acknowledgment">
+<h3>Acknowledgment<a class="headerlink" href="#acknowledgment" title="Permalink to this headline"></a></h3>
+<p>We are very grateful to external initial contributors <a class="reference external" href="https://github.com/zhangyafeikimi">&#64;Zhangyafei</a> and <a class="reference external" href="https://github.com/Lifann">&#64;Lifan</a> for their design, coding, and review work.</p>
+</div>
+<div class="section" id="license">
+<h3>License<a class="headerlink" href="#license" title="Permalink to this headline"></a></h3>
+<p>Apache License 2.0</p>
+</div>
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="Merlin Key-Value Storage" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api/index.html" class="btn btn-neutral float-right" title="HierarchicalKV C++ API Documentation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book"> Other Versions</span>
+    v: v0.1.0-beta.5
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Tags</dt>
+      <dd><a href="../v0.1.0-beta.1/index.html">v0.1.0-beta.1</a></dd>
+      <dd><a href="../v0.1.0-beta.2/index.html">v0.1.0-beta.2</a></dd>
+      <dd><a href="../v0.1.0-beta.3/index.html">v0.1.0-beta.3</a></dd>
+      <dd><a href="../v0.1.0-beta.4/index.html">v0.1.0-beta.4</a></dd>
+      <dd><a href="README.html">v0.1.0-beta.5</a></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+    <!-- Theme Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-NVJ1Y1YJHK"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-NVJ1Y1YJHK', {
+          'anonymize_ip': false,
+      });
+    </script> 
+
+</body>
+</html>
