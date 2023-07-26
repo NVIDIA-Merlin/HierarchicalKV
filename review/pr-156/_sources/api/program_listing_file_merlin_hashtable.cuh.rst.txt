@@ -1054,7 +1054,7 @@ Program Listing for File merlin_hashtable.cuh
    
          dump_kernel<key_type, value_type, score_type>
              <<<grid_size, block_size, shared_size, stream>>>(
-                 table_, table_->buckets, d_keys, d_values, d_scores, i,
+                 d_table_, table_->buckets, d_keys, d_values, d_scores, i,
                  std::min(total_size - i, n), d_count);
    
          size_type count;
@@ -1196,11 +1196,6 @@ Program Listing for File merlin_hashtable.cuh
      inline void sync_table_configuration() {
        CUDA_CHECK(
            cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
-       if (c_table_index_ >= 0) {
-         CUDA_CHECK(cudaMemcpyToSymbol(c_table_, table_, sizeof(TableCore),
-                                       sizeof(TableCore) * c_table_index_,
-                                       cudaMemcpyDefault));
-       }
      }
    
     private:
@@ -1212,7 +1207,6 @@ Program Listing for File merlin_hashtable.cuh
      bool initialized_ = false;
      mutable group_shared_mutex mutex_;
      const unsigned int kernel_select_interval_ = 7;
-     int c_table_index_ = -1;
      std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
      std::unique_ptr<HostMemoryPool> host_mem_pool_;
    };
