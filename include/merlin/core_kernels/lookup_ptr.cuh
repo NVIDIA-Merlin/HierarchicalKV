@@ -26,13 +26,13 @@ namespace merlin {
  */
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
 __global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
+                                  Bucket<K, V, S>* buckets,
                                   const size_t bucket_max_size,
                                   const size_t buckets_num, const size_t dim,
                                   const K* __restrict keys,
                                   V** __restrict values, S* __restrict scores,
                                   bool* __restrict found, size_t N) {
   int* buckets_size = table->buckets_size;
-  Bucket<K, V, S>* buckets = table->buckets;
 
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
@@ -83,24 +83,25 @@ struct SelectLookupPtrKernel {
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
                              const Table<K, V, S>* __restrict table,
-                             const K* __restrict keys, V** __restrict values,
-                             S* __restrict scores, bool* __restrict found) {
+                             Bucket<K, V, S>* buckets, const K* __restrict keys,
+                             V** __restrict values, S* __restrict scores,
+                             bool* __restrict found) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       lookup_ptr_kernel<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
-                                                 buckets_num, dim, keys, values,
-                                                 scores, found, N);
+          <<<grid_size, block_size, 0, stream>>>(
+              table, buckets, bucket_max_size, buckets_num, dim, keys, values,
+              scores, found, N);
     } else {
       const unsigned int tile_size = 16;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       lookup_ptr_kernel<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
-                                                 buckets_num, dim, keys, values,
-                                                 scores, found, N);
+          <<<grid_size, block_size, 0, stream>>>(
+              table, buckets, bucket_max_size, buckets_num, dim, keys, values,
+              scores, found, N);
     }
     return;
   }

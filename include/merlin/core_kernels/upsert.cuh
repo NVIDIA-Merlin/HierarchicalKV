@@ -23,9 +23,10 @@ namespace merlin {
 
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
 __global__ void upsert_kernel_with_io_core(
-    const Table<K, V, S>* __restrict table, const size_t bucket_max_size,
-    const size_t buckets_num, const size_t dim, const K* __restrict keys,
-    const V* __restrict values, const S* __restrict scores, size_t N) {
+    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
+    const K* __restrict keys, const V* __restrict values,
+    const S* __restrict scores, size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int* buckets_size = table->buckets_size;
 
@@ -47,9 +48,8 @@ __global__ void upsert_kernel_with_io_core(
     int src_lane = -1;
     K evicted_key;
 
-    Bucket<K, V, S>* bucket =
-        get_key_position<K>(table->buckets, insert_key, bkt_idx, start_idx,
-                            buckets_num, bucket_max_size);
+    Bucket<K, V, S>* bucket = get_key_position<K>(
+        buckets, insert_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     OccupyResult occupy_result{OccupyResult::INITIAL};
     const int bucket_size = buckets_size[bkt_idx];
@@ -94,7 +94,7 @@ struct SelectUpsertKernelWithIO {
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
                              const Table<K, V, S>* __restrict table,
-                             const K* __restrict keys,
+                             Bucket<K, V, S>* buckets, const K* __restrict keys,
                              const V* __restrict values,
                              const S* __restrict scores) {
     if (load_factor <= 0.5) {
@@ -102,26 +102,26 @@ struct SelectUpsertKernelWithIO {
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       upsert_kernel_with_io_core<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
-                                                 buckets_num, dim, keys, values,
-                                                 scores, N);
+          <<<grid_size, block_size, 0, stream>>>(table, buckets,
+                                                 bucket_max_size, buckets_num,
+                                                 dim, keys, values, scores, N);
 
     } else if (load_factor <= 0.875) {
       const unsigned int tile_size = 8;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       upsert_kernel_with_io_core<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
-                                                 buckets_num, dim, keys, values,
-                                                 scores, N);
+          <<<grid_size, block_size, 0, stream>>>(table, buckets,
+                                                 bucket_max_size, buckets_num,
+                                                 dim, keys, values, scores, N);
     } else {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       upsert_kernel_with_io_core<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
-                                                 buckets_num, dim, keys, values,
-                                                 scores, N);
+          <<<grid_size, block_size, 0, stream>>>(table, buckets,
+                                                 bucket_max_size, buckets_num,
+                                                 dim, keys, values, scores, N);
     }
     return;
   }
@@ -131,6 +131,7 @@ struct SelectUpsertKernelWithIO {
  */
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
 __global__ void upsert_kernel(const Table<K, V, S>* __restrict table,
+                              Bucket<K, V, S>* buckets,
                               const size_t bucket_max_size,
                               const size_t buckets_num, const size_t dim,
                               const K* __restrict keys, V** __restrict vectors,
@@ -155,9 +156,8 @@ __global__ void upsert_kernel(const Table<K, V, S>* __restrict table,
     int src_lane = -1;
     K evicted_key;
 
-    Bucket<K, V, S>* bucket =
-        get_key_position<K>(table->buckets, insert_key, bkt_idx, start_idx,
-                            buckets_num, bucket_max_size);
+    Bucket<K, V, S>* bucket = get_key_position<K>(
+        buckets, insert_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     if (src_offset != nullptr && g.thread_rank() == 0) {
       *(src_offset + key_idx) = key_idx;

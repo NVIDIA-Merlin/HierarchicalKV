@@ -27,9 +27,10 @@ namespace merlin {
  */
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
 __global__ void find_or_insert_kernel_with_io(
-    const Table<K, V, S>* __restrict table, const size_t bucket_max_size,
-    const size_t buckets_num, const size_t dim, const K* __restrict keys,
-    V* __restrict values, S* __restrict scores, const size_t N) {
+    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
+    const K* __restrict keys, V* __restrict values, S* __restrict scores,
+    const size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int* buckets_size = table->buckets_size;
 
@@ -52,8 +53,8 @@ __global__ void find_or_insert_kernel_with_io(
     K evicted_key;
 
     Bucket<K, V, S>* bucket =
-        get_key_position<K>(table->buckets, find_or_insert_key, bkt_idx,
-                            start_idx, buckets_num, bucket_max_size);
+        get_key_position<K>(buckets, find_or_insert_key, bkt_idx, start_idx,
+                            buckets_num, bucket_max_size);
 
     OccupyResult occupy_result{OccupyResult::INITIAL};
     const int bucket_size = buckets_size[bkt_idx];
@@ -110,24 +111,24 @@ struct SelectFindOrInsertKernelWithIO {
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
                              const Table<K, V, S>* __restrict table,
-                             const K* __restrict keys, V* __restrict values,
-                             S* __restrict scores) {
+                             Bucket<K, V, S>* buckets, const K* __restrict keys,
+                             V* __restrict values, S* __restrict scores) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       find_or_insert_kernel_with_io<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
-                                                 buckets_num, dim, keys, values,
-                                                 scores, N);
+          <<<grid_size, block_size, 0, stream>>>(table, buckets,
+                                                 bucket_max_size, buckets_num,
+                                                 dim, keys, values, scores, N);
     } else {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
       find_or_insert_kernel_with_io<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, bucket_max_size,
-                                                 buckets_num, dim, keys, values,
-                                                 scores, N);
+          <<<grid_size, block_size, 0, stream>>>(table, buckets,
+                                                 bucket_max_size, buckets_num,
+                                                 dim, keys, values, scores, N);
     }
     return;
   }
@@ -137,10 +138,10 @@ struct SelectFindOrInsertKernelWithIO {
  */
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
 __global__ void find_or_insert_kernel(
-    const Table<K, V, S>* __restrict table, const size_t bucket_max_size,
-    const size_t buckets_num, const size_t dim, const K* __restrict keys,
-    V** __restrict vectors, S* __restrict scores, bool* __restrict found,
-    int* __restrict keys_index, const size_t N) {
+    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
+    const K* __restrict keys, V** __restrict vectors, S* __restrict scores,
+    bool* __restrict found, int* __restrict keys_index, const size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int* buckets_size = table->buckets_size;
 
@@ -162,8 +163,8 @@ __global__ void find_or_insert_kernel(
     K evicted_key;
 
     Bucket<K, V, S>* bucket =
-        get_key_position<K>(table->buckets, find_or_insert_key, bkt_idx,
-                            start_idx, buckets_num, bucket_max_size);
+        get_key_position<K>(buckets, find_or_insert_key, bkt_idx, start_idx,
+                            buckets_num, bucket_max_size);
 
     if (g.thread_rank() == 0) {
       *(keys_index + key_idx) = key_idx;

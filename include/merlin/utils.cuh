@@ -19,6 +19,8 @@
 #include <cooperative_groups.h>
 #include <stdarg.h>
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <exception>
 #include <string>
 #include "cuda_fp16.h"
@@ -290,20 +292,20 @@ void realloc(P* ptr, size_t old_size, size_t new_size) {
 }
 
 template <class P>
-void realloc_managed(P* ptr, size_t old_size, size_t new_size) {
+void realloc_host(P* ptr, size_t old_size, size_t new_size) {
   // Truncate old_size to limit dowstream copy ops.
   old_size = std::min(old_size, new_size);
 
   // Alloc new buffer and copy at old data.
-  char* new_ptr;
-  CUDA_CHECK(cudaMallocManaged(&new_ptr, new_size));
+  char* new_ptr = reinterpret_cast<char*>(std::malloc(new_size));
+
   if (*ptr != nullptr) {
-    CUDA_CHECK(cudaMemcpy(new_ptr, *ptr, old_size, cudaMemcpyDefault));
-    CUDA_CHECK(cudaFree(*ptr));
+    std::memcpy(new_ptr, *ptr, old_size);
+    std::free(*ptr);
   }
 
   // Zero-fill remainder.
-  CUDA_CHECK(cudaMemset(new_ptr + old_size, 0, new_size - old_size));
+  std::memset(new_ptr + old_size, 0, new_size - old_size);
 
   // Switch to new pointer.
   *ptr = reinterpret_cast<P>(new_ptr);
