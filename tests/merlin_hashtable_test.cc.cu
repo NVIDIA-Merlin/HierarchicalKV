@@ -34,6 +34,8 @@ using V = float;
 using S = uint64_t;
 using Table = nv::merlin::HashTable<K, V, S>;
 using TableOptions = nv::merlin::HashTableOptions;
+using BaseAllocator = nv::merlin::BaseAllocator;
+using MemoryType = nv::merlin::MemoryType;
 
 template <class K, class S>
 struct EraseIfPredFunctor {
@@ -50,6 +52,77 @@ struct ExportIfPredFunctor {
                                              const K& pattern,
                                              const S& threshold) {
     return score > threshold;
+  }
+};
+
+class CustomizedAllocator : public virtual BaseAllocator {
+ public:
+  CustomizedAllocator(){};
+  ~CustomizedAllocator() override{};
+
+  void alloc(const MemoryType type, void** ptr, size_t size,
+             unsigned int pinned_flags = cudaHostAllocDefault) override {
+    switch (type) {
+      case MemoryType::Device:
+        CUDA_CHECK(cudaMalloc(ptr, size));
+        break;
+      case MemoryType::Managed:
+        CUDA_CHECK(cudaMallocManaged(ptr, size, cudaMemAttachGlobal));
+        break;
+      case MemoryType::Pinned:
+        CUDA_CHECK(cudaMallocHost(ptr, size, pinned_flags));
+        break;
+      case MemoryType::Host:
+        *ptr = std::malloc(size);
+        break;
+    }
+    return;
+  }
+
+  void alloc_async(const MemoryType type, void** ptr, size_t size,
+                   cudaStream_t stream) override {
+    if (type == MemoryType::Device) {
+      CUDA_CHECK(cudaMallocAsync(ptr, size, stream));
+    } else {
+      MERLIN_CHECK(false,
+                   "[CustomizedAllocator] alloc_async is only support for "
+                   "MemoryType::Device!");
+    }
+    return;
+  }
+
+  void free(const MemoryType type, void* ptr) override {
+    if (ptr == nullptr) {
+      return;
+    }
+    switch (type) {
+      case MemoryType::Pinned:
+        CUDA_CHECK(cudaFreeHost(ptr));
+        break;
+      case MemoryType::Device:
+      case MemoryType::Managed:
+        CUDA_CHECK(cudaFree(ptr));
+        break;
+      case MemoryType::Host:
+        std::free(ptr);
+        break;
+    }
+    return;
+  }
+
+  void free_async(const MemoryType type, void* ptr,
+                  cudaStream_t stream) override {
+    if (ptr == nullptr) {
+      return;
+    }
+
+    if (type == MemoryType::Device) {
+      CUDA_CHECK(cudaFreeAsync(ptr, stream));
+    } else {
+      MERLIN_CHECK(false,
+                   "[CustomizedAllocator] free_async is only support for "
+                   "MemoryType::Device!");
+    }
   }
 };
 
@@ -397,6 +470,9 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
 
+  std::unique_ptr<CustomizedAllocator> customized_allocator =
+      std::make_unique<CustomizedAllocator>();
+
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
   CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
   CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
@@ -437,7 +513,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
   uint64_t total_size = 0;
   for (int i = 0; i < TEST_TIMES; i++) {
     std::unique_ptr<Table> table = std::make_unique<Table>();
-    table->init(options);
+    table->init(options, customized_allocator.get());
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ(total_size, 0);

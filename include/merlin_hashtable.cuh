@@ -22,9 +22,11 @@
 #include <atomic>
 #include <cstdint>
 #include <limits>
+#include <memory>
 #include <mutex>
 #include <shared_mutex>
 #include <type_traits>
+#include "merlin/allocator.cuh"
 #include "merlin/array_kernels.cuh"
 #include "merlin/core_kernels.cuh"
 #include "merlin/flexible_buffer.cuh"
@@ -156,6 +158,7 @@ class HashTable {
   using value_type = V;
   using score_type = S;
   using Pred = EraseIfPredict<key_type, score_type>;
+  using allocator_type = BaseAllocator;
 
  private:
   using TableCore = nv::merlin::Table<key_type, value_type, score_type>;
@@ -186,10 +189,15 @@ class HashTable {
       CUDA_CHECK(cudaDeviceSynchronize());
 
       initialized_ = false;
-      destroy_table<key_type, value_type, score_type>(&table_);
-      CUDA_CHECK(cudaFree(d_table_));
+      destroy_table<key_type, value_type, score_type>(&table_, allocator_);
+      allocator_->free(MemoryType::Device, d_table_);
       dev_mem_pool_.reset();
       host_mem_pool_.reset();
+
+      CUDA_CHECK(cudaDeviceSynchronize());
+      if (default_allocator_ && allocator_ != nullptr) {
+        delete allocator_;
+      }
     }
   }
 
@@ -205,11 +213,15 @@ class HashTable {
    *
    * @param options The configuration options.
    */
-  void init(const HashTableOptions& options) {
+  void init(const HashTableOptions& options,
+            allocator_type* allocator = nullptr) {
     if (initialized_) {
       return;
     }
     options_ = options;
+
+    default_allocator_ = (allocator == nullptr);
+    allocator_ = (allocator == nullptr) ? (new DefaultAllocator()) : allocator;
 
     if (options_.device_id >= 0) {
       CUDA_CHECK(cudaSetDevice(options_.device_id));
@@ -232,22 +244,24 @@ class HashTable {
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
     create_table<key_type, value_type, score_type>(
-        &table_, options_.dim, options_.init_capacity, options_.max_capacity,
-        options_.max_hbm_for_vectors, options_.max_bucket_size);
+        &table_, allocator_, options_.dim, options_.init_capacity,
+        options_.max_capacity, options_.max_hbm_for_vectors,
+        options_.max_bucket_size);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
     MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
                  "[HierarchicalKV] `io_by_cpu` should not be true when "
                  "`max_hbm_for_vectors` is not 0!");
-    CUDA_CHECK(cudaMalloc((void**)&(d_table_), sizeof(TableCore)));
+    allocator_->alloc(MemoryType::Device, (void**)&(d_table_),
+                      sizeof(TableCore));
 
     sync_table_configuration();
 
     // Create memory pools.
     dev_mem_pool_ = std::make_unique<MemoryPool<DeviceAllocator<char>>>(
-        options_.device_memory_pool);
+        options_.device_memory_pool, allocator_);
     host_mem_pool_ = std::make_unique<MemoryPool<HostAllocator<char>>>(
-        options_.host_memory_pool);
+        options_.host_memory_pool, allocator_);
 
     CUDA_CHECK(cudaDeviceSynchronize());
     initialized_ = true;
@@ -1439,7 +1453,7 @@ class HashTable {
 
       while (capacity() < new_capacity &&
              capacity() * 2 <= options_.max_capacity) {
-        double_capacity(&table_);
+        double_capacity<key_type, value_type, score_type>(&table_, allocator_);
         CUDA_CHECK(cudaDeviceSynchronize());
         sync_table_configuration();
 
@@ -1617,7 +1631,7 @@ class HashTable {
                                sizeof(value_type) * dim()};
     MERLIN_CHECK(max_workspace_size >= tuple_size,
                  "[HierarchicalKV] max_workspace_size is smaller than a single "
-                 "`key + scoredata + value` tuple! Please set a larger value!");
+                 "`key + score + value` tuple! Please set a larger value!");
 
     const size_type n{max_workspace_size / tuple_size};
     const size_type ws_size{n * tuple_size};
@@ -1754,6 +1768,8 @@ class HashTable {
   const unsigned int kernel_select_interval_ = 7;
   std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
   std::unique_ptr<HostMemoryPool> host_mem_pool_;
+  allocator_type* allocator_;
+  bool default_allocator_ = true;
 };
 
 }  // namespace merlin

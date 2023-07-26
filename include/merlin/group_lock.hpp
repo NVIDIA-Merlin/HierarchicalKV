@@ -14,6 +14,17 @@
  * limitations under the License.
  */
 
+#pragma once
+
+#include <atomic>
+#include <cassert>
+#include <mutex>
+#include <system_error>
+#include <thread>
+
+namespace nv {
+namespace merlin {
+
 /*
  * Implementing a group mutex and relative lock guard for better E2E
  * performance:
@@ -24,14 +35,6 @@
  * - The `write_read_lock` is used for special APIs (like `reserve` `erase`
  * `clear` etc.)
  */
-#include <atomic>
-#include <cassert>
-#include <mutex>
-#include <system_error>
-#include <thread>
-
-namespace nv {
-namespace merlin {
 
 class group_shared_mutex {
  public:
