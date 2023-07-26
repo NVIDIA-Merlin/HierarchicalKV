@@ -679,10 +679,10 @@ Program Listing for File merlin_hashtable.cuh
        const uint32_t value_size = options_.dim * sizeof(V);
    
        if (is_fast_mode()) {
-         using Selector = SelectLookupKernelWithIOPipeline<key_type, value_type,
+         using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
                                                            score_type, ArchTag>;
          const uint32_t pipeline_max_size = Selector::max_value_size();
-         // Only support bucket_size = 128
+         // Pipeline lookup kernel only supports "bucket_size = 128".
          if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
            LookupKernelParams<key_type, value_type, score_type> lookupParams(
                table_->buckets, table_->buckets_num,
