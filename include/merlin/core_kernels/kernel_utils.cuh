@@ -54,14 +54,15 @@ __forceinline__ __device__ void LDGSTS(ElementType* dst,
                                        const ElementType* src);
 
 template <>
-__forceinline__ __device__ void LDGSTS<uint8_t>(
-    uint8_t* dst, const uint8_t* src) {
+__forceinline__ __device__ void LDGSTS<uint8_t>(uint8_t* dst,
+                                                const uint8_t* src) {
   uint8_t element = *src;
   *dst = element;
 }
 
 template <>
-__forceinline__ __device__ void LDGSTS<uint16_t>(uint16_t* dst, const uint16_t* src) {
+__forceinline__ __device__ void LDGSTS<uint16_t>(uint16_t* dst,
+                                                 const uint16_t* src) {
   uint16_t element = *src;
   *dst = element;
 }

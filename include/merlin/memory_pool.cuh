@@ -24,6 +24,7 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include "allocator.cuh"
 #include "debug.hpp"
 
 namespace nv {
@@ -36,25 +37,29 @@ namespace merlin {
 template <class T, class Allocator>
 struct AllocatorBase {
   using type = T;
-  using sync_unique_ptr = std::unique_ptr<type, Allocator>;
+  using sync_unique_ptr = std::unique_ptr<type, std::function<void(type*)>>;
   using async_unique_ptr = std::unique_ptr<type, std::function<void(type*)>>;
   using shared_ptr = std::shared_ptr<type>;
 
-  inline static sync_unique_ptr make_unique(size_t n) {
-    return sync_unique_ptr(Allocator::alloc(n));
+  inline static sync_unique_ptr make_unique(size_t n,
+                                            BaseAllocator* allocator) {
+    return {Allocator::alloc(n, allocator),
+            [allocator](type* p) { Allocator::free(p, allocator); }};
   }
 
-  inline static async_unique_ptr make_unique(size_t n, cudaStream_t stream) {
-    return {Allocator::alloc(n, stream),
-            [stream](type* p) { Allocator::free(p); }};
+  inline static async_unique_ptr make_unique(size_t n, BaseAllocator* allocator,
+                                             cudaStream_t stream) {
+    return {Allocator::alloc(n, allocator, stream),
+            [stream, allocator](type* p) { Allocator::free(p, allocator); }};
   }
 
-  inline static shared_ptr make_shared(size_t n, cudaStream_t stream = 0) {
-    return {Allocator::alloc(n, stream),
-            [stream](type* p) { Allocator::free(p, stream); }};
+  inline static shared_ptr make_shared(size_t n, BaseAllocator* allocator,
+                                       cudaStream_t stream = 0) {
+    return {Allocator::alloc(n, allocator, stream),
+            [stream, allocator](type* p) {
+              Allocator::free(p, allocator, stream);
+            }};
   }
-
-  inline void operator()(type* ptr) { Allocator::free(ptr); }
 };
 
 /**
@@ -68,11 +73,17 @@ struct StandardAllocator final : AllocatorBase<T, StandardAllocator<T>> {
 
   static constexpr const char* name{"StandardAllocator"};
 
-  inline static type* alloc(size_t n, cudaStream_t stream = 0) {
-    return new type[n];
+  inline static type* alloc(size_t n, BaseAllocator* allocator,
+                            cudaStream_t stream = 0) {
+    type* ptr;
+    allocator->alloc(MemoryType::Host, (void**)&ptr, n * sizeof(T));
+    return ptr;
   }
 
-  inline static void free(type* ptr, cudaStream_t stream = 0) { delete[] ptr; }
+  inline static void free(type* ptr, BaseAllocator* allocator,
+                          cudaStream_t stream = 0) {
+    allocator->free(MemoryType::Host, ptr);
+  }
 };
 
 /**
@@ -84,14 +95,16 @@ struct HostAllocator final : AllocatorBase<T, HostAllocator<T>> {
 
   static constexpr const char* name{"HostAllocator"};
 
-  inline static type* alloc(size_t n, cudaStream_t stream = 0) {
+  inline static type* alloc(size_t n, BaseAllocator* allocator,
+                            cudaStream_t stream = 0) {
     void* ptr;
-    CUDA_CHECK(cudaMallocHost(&ptr, sizeof(T) * n));
+    allocator->alloc(MemoryType::Pinned, (void**)&ptr, n * sizeof(T));
     return reinterpret_cast<type*>(ptr);
   }
 
-  inline static void free(type* ptr, cudaStream_t stream = 0) {
-    CUDA_CHECK(cudaFreeHost(ptr));
+  inline static void free(type* ptr, BaseAllocator* allocator,
+                          cudaStream_t stream = 0) {
+    allocator->free(MemoryType::Pinned, ptr);
   }
 };
 
@@ -105,26 +118,25 @@ struct DeviceAllocator final : AllocatorBase<T, DeviceAllocator<T>> {
 
   static constexpr const char* name{"DeviceAllocator"};
 
-  inline static type* alloc(size_t n, cudaStream_t stream = 0) {
+  inline static type* alloc(size_t n, BaseAllocator* allocator,
+                            cudaStream_t stream = 0) {
     void* ptr;
-    cudaError_t res;
     if (stream) {
-      res = cudaMallocAsync(&ptr, sizeof(T) * n, stream);
+      allocator->alloc_async(MemoryType::Device, (void**)&ptr, n * sizeof(T),
+                             stream);
     } else {
-      res = cudaMalloc(&ptr, sizeof(T) * n);
+      allocator->alloc(MemoryType::Device, (void**)&ptr, n * sizeof(T));
     }
-    CUDA_CHECK(res);
     return reinterpret_cast<type*>(ptr);
   }
 
-  inline static void free(type* ptr, cudaStream_t stream = 0) {
-    cudaError_t res;
+  inline static void free(type* ptr, BaseAllocator* allocator,
+                          cudaStream_t stream = 0) {
     if (stream) {
-      res = cudaFreeAsync(ptr, stream);
+      allocator->free_async(MemoryType::Device, ptr, stream);
     } else {
-      res = cudaFree(ptr);
+      allocator->free(MemoryType::Device, ptr);
     }
-    CUDA_CHECK(res);
   }
 };
 
@@ -328,7 +340,8 @@ class MemoryPool final {
     }
   };
 
-  MemoryPool(const MemoryPoolOptions& options) : options_{options} {
+  MemoryPool(const MemoryPoolOptions& options, BaseAllocator* allocator)
+      : options_{options}, allocator_{allocator} {
     // Create initial buffer stock.
     stock_.reserve(options_.max_stock);
 
@@ -390,7 +403,7 @@ class MemoryPool final {
   void deplete_stock() {
     std::lock_guard<std::mutex> lock(mutex_);
     for (auto& ptr : stock_) {
-      Allocator::free(ptr);
+      Allocator::free(ptr, allocator_);
     }
     stock_.clear();
   }
@@ -442,7 +455,7 @@ class MemoryPool final {
                   std::get<1>(pending) == buffer_size_) {
                 stock_.emplace_back(std::get<0>(pending));
               } else {
-                Allocator::free(std::get<0>(pending), stream);
+                Allocator::free(std::get<0>(pending), allocator_, stream);
               }
               ready_events_.emplace_back(std::get<2>(pending));
               return true;
@@ -458,7 +471,7 @@ class MemoryPool final {
 
   inline void clear_stock_unsafe(cudaStream_t stream) {
     for (auto& ptr : stock_) {
-      Allocator::free(ptr, stream);
+      Allocator::free(ptr, allocator_, stream);
     }
     stock_.clear();
   }
@@ -500,7 +513,7 @@ class MemoryPool final {
 
     // Forge new buffers until request can be filled.
     for (; first != last; ++first) {
-      *first = Allocator::alloc(allocation_size, stream);
+      *first = Allocator::alloc(allocation_size, allocator_, stream);
     }
 
     return allocation_size;
@@ -516,7 +529,7 @@ class MemoryPool final {
     // occured), the provided buffers are incompatible and have to be discarded.
     if (allocation_size != buffer_size_) {
       while (first != last) {
-        Allocator::free(*first++);
+        Allocator::free(*first++, allocator_);
       }
       return;
     }
@@ -560,7 +573,7 @@ class MemoryPool final {
         if (stock_.size() < options_.max_stock) {
           stock_.emplace_back(*first);
         } else {
-          Allocator::free(*first);
+          Allocator::free(*first, allocator_);
         }
       }
     }
@@ -574,6 +587,7 @@ class MemoryPool final {
   std::vector<cudaEvent_t> ready_events_;
 
   std::vector<std::tuple<alloc_type*, size_t, cudaEvent_t>> pending_;
+  BaseAllocator* allocator_;
 };
 
 template <class Allocator>
