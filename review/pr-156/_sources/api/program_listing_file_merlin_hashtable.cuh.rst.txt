@@ -118,10 +118,10 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(cudaDeviceSynchronize());
    
          initialized_ = false;
-         destroy_table<key_type, value_type, score_type>(&table_);
+   //      destroy_table<key_type, value_type, score_type>(&table_);
          CUDA_CHECK(cudaFree(d_table_));
-         dev_mem_pool_.reset();
-         host_mem_pool_.reset();
+   //      dev_mem_pool_.reset();
+   //      host_mem_pool_.reset();
        }
      }
    

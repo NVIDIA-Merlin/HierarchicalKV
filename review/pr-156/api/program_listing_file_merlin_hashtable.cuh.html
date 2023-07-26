@@ -194,10 +194,10 @@
 <span class="w">      </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaDeviceSynchronize</span><span class="p">());</span>
 
 <span class="w">      </span><span class="n">initialized_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
-<span class="w">      </span><span class="n">destroy_table</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="o">&gt;</span><span class="p">(</span><span class="o">&amp;</span><span class="n">table_</span><span class="p">);</span>
+<span class="c1">//      destroy_table&lt;key_type, value_type, score_type&gt;(&amp;table_);</span>
 <span class="w">      </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaFree</span><span class="p">(</span><span class="n">d_table_</span><span class="p">));</span>
-<span class="w">      </span><span class="n">dev_mem_pool_</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span>
-<span class="w">      </span><span class="n">host_mem_pool_</span><span class="p">.</span><span class="n">reset</span><span class="p">();</span>
+<span class="c1">//      dev_mem_pool_.reset();</span>
+<span class="c1">//      host_mem_pool_.reset();</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">}</span>
 
