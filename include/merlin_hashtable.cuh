@@ -319,8 +319,9 @@ class HashTable {
 
       Selector::execute_kernel(
           load_factor, options_.block_size, options_.max_bucket_size,
-          table_->buckets_num, options_.dim, stream, n, d_table_, keys,
-          reinterpret_cast<const value_type*>(values), scores);
+          table_->buckets_num, options_.dim, stream, n, d_table_,
+          table_->buckets, keys, reinterpret_cast<const value_type*>(values),
+          scores);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -336,8 +337,9 @@ class HashTable {
 
         upsert_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, d_dst, scores, d_src_offset, N);
+                d_table_, table_->buckets, options_.max_bucket_size,
+                table_->buckets_num, options_.dim, keys, d_dst, scores,
+                d_src_offset, N);
       }
 
       {
@@ -482,8 +484,8 @@ class HashTable {
 
     Selector::execute_kernel(
         load_factor, options_.block_size, options_.max_bucket_size,
-        table_->buckets_num, options_.dim, stream, n, d_table_, keys, values,
-        scores, evicted_keys, evicted_values, evicted_scores);
+        table_->buckets_num, options_.dim, stream, n, d_table_, table_->buckets,
+        keys, values, scores, evicted_keys, evicted_values, evicted_scores);
 
     keys_not_empty<K>
         <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
@@ -645,7 +647,7 @@ class HashTable {
 
       accum_kernel<key_type, value_type, score_type>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, keys, dst, scores, accum_or_assigns, table_->buckets,
+              d_table_, keys, dst, scores, accum_or_assigns, table_->buckets,
               table_->buckets_size, table_->bucket_max_size,
               table_->buckets_num, src_offset, founds, N);
     }
@@ -719,8 +721,8 @@ class HashTable {
       }
       Selector::execute_kernel(load_factor, options_.block_size,
                                options_.max_bucket_size, table_->buckets_num,
-                               options_.dim, stream, n, d_table_, keys, values,
-                               scores);
+                               options_.dim, stream, n, d_table_,
+                               table_->buckets, keys, values, scores);
     } else {
       const size_type dev_ws_size{
           n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -738,9 +740,9 @@ class HashTable {
 
         find_or_insert_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, d_table_value_addrs, scores, founds,
-                param_key_index, N);
+                d_table_, table_->buckets, options_.max_bucket_size,
+                table_->buckets_num, options_.dim, keys, d_table_value_addrs,
+                scores, founds, param_key_index, N);
       }
 
       {
@@ -842,8 +844,8 @@ class HashTable {
     }
     Selector::execute_kernel(load_factor, options_.block_size,
                              options_.max_bucket_size, table_->buckets_num,
-                             options_.dim, stream, n, d_table_, keys, values,
-                             scores, founds);
+                             options_.dim, stream, n, d_table_, table_->buckets,
+                             keys, values, scores, founds);
 
     CudaCheckError();
   }
@@ -892,8 +894,8 @@ class HashTable {
 
       Selector::execute_kernel(load_factor, options_.block_size,
                                options_.max_bucket_size, table_->buckets_num,
-                               options_.dim, stream, n, d_table_, keys, values,
-                               scores);
+                               options_.dim, stream, n, d_table_,
+                               table_->buckets, keys, values, scores);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -909,8 +911,9 @@ class HashTable {
 
         update_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, d_dst, scores, d_src_offset, N);
+                d_table_, table_->buckets, options_.max_bucket_size,
+                table_->buckets_num, options_.dim, keys, d_dst, scores,
+                d_src_offset, N);
       }
 
       {
@@ -1006,8 +1009,8 @@ class HashTable {
         }
         Selector::execute_kernel(load_factor, options_.block_size,
                                  options_.max_bucket_size, table_->buckets_num,
-                                 options_.dim, stream, n, d_table_, keys,
-                                 values, scores, founds);
+                                 options_.dim, stream, n, d_table_,
+                                 table_->buckets, keys, values, scores, founds);
       }
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
@@ -1024,8 +1027,9 @@ class HashTable {
 
         lookup_kernel<key_type, value_type, score_type, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
-                d_table_, options_.max_bucket_size, table_->buckets_num,
-                options_.dim, keys, src, scores, founds, dst_offset, N);
+                d_table_, table_->buckets, options_.max_bucket_size,
+                table_->buckets_num, options_.dim, keys, src, scores, founds,
+                dst_offset, N);
       }
 
       {
@@ -1094,8 +1098,8 @@ class HashTable {
     }
     Selector::execute_kernel(load_factor, options_.block_size,
                              options_.max_bucket_size, table_->buckets_num,
-                             options_.dim, stream, n, d_table_, keys, values,
-                             scores, founds);
+                             options_.dim, stream, n, d_table_, table_->buckets,
+                             keys, values, scores, founds);
 
     CudaCheckError();
   }
@@ -1122,7 +1126,7 @@ class HashTable {
 
       remove_kernel<key_type, value_type, score_type, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, keys, table_->buckets, table_->buckets_size,
+              d_table_, keys, table_->buckets, table_->buckets_size,
               table_->bucket_max_size, table_->buckets_num, N);
     }
 
@@ -1178,7 +1182,7 @@ class HashTable {
 
       remove_kernel<key_type, value_type, score_type, PredFunctor>
           <<<grid_size, block_size, 0, stream>>>(
-              table_, pattern, threshold, d_count, table_->buckets,
+              d_table_, pattern, threshold, d_count, table_->buckets,
               table_->buckets_size, table_->bucket_max_size,
               table_->buckets_num, N);
     }
@@ -1204,7 +1208,7 @@ class HashTable {
     const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
     clear_kernel<key_type, value_type, score_type>
-        <<<grid_size, block_size, 0, stream>>>(table_, N);
+        <<<grid_size, block_size, 0, stream>>>(d_table_, table_->buckets, N);
 
     CudaCheckError();
   }
@@ -1256,7 +1260,8 @@ class HashTable {
 
     dump_kernel<key_type, value_type, score_type>
         <<<grid_size, block_size, shared_size, stream>>>(
-            d_table_, keys, values, scores, offset, n, d_counter);
+            d_table_, table_->buckets, keys, values, scores, offset, n,
+            d_counter);
 
     CudaCheckError();
   }
@@ -1352,8 +1357,8 @@ class HashTable {
 
     dump_kernel<key_type, value_type, score_type, PredFunctor>
         <<<grid_size, block_size, shared_size, stream>>>(
-            d_table_, pattern, threshold, keys, values, scores, offset, n,
-            d_counter);
+            d_table_, table_->buckets, pattern, threshold, keys, values, scores,
+            offset, n, d_counter);
 
     CudaCheckError();
   }
@@ -1443,7 +1448,8 @@ class HashTable {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         rehash_kernel_for_fast_mode<key_type, value_type, score_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(d_table_, N);
+            <<<grid_size, block_size, 0, stream>>>(d_table_, table_->buckets,
+                                                   N);
       }
       CUDA_CHECK(cudaDeviceSynchronize());
       reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
@@ -1563,7 +1569,7 @@ class HashTable {
 
       dump_kernel<key_type, value_type, score_type>
           <<<grid_size, block_size, shared_size, stream>>>(
-              table_, d_keys, d_values, d_scores, i,
+              d_table_, table_->buckets, d_keys, d_values, d_scores, i,
               std::min(total_size - i, n), d_count);
 
       size_type count;
@@ -1735,11 +1741,6 @@ class HashTable {
   inline void sync_table_configuration() {
     CUDA_CHECK(
         cudaMemcpy(d_table_, table_, sizeof(TableCore), cudaMemcpyDefault));
-    if (c_table_index_ >= 0) {
-      CUDA_CHECK(cudaMemcpyToSymbol(c_table_, table_, sizeof(TableCore),
-                                    sizeof(TableCore) * c_table_index_,
-                                    cudaMemcpyDefault));
-    }
   }
 
  private:
@@ -1751,7 +1752,6 @@ class HashTable {
   bool initialized_ = false;
   mutable group_shared_mutex mutex_;
   const unsigned int kernel_select_interval_ = 7;
-  int c_table_index_ = -1;
   std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
   std::unique_ptr<HostMemoryPool> host_mem_pool_;
 };
