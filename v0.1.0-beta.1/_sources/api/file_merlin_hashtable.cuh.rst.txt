@@ -31,6 +31,10 @@ Includes
 
 - ``limits``
 
+- ``memory``
+
+- ``merlin/allocator.cuh``
+
 - ``merlin/array_kernels.cuh``
 
 - ``merlin/core_kernels.cuh``
