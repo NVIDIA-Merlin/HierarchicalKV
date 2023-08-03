@@ -219,6 +219,43 @@ void create_random_keys_advanced(
   }
 }
 
+template <class K, class S, class V>
+void create_random_keys_advanced(
+    size_t dim, K* h_keys, K* pre_h_keys, S* h_scores, V* h_vectors,
+    int KEY_NUM, size_t range = std::numeric_limits<uint64_t>::max,
+    int freq_range = 10, float repeat_rate = 0.9) {
+  std::unordered_set<K> numbers;
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<K> distr;
+  std::mt19937_64 eng_switch(rd());
+  std::uniform_int_distribution<K> distr_switch;
+  int i = 0;
+  int pre_pos = 0;
+
+  while (numbers.size() < KEY_NUM) {
+    bool repeated = static_cast<K>(distr_switch(eng_switch) % 100000) <
+                    static_cast<K>(repeat_rate * 100000);
+    if (repeated) {
+      numbers.insert(pre_h_keys[pre_pos++]);
+    } else {
+      numbers.insert(distr(eng) % range);
+    }
+  }
+  for (const K num : numbers) {
+    h_keys[i] = num;
+    if (h_scores != nullptr) {
+      h_scores[i] = num % freq_range;
+    }
+    if (h_vectors != nullptr) {
+      for (size_t j = 0; j < dim; j++) {
+        h_vectors[i * dim + j] = static_cast<float>(num * 0.00001);
+      }
+    }
+    i++;
+  }
+}
+
 inline uint64_t Murmur3HashHost(const uint64_t& key) {
   uint64_t k = key;
   k ^= k >> 33;
@@ -529,6 +566,27 @@ struct KVMSBuffer {
     values.SyncData(h2d, stream);
     scores.SyncData(h2d, stream);
     status.SyncData(h2d, stream);
+  }
+
+  void CopyFrom(KVMSBuffer<K, V, S>& src, cudaStream_t stream = 0) {
+    memcpy(keys_ptr(false), src.keys_ptr(false), sizeof(K) * len());
+    memcpy(scores_ptr(false), src.scores_ptr(false), sizeof(S) * len());
+    memcpy(values_ptr(false), src.values_ptr(false), sizeof(V) * len() * dim());
+    keys.SyncData(true, stream);
+    values.SyncData(true, stream);
+    scores.SyncData(true, stream);
+    status.SyncData(true, stream);
+  }
+
+  void CopyFromByRate(KVMSBuffer<K, V, S>& src, float repeat_rate,
+                      cudaStream_t stream = 0) {
+    memcpy(keys_ptr(false), src.keys_ptr(false), sizeof(K) * len());
+    memcpy(scores_ptr(false), src.scores_ptr(false), sizeof(S) * len());
+    memcpy(values_ptr(false), src.values_ptr(false), sizeof(V) * len() * dim());
+    keys.SyncData(true, stream);
+    values.SyncData(true, stream);
+    scores.SyncData(true, stream);
+    status.SyncData(true, stream);
   }
 
  public:
