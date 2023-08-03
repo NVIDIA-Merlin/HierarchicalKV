@@ -874,12 +874,11 @@ void test_insert_and_evict_advanced_on_epochlru() {
 }
 
 template <typename K, typename V, typename S, typename Table>
-void CheckInsertAndEvictOnEpochLfu(Table* table,
-                                   test_util::KVMSBuffer<K, V, S>* data_buffer,
-                                   test_util::KVMSBuffer<K, V, S>* evict_buffer,
-                                   size_t len, cudaStream_t stream,
-                                   TableOptions& opt,
-                                   unsigned int global_epoch) {
+void CheckInsertAndEvictOnEpochLfu(
+    Table* table, test_util::KVMSBuffer<K, V, S>* data_buffer,
+    test_util::KVMSBuffer<K, V, S>* evict_buffer,
+    test_util::KVMSBuffer<K, V, S>* pre_data_buffer, size_t len,
+    cudaStream_t stream, TableOptions& opt, unsigned int global_epoch) {
   std::map<K, test_util::ValueArray<V, dim>> values_map_before_insert;
   std::map<K, test_util::ValueArray<V, dim>> values_map_after_insert;
 
@@ -977,17 +976,58 @@ void CheckInsertAndEvictOnEpochLfu(Table* table,
   auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
 
   {
+    table->find(len, pre_data_buffer->keys_ptr(), values, d_tmp_founds,
+                pre_data_buffer->scores_ptr(), stream);
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
+                               cudaMemcpyDeviceToHost, stream));
+    pre_data_buffer->SyncData(false);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    size_t found_counter = 0;
+    size_t old_epoch_counter = 0;
+    size_t new_epoch_counter = 0;
+    for (int i = 0; i < len; i++) {
+      if (h_tmp_founds[i]) found_counter++;
+      S score = pre_data_buffer->scores_ptr(false)[i];
+      S cur_epoch = score >> 32;
+      if (global_epoch == cur_epoch) new_epoch_counter++;
+      if (global_epoch - 1 == cur_epoch) old_epoch_counter++;
+    }
+    ASSERT_EQ(len, new_epoch_counter + old_epoch_counter);
+    std::cout << "old_epoch_counter:" << old_epoch_counter
+              << ", new_epoch_counter:" << new_epoch_counter << std::endl
+              << ", pre_data filtered_len:" << filtered_len
+              << ", pre_data miss counter:" << len - found_counter << std::endl;
+    ASSERT_EQ(len, found_counter);
+  }
+
+  {
     table->find(len, keys, values, d_tmp_founds, scores, stream);
     CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
                                cudaMemcpyDeviceToHost, stream));
+    data_buffer->SyncData(false);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     size_t found_counter = 0;
+    size_t new_epoch_counter = 0;
     for (int i = 0; i < len; i++) {
+      S score = data_buffer->scores_ptr(false)[i];
+      S cur_epoch = score >> 32;
       if (h_tmp_founds[i]) found_counter++;
+      if (global_epoch == cur_epoch) new_epoch_counter++;
     }
+    ASSERT_EQ(len, new_epoch_counter);
     std::cout << "filtered_len:" << filtered_len
               << ", miss counter:" << len - found_counter << std::endl;
     ASSERT_EQ(len, found_counter);
+  }
+
+  {
+    std::unordered_set<K> unique_keys;
+    for (int i = 0; i < len; i++) {
+      unique_keys.insert(data_buffer->keys_ptr(false)[i]);
+      unique_keys.insert(pre_data_buffer->keys_ptr(false)[i]);
+    }
+    float repeat_rate = (len * 2.0 - unique_keys.size()) / (len * 1.0);
+    std::cout << "repeat_rate:" << repeat_rate << std::endl;
   }
 
   for (size_t i = 0; i < filtered_len; i++) {
@@ -1126,17 +1166,34 @@ void test_insert_and_evict_advanced_on_epochlfu() {
   evict_buffer.ToZeros(stream);
 
   test_util::KVMSBuffer<i64, f32, u64> data_buffer;
+  test_util::KVMSBuffer<i64, f32, u64> pre_data_buffer;
   data_buffer.Reserve(B, dim, stream);
+  pre_data_buffer.Reserve(B, dim, stream);
 
   size_t offset = 0;
+  int freq_range = 100;
+  float repeat_rate = 0.9;
   for (unsigned int global_epoch = 1; global_epoch <= 64; global_epoch++) {
-    test_util::create_random_keys_advanced<i64, u64, f32>(
-        dim, data_buffer.keys_ptr(false), data_buffer.scores_ptr(false),
-        data_buffer.values_ptr(false), (int)B, B * 16, 100);
+    if (global_epoch <= 1) {
+      test_util::create_random_keys_advanced<i64, u64, f32>(
+          dim, data_buffer.keys_ptr(false), data_buffer.scores_ptr(false),
+          data_buffer.values_ptr(false), (int)B, B * 16, freq_range);
+    } else {
+      test_util::create_random_keys_advanced<i64, u64, f32>(
+          dim, data_buffer.keys_ptr(false), pre_data_buffer.keys_ptr(false),
+          data_buffer.scores_ptr(false), data_buffer.values_ptr(false), (int)B,
+          B * 16, freq_range, repeat_rate);
+    }
     data_buffer.SyncData(true, stream);
+    if (global_epoch <= 1) {
+      pre_data_buffer.CopyFrom(data_buffer, stream);
+    }
 
     CheckInsertAndEvictOnEpochLfu<i64, f32, u64, Table>(
-        table.get(), &data_buffer, &evict_buffer, B, stream, opt, global_epoch);
+        table.get(), &data_buffer, &evict_buffer, &pre_data_buffer, B, stream,
+        opt, global_epoch);
+
+    pre_data_buffer.CopyFrom(data_buffer, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
 
     offset += B;
