@@ -2311,6 +2311,206 @@ void test_find_or_insert_multi_threads(size_t max_hbm_for_vectors,
   ASSERT_EQ(table->capacity(), MAX_CAPACITY);
 }
 
+/*
+ * This test focus on the compatibility of the value type.
+ * In each batch, the batch size is less than the bucket capacity, so it's
+ *   always true that the keys inserted in the last batch must exist in HKV.
+ * Each kernel only be launched on one SM,
+ *   therefore exclude the check of consistency across SMs.
+ */
+template <typename V, int Dim>
+void test_value_type_hbm_mode() {
+  std::cout << "size of V: " << sizeof(V) << ", dim: " << Dim << std::endl;
+  using Table = nv::merlin::HashTable<K, V, S>;
+  using TableOptions = nv::merlin::HashTableOptions;
+  constexpr uint64_t BUCKET_MAX_SIZE = 128;
+  constexpr uint64_t INIT_CAPACITY = 256UL;
+  constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
+  constexpr uint64_t KEY_NUM = BUCKET_MAX_SIZE;
+  constexpr uint64_t TEST_TIMES = 2UL;
+
+  K* h_keys;
+  S* h_scores;
+  V* h_vectors;
+  bool* h_found;
+
+  TableOptions options;
+
+  options.init_capacity = INIT_CAPACITY;
+  options.max_capacity = MAX_CAPACITY;
+  options.dim = Dim;
+  options.max_bucket_size = BUCKET_MAX_SIZE;
+  options.max_hbm_for_vectors = nv::merlin::GB(16);
+  options.evict_strategy = nv::merlin::EvictStrategy::kCustomized;
+
+  CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMallocHost(&h_scores, KEY_NUM * sizeof(S)));
+  CUDA_CHECK(cudaMallocHost(&h_vectors, KEY_NUM * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMallocHost(&h_found, KEY_NUM * sizeof(bool)));
+
+  K* d_keys;
+  S* d_scores;
+  V* d_vectors;
+  bool* d_found;
+
+  CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
+  CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * sizeof(V) * options.dim));
+  CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
+
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  std::unique_ptr<Table> table = std::make_unique<Table>();
+  table->init(options);
+
+  uint64_t table_size_before = 0;
+  uint64_t table_size_after = 0;
+  uint64_t found_num = 0;
+  uint64_t score_diff_cnt = 0;
+  uint64_t value_diff_cnt = 0;
+  uint64_t table_size_verify = 0;
+
+  table_size_verify = table->size(stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  ASSERT_EQ(table_size_verify, 0);
+
+  K start_key = 1;
+  for (int i = 0; i < TEST_TIMES; i++) {
+    for (K i = 0; i < KEY_NUM; i++) {
+      h_keys[i] = start_key + static_cast<K>(i);
+      h_scores[i] = h_keys[i];
+      for (size_t j = 0; j < options.dim; j++) {
+        h_vectors[i * options.dim + j] = static_cast<V>(h_keys[i] * 0.1);
+      }
+    }
+    start_key += KEY_NUM;
+
+    // Step1 : insert new Keys.
+    table_size_before = table->size(stream);
+    CUDA_CHECK(cudaMemcpy(d_keys, h_keys, KEY_NUM * sizeof(K),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors,
+                          KEY_NUM * sizeof(V) * options.dim,
+                          cudaMemcpyHostToDevice));
+    table->find_or_insert(KEY_NUM, d_keys, d_vectors, d_scores, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    table_size_after = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_LE(table_size_after, table_size_before + KEY_NUM);
+
+    // Step2 : find new keys.
+    CUDA_CHECK(cudaMemset(d_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
+    CUDA_CHECK(cudaMemset(d_scores, 0, KEY_NUM * sizeof(S)));
+    table->find_or_insert(KEY_NUM, d_keys, d_vectors, d_scores, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    table_size_verify = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_EQ(table_size_verify, table_size_after);
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
+                          KEY_NUM * sizeof(V) * options.dim,
+                          cudaMemcpyDeviceToHost));
+    found_num = 0;
+    score_diff_cnt = 0;
+    value_diff_cnt = 0;
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_scores[i] != 0) ++found_num;
+      if (h_scores[i] != h_keys[i]) ++score_diff_cnt;
+      for (int j = 0; j < options.dim; j++) {
+        if (h_vectors[i * options.dim + j] != static_cast<V>(h_keys[i] * 0.1)) {
+          ++value_diff_cnt;
+          break;
+        }
+      }
+    }
+    ASSERT_EQ(found_num, KEY_NUM);
+    ASSERT_EQ(score_diff_cnt, 0);
+    ASSERT_EQ(value_diff_cnt, 0);
+    std::cout << "Check find_or_insert behavior got "
+              << " key_miss_cnt: " << KEY_NUM - found_num
+              << " score_diff_cnt: " << score_diff_cnt
+              << " value_diff_cnt: " << value_diff_cnt
+              << " while table_size_before: " << table_size_before
+              << ", while table_size_after: " << table_size_after
+              << ", while len: " << KEY_NUM << std::endl;
+
+    // Step3 : update old keys.
+    for (int i = 0; i < KEY_NUM; i++) {
+      h_scores[i] = h_keys[i];
+      for (int j = 0; j < options.dim; j++) {
+        h_vectors[i * options.dim + j] = static_cast<V>(h_keys[i] * 0.2);
+      }
+    }
+    table_size_before = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaMemcpy(d_scores, h_scores, KEY_NUM * sizeof(S),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors,
+                          KEY_NUM * sizeof(V) * options.dim,
+                          cudaMemcpyHostToDevice));
+    table->assign(KEY_NUM, d_keys, d_vectors, d_scores, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    table_size_after = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_EQ(table_size_before, table_size_after);
+
+    // Step4 : find old keys.
+    CUDA_CHECK(cudaMemset(d_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
+    CUDA_CHECK(cudaMemset(d_scores, 0, KEY_NUM * sizeof(S)));
+    table->find_or_insert(KEY_NUM, d_keys, d_vectors, d_scores, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    table_size_verify = table->size(stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_EQ(table_size_verify, table_size_after);
+    CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
+                          KEY_NUM * sizeof(V) * options.dim,
+                          cudaMemcpyDeviceToHost));
+    found_num = 0;
+    score_diff_cnt = 0;
+    value_diff_cnt = 0;
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_scores[i] != 0) ++found_num;
+      if (h_scores[i] != h_keys[i]) ++score_diff_cnt;
+      for (int j = 0; j < options.dim; j++) {
+        if (h_vectors[i * options.dim + j] != static_cast<V>(h_keys[i] * 0.2)) {
+          ++value_diff_cnt;
+          break;
+        }
+      }
+    }
+    ASSERT_EQ(found_num, KEY_NUM);
+    ASSERT_EQ(score_diff_cnt, 0);
+    ASSERT_EQ(value_diff_cnt, 0);
+    std::cout << "Check  assign        behavior got "
+              << " key_miss_cnt: " << KEY_NUM - found_num
+              << " score_diff_cnt: " << score_diff_cnt
+              << " value_diff_cnt: " << value_diff_cnt
+              << " while table_size_before: " << table_size_before
+              << ", while table_size_after: " << table_size_after
+              << ", while len: " << KEY_NUM << std::endl;
+  }
+  CUDA_CHECK(cudaStreamDestroy(stream));
+
+  CUDA_CHECK(cudaFreeHost(h_keys));
+  CUDA_CHECK(cudaFreeHost(h_scores));
+  CUDA_CHECK(cudaFreeHost(h_vectors));
+  CUDA_CHECK(cudaFreeHost(h_found));
+
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_scores));
+  CUDA_CHECK(cudaFree(d_vectors));
+  CUDA_CHECK(cudaFree(d_found));
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  CudaCheckError();
+}
+
 template <typename K, typename V, typename S, size_t dim = 64>
 void CheckFindOrInsertValues(Table* table, K* keys, V* values, S* scores,
                              size_t len, cudaStream_t stream) {
@@ -2468,6 +2668,26 @@ TEST(FindOrInsertTest, test_find_or_insert_multi_threads) {
   test_find_or_insert_multi_threads(16, 0.375f, 0.125f);
   test_find_or_insert_multi_threads(0, 0.25f, 0.125f);
   test_find_or_insert_multi_threads(0, 0.375f, 0.125f);
+}
+TEST(FindOrInsertTest, test_value_type_hbm_mode) {
+  test_value_type_hbm_mode<int8_t, 64>();
+  test_value_type_hbm_mode<int8_t, 256>();
+  test_value_type_hbm_mode<int8_t, 512>();
+
+  test_value_type_hbm_mode<uint8_t, 63>();
+  test_value_type_hbm_mode<uint8_t, 255>();
+  test_value_type_hbm_mode<uint8_t, 511>();
+
+  test_value_type_hbm_mode<int16_t, 32>();
+  test_value_type_hbm_mode<int16_t, 128>();
+  test_value_type_hbm_mode<int16_t, 256>();
+
+  test_value_type_hbm_mode<int, 16>();
+  test_value_type_hbm_mode<int, 64>();
+  test_value_type_hbm_mode<float, 128>();
+
+  test_value_type_hbm_mode<int64_t, 31>();
+  test_value_type_hbm_mode<double, 63>();
 }
 TEST(FindOrInsertTest, test_basic) {
   test_basic(16);
