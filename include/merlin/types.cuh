@@ -33,6 +33,16 @@ struct KVM {
   S score;
 };
 
+// Storage size.
+using byte16 = uint4;
+using byte8 = uint2;
+using byte4 = uint32_t;
+using byte2 = uint16_t;
+using byte = uint8_t;
+
+// Digest.
+using D = byte;
+
 constexpr uint64_t EMPTY_KEY = UINT64_C(0xFFFFFFFFFFFFFFFF);
 constexpr uint64_t RECLAIM_KEY = UINT64_C(0xFFFFFFFFFFFFFFFE);
 constexpr uint64_t VACANT_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFE);
@@ -59,7 +69,7 @@ struct Bucket {
   /// TODO: compute the pointer of scores and digests using bucket_max_size
   AtomicScore<S>* scores_;
   /// @brief not visible to users
-  uint8_t* digests_;
+  D* digests_;
   V* vectors;  // Pinned memory or HBM
 
   /* min_score and min_pos is for or upsert_kernel
@@ -68,7 +78,7 @@ struct Bucket {
   AtomicScore<S> min_score;
   AtomicPos<int> min_pos;
 
-  __forceinline__ __device__ uint8_t* digests(int index) const {
+  __forceinline__ __device__ D* digests(int index) const {
     return digests_ + index;
   }
 
@@ -82,6 +92,24 @@ struct Bucket {
 
   __forceinline__ __device__ K** keys_addr() {
     return reinterpret_cast<K**>(&keys_);
+  }
+
+  static __forceinline__ __device__ AtomicKey<K>* keys(K* keys,
+                                                       uint32_t offset) {
+    return reinterpret_cast<AtomicKey<K>*>(keys) + offset;
+  }
+
+  static __forceinline__ __device__ D* digests(K* keys,
+                                               uint32_t bucket_capacity,
+                                               uint32_t offset) {
+    bucket_capacity = umax(bucket_capacity, 128);
+    return reinterpret_cast<D*>(keys) - bucket_capacity + offset;
+  }
+
+  static __forceinline__ __device__ S* scores(K* keys, uint32_t bucket_capacity,
+                                              uint32_t offset) {
+    bucket_capacity = umax(bucket_capacity, 128);
+    return reinterpret_cast<S*>(keys + bucket_capacity) + offset;
   }
 };
 
@@ -210,6 +238,7 @@ enum class OccupyResult {
   DUPLICATE,  ///< Insert did not succeed, key is already present
   EVICT,      ///< Insert succeeded by evicting one key with minimum score.
   REFUSED,    ///< Insert did not succeed, insert score is too low.
+  ILLEGAL,    ///< Illegal state, and don't need to do anything.
 };
 
 enum class OverrideResult {

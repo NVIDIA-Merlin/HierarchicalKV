@@ -32,21 +32,49 @@ namespace cg = cooperative_groups;
 namespace nv {
 namespace merlin {
 
-// if i % 2 == 0, select buffer 0, else buffer 1
+// Vector Type of digests for memory access.
+using VecD_Load = byte16;
+// Vector Type of digests for computation.
+using VecD_Comp = byte4;
+
+// Select from double buffer.
+// If i % 2 == 0, select buffer 0, else buffer 1.
 __forceinline__ __device__ int same_buf(int i) { return (i & 0x01) ^ 0; }
-// if i % 2 == 0, select buffer 1, else buffer 0
+// If i % 2 == 0, select buffer 1, else buffer 0.
 __forceinline__ __device__ int diff_buf(int i) { return (i & 0x01) ^ 1; }
 
 template <typename K>
-__forceinline__ __device__ uint8_t empty_digest() {
+__forceinline__ __device__ D empty_digest() {
   const K hashed_key = Murmur3HashDevice(static_cast<K>(EMPTY_KEY));
-  return static_cast<uint8_t>(hashed_key >> 32);
+  return static_cast<D>(hashed_key >> 32);
 }
 
 template <typename K>
-__forceinline__ __device__ uint8_t get_digest(const K& key) {
+__forceinline__ __device__ D get_digest(const K& key) {
   const K hashed_key = Murmur3HashDevice(key);
-  return static_cast<uint8_t>(hashed_key >> 32);
+  return static_cast<D>(hashed_key >> 32);
+}
+
+// Get vector of digests for computation.
+template <typename K>
+__forceinline__ __device__ VecD_Comp digests_from_hashed(const K& hashed_key) {
+  D digest = static_cast<D>(hashed_key >> 32);
+  // Set every byte in VecD_Comp to `digest`.
+  return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
+}
+
+template <typename K>
+__forceinline__ __device__ VecD_Comp empty_digests() {
+  D digest = empty_digest<K>();
+  // Set every byte in VecD_Comp to `digest`.
+  return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
+}
+
+// Position alignment.
+template <uint32_t ALIGN_SIZE>
+__forceinline__ __device__ uint32_t align_to(uint32_t& pos) {
+  constexpr uint32_t MASK = 0xffffffffU - (ALIGN_SIZE - 1);
+  return pos & MASK;
 }
 
 template <typename ElementType>
@@ -54,19 +82,18 @@ __forceinline__ __device__ void LDGSTS(ElementType* dst,
                                        const ElementType* src);
 
 template <>
-__forceinline__ __device__ void LDGSTS<uint8_t>(uint8_t* dst,
-                                                const uint8_t* src) {
-  uint8_t element = *src;
+__forceinline__ __device__ void LDGSTS<byte>(byte* dst, const byte* src) {
+  byte element = *src;
   *dst = element;
 }
 
 template <>
-__forceinline__ __device__ void LDGSTS<uint16_t>(uint16_t* dst,
-                                                 const uint16_t* src) {
-  uint16_t element = *src;
+__forceinline__ __device__ void LDGSTS<byte2>(byte2* dst, const byte2* src) {
+  byte2 element = *src;
   *dst = element;
 }
 
+// Require compute ability >= 8.0
 template <typename ElementType>
 __forceinline__ __device__ void LDGSTS(ElementType* dst,
                                        const ElementType* src) {
@@ -96,11 +123,11 @@ struct CopyScoreByPassCache {
   __forceinline__ __device__ static S lgs(const S* src) { return src[0]; }
 
   __forceinline__ __device__ static void stg(S* dst, const S score_) {
-    __stwt(dst, score_);
+    __stcs(dst, score_);
   }
 };
 
-template <typename VecV = float4, int GROUP_SIZE = 16>
+template <typename VecV = byte16, int GROUP_SIZE = 16>
 struct CopyValueOneGroup {
   __forceinline__ __device__ static void ldg_sts(int rank, VecV* dst,
                                                  const VecV* src, int dim) {
@@ -113,15 +140,16 @@ struct CopyValueOneGroup {
     int offset = rank;
     if (offset < dim) {
       VecV vec_v = src[offset];
-      __stwt(dst + offset, vec_v);
+      __stcs(dst + offset, vec_v);
     }
   }
 };
 
-template <typename VecV = float4, int GROUP_SIZE = 16>
+template <typename VecV = byte16, int GROUP_SIZE = 16>
 struct CopyValueTwoGroup {
   __forceinline__ __device__ static void ldg_sts(int rank, VecV* dst,
-                                                 const VecV* src, int dim) {
+                                                 const VecV* src,
+                                                 const int dim) {
     int offset = rank;
     LDGSTS<VecV>(dst + offset, src + offset);
     offset += GROUP_SIZE;
@@ -129,35 +157,71 @@ struct CopyValueTwoGroup {
   }
 
   __forceinline__ __device__ static void lds_stg(int rank, VecV* dst,
-                                                 const VecV* src, int dim) {
+                                                 const VecV* src,
+                                                 const int dim) {
     int offset = rank;
     const VecV vec_v = src[offset];
-    __stwt(dst + offset, vec_v);
+    __stcs(dst + offset, vec_v);
     offset += GROUP_SIZE;
     if (offset < dim) {
       const VecV vec_v = src[offset];
-      __stwt(dst + offset, vec_v);
+      __stcs(dst + offset, vec_v);
     }
   }
 };
 
-template <typename VecV = float4, int GROUP_SIZE = 16>
+template <typename VecV = byte16, int GROUP_SIZE = 16>
 struct CopyValueMultipleGroup {
   __forceinline__ __device__ static void ldg_sts(int rank, VecV* dst,
-                                                 const VecV* src, int dim) {
+                                                 const VecV* src,
+                                                 const int dim) {
     for (int offset = rank; offset < dim; offset += GROUP_SIZE) {
       LDGSTS<VecV>(dst + offset, src + offset);
     }
   }
 
   __forceinline__ __device__ static void lds_stg(int rank, VecV* dst,
-                                                 const VecV* src, int dim) {
+                                                 const VecV* src,
+                                                 const int dim) {
     for (int offset = rank; offset < dim; offset += GROUP_SIZE) {
       VecV vec_v = src[offset];
-      __stwt(dst + offset, vec_v);
+      __stcs(dst + offset, vec_v);
+    }
+  }
+
+  __forceinline__ __device__ static void ldg_stg(int rank, VecV* dst,
+                                                 const VecV* src,
+                                                 const int dim) {
+    for (int offset = rank; offset < dim; offset += GROUP_SIZE) {
+      VecV vec_v = __ldcs(src + offset);
+      __stcs(dst + offset, vec_v);
     }
   }
 };
+
+template <typename K, typename S>
+__forceinline__ __device__ void evict_key_score(K* evicted_keys,
+                                                S* evicted_scores,
+                                                const uint32_t evict_idx,
+                                                const K& key, const S& score) {
+  // Cache with evict_first strategy.
+  __stcs(evicted_keys + evict_idx, key);
+  if (evicted_scores != nullptr) {
+    __stcs(evicted_scores + evict_idx, score);
+  }
+}
+
+template <typename K, typename V, typename S, typename BUCKET = Bucket<K, V, S>>
+__forceinline__ __device__ void update_score_digest(
+    K* bucket_keys_ptr, const uint32_t bucket_capacity, const uint32_t key_pos,
+    const K& key, const S& score) {
+  S* dst_score_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
+  D* dst_digest_ptr =
+      BUCKET::digests(bucket_keys_ptr, bucket_capacity, key_pos);
+  // Cache in L2 cache, bypass L1 Cache.
+  __stcg(dst_digest_ptr, get_digest<K>(key));
+  __stcg(dst_score_ptr, score);
+}
 
 template <class K, class V, class S>
 __forceinline__ __device__ void update_score(Bucket<K, V, S>* __restrict bucket,
