@@ -108,8 +108,10 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
   __pipeline_memcpy_async(sm_probing_digests[0] + groupID * DIGEST_SPAN + rank,
                           digests_ptr + rank * 4, sizeof(uint32_t));
   __pipeline_commit();
-  __pipeline_commit();  // padding
-  __pipeline_commit();  // padding
+  // Padding, meet the param of the first `__pipeline_wait_prior`
+  // in the first loop.
+  __pipeline_commit();
+  __pipeline_commit();
 
   for (int i = 0; i < loop_num; i++) {
     int key_idx_block = groupID * GROUP_SIZE + i;
@@ -369,8 +371,10 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
       sm_probing_digests[0] + groupID * DIGEST_SPAN + rank * 2,
       digests_ptr + rank * 8, sizeof(uint2));
   __pipeline_commit();
-  __pipeline_commit();  // padding
-  __pipeline_commit();  // padding
+  // Padding, meet the param of the first `__pipeline_wait_prior`
+  // in the first loop.
+  __pipeline_commit();
+  __pipeline_commit();
 
   for (int i = 0; i < loop_num; i++) {
     int key_idx_block = groupID * GROUP_SIZE + i;
