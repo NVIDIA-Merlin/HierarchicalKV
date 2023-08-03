@@ -209,7 +209,7 @@ void create_continuous_keys(K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
     h_scores[i] = h_keys[i];
     if (h_vectors != nullptr) {
       for (size_t j = 0; j < DIM; j++) {
-        h_vectors[i * DIM + j] = static_cast<float>(h_keys[i] * 0.00001);
+        h_vectors[i * DIM + j] = static_cast<V>(h_keys[i] * 0.00001);
       }
     }
   }

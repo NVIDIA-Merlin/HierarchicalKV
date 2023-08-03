@@ -223,6 +223,16 @@ __forceinline__ __device__ void update_score_digest(
   __stcg(dst_score_ptr, score);
 }
 
+template <typename K, typename V, typename S, typename BUCKET = Bucket<K, V, S>>
+__forceinline__ __device__ void update_score(K* bucket_keys_ptr,
+                                             const uint32_t bucket_capacity,
+                                             const uint32_t key_pos,
+                                             const S& score) {
+  S* dst_score_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
+  // Cache in L2 cache, bypass L1 Cache.
+  __stcg(dst_score_ptr, score);
+}
+
 template <class K, class V, class S>
 __forceinline__ __device__ void update_score(Bucket<K, V, S>* __restrict bucket,
                                              const int key_pos,
