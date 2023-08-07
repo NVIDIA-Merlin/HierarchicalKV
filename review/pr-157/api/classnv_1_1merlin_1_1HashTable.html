@@ -211,7 +211,8 @@
 <p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
 <li><p><strong>d_evicted_counter</strong> – The number of elements evicted on GPU-accessible memory. &#64;notice The caller should guarantee it is set to <code class="docutils literal notranslate"><span class="pre">0</span></code> before calling. </p></li>
-<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique.</p></li>
 <li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table. </p></li>
 </ul>
 </dd>
@@ -233,7 +234,8 @@
 <li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). &#64;params evicted_keys The output of keys replaced with minimum score. &#64;params evicted_values The output of values replaced with minimum score on keys. &#64;params evicted_scores The output of scores replaced with minimum score on keys. <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
-<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique.</p></li>
 <li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table.</p></li>
 </ul>
 </dd>
