@@ -37,7 +37,8 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
   // bucket_capacity is a multiple of 4.
   constexpr uint32_t STRIDE_S = 4;
   constexpr uint32_t Load_LEN_S = sizeof(byte16) / sizeof(S);
-  __shared__ S sm_bucket_scores[BLOCK_SIZE][2 * STRIDE_S];
+  __shared__ __align__(sizeof(byte16))
+      S sm_bucket_scores[BLOCK_SIZE][2 * STRIDE_S];
 
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
@@ -261,7 +262,8 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
   // bucket_capacity is a multiple of 4.
   constexpr uint32_t STRIDE_S = 4;
   constexpr uint32_t Load_LEN_S = sizeof(byte16) / sizeof(S);
-  __shared__ S sm_bucket_scores[BLOCK_SIZE][2 * STRIDE_S];
+  __shared__ __align__(sizeof(byte16))
+      S sm_bucket_scores[BLOCK_SIZE][2 * STRIDE_S];
 
   auto g = cg::tiled_partition<GROUP_SIZE>(cg::this_thread_block());
 
@@ -615,7 +617,7 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
       SharedMemoryManager_Pipeline_UpsertAndEvict<K, V, S, VecV, BLOCK_SIZE,
                                                   GROUP_SIZE, BUCKET_SIZE>;
 
-  __shared__ extern byte smem[];
+  extern __shared__ __align__(sizeof(byte16)) byte smem[];
 
   // Initialization.
   auto g = cg::tiled_partition<GROUP_SIZE>(cg::this_thread_block());
@@ -1187,6 +1189,8 @@ struct Launch_Pipeline_UpsertAndEvict {
 
     params.dim = params.dim * sizeof(V) / sizeof(VecV);
     uint32_t shared_mem = SMM::total_size(params.dim);
+    shared_mem =
+        (shared_mem + sizeof(byte16) - 1) / sizeof(byte16) * sizeof(byte16);
     pipeline_upsert_and_evict_kernel_unique<K, V, S, VecV, BLOCK_SIZE>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
            stream>>>(params.buckets, params.buckets_size, params.buckets_num,
@@ -1226,7 +1230,11 @@ struct KernelSelector_UpsertAndEvict<K, V, S, Sm80> {
     return true;
     if (!unique_key) return false;
     uint32_t value_size = dim * sizeof(V);
+#if defined(CUDART_VERSION) && (CUDART_VERSION >= 11030)
     if (value_size <= ValueConfig::size_tlp_v2) return true;
+#else
+    if (value_size <= ValueConfig::size_tlp_v1) return true;
+#endif
     if (bucket_size == 128 && value_size <= ValueConfig::size_pipeline) {
       return true;
     }
@@ -1308,12 +1316,17 @@ struct KernelSelector_UpsertAndEvict<K, V, S, Sm80> {
                                                                      stream);
       }
     };
+
     // This part is according to the test on A100.
     if (params.bucket_capacity != 128) {
       if (total_value_size <= ValueConfig::size_tlp_v1) {
         launch_TLPv1();
       } else {
+#if defined(CUDART_VERSION) && (CUDART_VERSION >= 11030)
         launch_TLPv2();
+#else
+        launch_TLPv1();
+#endif
       }
     } else {
       if (total_value_size <= ValueConfig::size_tlp_v1) {
@@ -1324,7 +1337,11 @@ struct KernelSelector_UpsertAndEvict<K, V, S, Sm80> {
         }
       } else if (total_value_size <= ValueConfig::size_tlp_v2) {
         if (params.load_factor <= 0.85f) {
+#if defined(CUDART_VERSION) && (CUDART_VERSION >= 11030)
           launch_TLPv2();
+#else
+          launch_Pipeline();
+#endif
         } else {
           launch_Pipeline();
         }
