@@ -61,7 +61,7 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
           static_cast<uint64_t>(hashed_key % (buckets_num * bucket_capacity));
-      key_pos = global_idx & (bucket_capacity - 1);
+      key_pos = get_start_position(global_idx, bucket_capacity);
       uint64_t bkt_idx = global_idx / bucket_capacity;
       bucket_size_ptr = buckets_size + bkt_idx;
       BUCKET* bucket = buckets + bkt_idx;
@@ -290,7 +290,7 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
           static_cast<uint64_t>(hashed_key % (buckets_num * bucket_capacity));
-      key_pos = global_idx & (bucket_capacity - 1);
+      key_pos = get_start_position(global_idx, bucket_capacity);
       uint64_t bkt_idx = global_idx / bucket_capacity;
       bucket_size_ptr = buckets_size + bkt_idx;
       BUCKET* bucket = buckets + bkt_idx;
@@ -645,7 +645,7 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
       uint64_t global_idx =
           static_cast<uint64_t>(hashed_key % (buckets_num * BUCKET_SIZE));
       uint64_t bkt_idx = global_idx / BUCKET_SIZE;
-      key_pos = global_idx & (BUCKET_SIZE - 1);
+      key_pos = get_start_position(global_idx, BUCKET_SIZE);
       int** sm_buckets_size_ptr = SMM::buckets_size_ptr(smem);
       sm_buckets_size_ptr[tx] = buckets_size + bkt_idx;
       BUCKET* bucket = buckets + bkt_idx;
@@ -745,8 +745,7 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
         VecD_Comp empty_digests_ = empty_digests<K>();
         cmp_result = __vcmpeq4(probe_digests, empty_digests_);
         cmp_result &= 0x01010101;
-        // One more loop to deal with the empty key which was ignored.
-        for (int32_t offset = 0; offset < GROUP_SIZE + 1; offset += 1) {
+        for (int32_t offset = 0; offset < GROUP_SIZE; offset += 1) {
           if (rank == offset) {
             do {
               if (cmp_result == 0) break;
@@ -1251,8 +1250,8 @@ struct KernelSelector_UpsertAndEvict {
   using Params = Params_UpsertAndEvict<K, V, S>;
 
   static bool callable(bool unique_key, uint32_t bucket_size, uint32_t dim) {
-    return true;
-    if (!unique_key) return false;
+    constexpr uint32_t MinBucketCap = sizeof(VecD_Load) / sizeof(D);
+    if (!unique_key || bucket_size < MinBucketCap) return false;
     uint32_t value_size = dim * sizeof(V);
 #if defined(CUDART_VERSION) && (CUDART_VERSION >= 11030)
     if (value_size <= ValueConfig::size_tlp_v2) return true;

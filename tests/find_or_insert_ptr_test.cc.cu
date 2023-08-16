@@ -3511,7 +3511,7 @@ void test_duplicated_keys(size_t max_hbm_for_vectors) {
       test_util::array2ptr(d_vectors_ptr, d_vectors, options.dim, KEY_NUM,
                            stream);
       table->find_or_insert(KEY_NUM, d_keys, d_vectors_ptr, d_found, d_scores,
-                            stream);
+                            stream, false);
       test_util::read_or_write_ptr(d_vectors_ptr, d_vectors, d_found,
                                    options.dim, KEY_NUM, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -3612,7 +3612,7 @@ TEST(FindOrInsertPtrTest, test_evict_strategy_customized_correct_rate) {
 TEST(FindOrInsertPtrTest, test_find_or_insert_values_check) {
   test_find_or_insert_values_check(16);
   // TODO(rhdong): Add back when diff error issue fixed in hybrid mode.
-  // test_insert_or_assign_values_check(0);
+  test_find_or_insert_values_check(0);
 }
 TEST(FindOrInsertPtrTest, test_duplicated_keys) {
   test_duplicated_keys(16);

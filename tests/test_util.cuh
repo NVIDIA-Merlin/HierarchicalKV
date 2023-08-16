@@ -793,6 +793,7 @@ __global__ void read_or_write_ptr_kernel(V** __restrict src, V* __restrict dst,
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int vec_index = int(t / dim);
     int dim_index = t % dim;
+    if (!src[vec_index]) continue;
     if (read_or_write[vec_index]) {
       dst[vec_index * dim + dim_index] = src[vec_index][dim_index];
     } else {
