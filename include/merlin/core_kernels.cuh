@@ -419,7 +419,7 @@ __forceinline__ __device__ void defragmentation_for_rehash(
     }
     hashed_key = Murmur3HashDevice(find_key);
     global_idx = hashed_key % (buckets_num * bucket_max_size);
-    start_idx = global_idx % bucket_max_size;
+    start_idx = get_start_position(global_idx, bucket_max_size);
 
     if ((start_idx <= empty_pos && empty_pos < key_idx) ||
         (key_idx < start_idx && start_idx <= empty_pos) ||
@@ -519,7 +519,7 @@ __global__ void rehash_kernel_for_fast_mode(
         global_idx = hashed_key % (buckets_num * bucket_max_size);
         uint32_t new_bkt_idx = global_idx / bucket_max_size;
         if (new_bkt_idx != bkt_idx) {
-          start_idx = global_idx % bucket_max_size;
+          start_idx = get_start_position(global_idx, bucket_max_size);
           move_key_to_new_bucket<K, V, S, TILE_SIZE>(
               g, rank, target_key, target_score,
               (bucket->vectors + key_idx * dim), buckets + new_bkt_idx,
@@ -679,7 +679,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
       if (g.thread_rank() == src_lane) {
         const int key_pos =
             (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-        bucket->digests(key_pos)[0] = empty_digest<K>();
+        bucket->digests(key_pos)[0] = reclaim_digest<K>();
         (bucket->keys(key_pos))
             ->store(static_cast<K>(RECLAIM_KEY),
                     cuda::std::memory_order_relaxed);

@@ -21,6 +21,104 @@
 namespace nv {
 namespace merlin {
 
+// Use 1 thread to deal with a KV-pair, including copying value.
+template <typename K, typename V, typename S>
+__global__ void tlp_lookup_ptr_kernel_with_filter(
+    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
+    V** __restrict values, S* __restrict scores, bool* __restrict founds,
+    uint64_t n) {
+  using BUCKET = Bucket<K, V, S>;
+
+  uint32_t tx = threadIdx.x;
+  uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
+  K key{static_cast<K>(EMPTY_KEY)};
+  S score{static_cast<S>(EMPTY_SCORE)};
+  OccupyResult occupy_result{OccupyResult::INITIAL};
+  VecD_Comp target_digests{0};
+  V* bucket_values_ptr{nullptr};
+  K* bucket_keys_ptr{nullptr};
+  uint32_t key_pos = {0};
+  if (kv_idx < n) {
+    key = keys[kv_idx];
+    if (!IS_RESERVED_KEY(key)) {
+      const K hashed_key = Murmur3HashDevice(key);
+      target_digests = digests_from_hashed<K>(hashed_key);
+      uint64_t global_idx =
+          static_cast<uint64_t>(hashed_key % (buckets_num * bucket_capacity));
+      key_pos = get_start_position(global_idx, bucket_capacity);
+      uint64_t bkt_idx = global_idx / bucket_capacity;
+      BUCKET* bucket = buckets + bkt_idx;
+      bucket_keys_ptr = reinterpret_cast<K*>(bucket->keys(0));
+      bucket_values_ptr = reinterpret_cast<V*>(bucket->vectors);
+    } else {
+      return;
+    }
+  } else {
+    return;
+  }
+
+  // Load `STRIDE` digests every time.
+  constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
+  // One more loop to handle empty keys.
+  for (int offset = 0; offset < bucket_capacity + STRIDE; offset += STRIDE) {
+    if (occupy_result != OccupyResult::INITIAL) break;
+
+    uint32_t pos_cur = align_to<STRIDE>(key_pos);
+    pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
+
+    D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
+    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
+                                digests_vec.w};
+
+    for (int i = 0; i < 4; i++) {
+      VecD_Comp probe_digests = digests_arr[i];
+      uint32_t possible_pos = 0;
+      // Perform a vectorized comparison by byte,
+      // and if they are equal, set the corresponding byte in the result to
+      // 0xff.
+      int cmp_result = __vcmpeq4(probe_digests, target_digests);
+      cmp_result &= 0x01010101;
+      do {
+        if (cmp_result == 0) break;
+        // CUDA uses little endian,
+        // and the lowest byte in register stores in the lowest address.
+        uint32_t index = (__ffs(cmp_result) - 1) >> 3;
+        cmp_result &= (cmp_result - 1);
+        possible_pos = pos_cur + i * 4 + index;
+        auto current_key = bucket_keys_ptr[possible_pos];
+        score = *BUCKET::scores(bucket_keys_ptr, bucket_capacity, possible_pos);
+        if (current_key == key) {
+          key_pos = possible_pos;
+          if (scores) {
+            scores[kv_idx] = score;
+          }
+          values[kv_idx] = bucket_values_ptr + key_pos * dim;
+          if (founds) {
+            founds[kv_idx] = true;
+          }
+          return;
+        }
+      } while (true);
+      VecD_Comp empty_digests_ = empty_digests<K>();
+      cmp_result = __vcmpeq4(probe_digests, empty_digests_);
+      cmp_result &= 0x01010101;
+      do {
+        if (cmp_result == 0) break;
+        uint32_t index = (__ffs(cmp_result) - 1) >> 3;
+        cmp_result &= (cmp_result - 1);
+        possible_pos = pos_cur + i * 4 + index;
+        if (offset == 0 && possible_pos < key_pos) continue;
+        auto current_key = bucket_keys_ptr[possible_pos];
+        if (current_key == static_cast<K>(EMPTY_KEY)) {
+          return;
+        }
+      } while (true);
+    }
+  }
+}
+
 /* lookup with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */

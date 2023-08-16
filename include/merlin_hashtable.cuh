@@ -324,6 +324,7 @@ class HashTable {
    * @endparblock
    *
    * @param stream The CUDA stream that is used to execute the operation.
+   * @param unique_key If all keys in the same batch are unique.
    *
    * @param ignore_evict_strategy A boolean option indicating whether if
    * the insert_or_assign ignores the evict strategy of table with current
@@ -335,7 +336,7 @@ class HashTable {
                         const key_type* keys,                // (n)
                         const value_type* values,            // (n, DIM)
                         const score_type* scores = nullptr,  // (n)
-                        cudaStream_t stream = 0,
+                        cudaStream_t stream = 0, bool unique_key = true,
                         bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
@@ -353,8 +354,6 @@ class HashTable {
     insert_unique_lock lock(mutex_, stream);
 
     if (is_fast_mode()) {
-      using Selector = SelectUpsertKernelWithIO<key_type, value_type,
-                                                score_type, evict_strategy>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -362,20 +361,55 @@ class HashTable {
         load_factor = fast_load_factor(0, stream, false);
       }
 
-      Selector::execute_kernel(
-          load_factor, options_.block_size, options_.max_bucket_size,
-          table_->buckets_num, options_.dim, stream, n, d_table_,
-          table_->buckets, keys, reinterpret_cast<const value_type*>(values),
-          scores, EvictStrategyParam.global_epoch);
+      using Selector = KernelSelector_Upsert<key_type, value_type, score_type,
+                                             evict_strategy, ArchTag>;
+      if (Selector::callable(unique_key,
+                             static_cast<uint32_t>(options_.max_bucket_size),
+                             static_cast<uint32_t>(options_.dim))) {
+        typename Selector::Params kernelParams(
+            load_factor, table_->buckets, table_->buckets_size,
+            table_->buckets_num,
+            static_cast<uint32_t>(options_.max_bucket_size),
+            static_cast<uint32_t>(options_.dim), keys, values, scores, n,
+            EvictStrategyParam.global_epoch);
+        Selector::select_kernel(kernelParams, stream);
+      } else {
+        using Selector = SelectUpsertKernelWithIO<key_type, value_type,
+                                                  score_type, evict_strategy>;
+        Selector::execute_kernel(
+            load_factor, options_.block_size, options_.max_bucket_size,
+            table_->buckets_num, options_.dim, stream, n, d_table_,
+            table_->buckets, keys, reinterpret_cast<const value_type*>(values),
+            scores, EvictStrategyParam.global_epoch);
+      }
     } else {
-      const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
+      const size_type dev_ws_size{
+          n * (sizeof(value_type*) + sizeof(int) + sizeof(key_type*))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
       auto d_dst{dev_ws.get<value_type**>(0)};
-      auto d_src_offset{reinterpret_cast<int*>(d_dst + n)};
+      auto keys_ptr{reinterpret_cast<key_type**>(d_dst + n)};
+      auto d_src_offset{reinterpret_cast<int*>(keys_ptr + n)};
 
       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
 
-      {
+      constexpr uint32_t MinBucketCapacityFilter =
+          sizeof(VecD_Load) / sizeof(D);
+
+      bool filter_condition =
+          unique_key && options_.max_bucket_size >= MinBucketCapacityFilter &&
+          !options_.io_by_cpu;
+
+      if (filter_condition) {
+        constexpr uint32_t BLOCK_SIZE = 128;
+
+        upsert_kernel_lock_key_hybrid<key_type, value_type, score_type,
+                                      BLOCK_SIZE, evict_strategy>
+            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+                table_->buckets, table_->buckets_size, table_->buckets_num,
+                options_.max_bucket_size, options_.dim, keys, d_dst, scores,
+                keys_ptr, d_src_offset, n, EvictStrategyParam.global_epoch);
+
+      } else {
         const size_t block_size = options_.block_size;
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
@@ -396,7 +430,16 @@ class HashTable {
                             d_src_offset_ptr, thrust::less<uintptr_t>());
       }
 
-      if (options_.io_by_cpu) {
+      if (filter_condition) {
+        const size_t block_size = options_.io_block_size;
+        const size_t N = n * dim();
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+
+        write_kernel_unlock_key<key_type, value_type, score_type>
+            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
+                                                   dim(), keys, keys_ptr, N);
+
+      } else if (options_.io_by_cpu) {
         const size_type host_ws_size{dev_ws_size +
                                      n * sizeof(value_type) * dim()};
         auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
@@ -769,11 +812,13 @@ class HashTable {
    * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
+   * @param unique_key If all keys in the same batch are unique.
+   *
    */
   void find_or_insert(const size_type n, const key_type* keys,  // (n)
                       value_type* values,                       // (n * DIM)
                       score_type* scores = nullptr,             // (n)
-                      cudaStream_t stream = 0,
+                      cudaStream_t stream = 0, bool unique_key = true,
                       bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
@@ -791,31 +836,66 @@ class HashTable {
     insert_unique_lock lock(mutex_, stream);
 
     if (is_fast_mode()) {
-      using Selector =
-          SelectFindOrInsertKernelWithIO<key_type, value_type, score_type,
-                                         evict_strategy>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
       if (((step_counter++) % kernel_select_interval_) == 0) {
         load_factor = fast_load_factor(0, stream, false);
       }
-      Selector::execute_kernel(load_factor, options_.block_size,
-                               options_.max_bucket_size, table_->buckets_num,
-                               options_.dim, stream, n, d_table_,
-                               table_->buckets, keys, values, scores,
-                               EvictStrategyParam.global_epoch);
+
+      using Selector =
+          KernelSelector_FindOrInsert<key_type, value_type, score_type,
+                                      evict_strategy, ArchTag>;
+      if (Selector::callable(unique_key,
+                             static_cast<uint32_t>(options_.max_bucket_size),
+                             static_cast<uint32_t>(options_.dim))) {
+        typename Selector::Params kernelParams(
+            load_factor, table_->buckets, table_->buckets_size,
+            table_->buckets_num,
+            static_cast<uint32_t>(options_.max_bucket_size),
+            static_cast<uint32_t>(options_.dim), keys, values, scores, n,
+            EvictStrategyParam.global_epoch);
+        Selector::select_kernel(kernelParams, stream);
+      } else {
+        using Selector =
+            SelectFindOrInsertKernelWithIO<key_type, value_type, score_type,
+                                           evict_strategy>;
+        Selector::execute_kernel(load_factor, options_.block_size,
+                                 options_.max_bucket_size, table_->buckets_num,
+                                 options_.dim, stream, n, d_table_,
+                                 table_->buckets, keys, values, scores,
+                                 EvictStrategyParam.global_epoch);
+      }
     } else {
-      const size_type dev_ws_size{
-          n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
+      const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int) +
+                                       sizeof(bool) + sizeof(key_type*))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
       auto d_table_value_addrs{dev_ws.get<value_type**>(0)};
-      auto param_key_index{reinterpret_cast<int*>(d_table_value_addrs + n)};
+      auto keys_ptr{reinterpret_cast<key_type**>(d_table_value_addrs + n)};
+      auto param_key_index{reinterpret_cast<int*>(keys_ptr + n)};
       auto founds{reinterpret_cast<bool*>(param_key_index + n)};
 
       CUDA_CHECK(cudaMemsetAsync(d_table_value_addrs, 0, dev_ws_size, stream));
 
-      {
+      constexpr uint32_t MinBucketCapacityFilter =
+          sizeof(VecD_Load) / sizeof(D);
+
+      bool filter_condition =
+          unique_key && options_.max_bucket_size >= MinBucketCapacityFilter &&
+          !options_.io_by_cpu;
+
+      if (filter_condition) {
+        constexpr uint32_t BLOCK_SIZE = 128;
+
+        find_or_insert_kernel_lock_key_hybrid<key_type, value_type, score_type,
+                                              BLOCK_SIZE, evict_strategy>
+            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+                table_->buckets, table_->buckets_size, table_->buckets_num,
+                options_.max_bucket_size, options_.dim, keys,
+                d_table_value_addrs, scores, keys_ptr, param_key_index, founds,
+                n, EvictStrategyParam.global_epoch);
+
+      } else {
         const size_t block_size = options_.block_size;
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
@@ -838,7 +918,17 @@ class HashTable {
                             thrust::less<uintptr_t>());
       }
 
-      if (options_.io_by_cpu) {
+      if (filter_condition) {
+        const size_t block_size = options_.io_block_size;
+        const size_t N = n * dim();
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+
+        read_or_write_kernel_unlock_key<key_type, value_type, score_type, V>
+            <<<grid_size, block_size, 0, stream>>>(d_table_value_addrs, values,
+                                                   founds, param_key_index,
+                                                   keys_ptr, keys, dim(), N);
+
+      } else if (options_.io_by_cpu) {
         const size_type host_ws_size{
             dev_ws_size + n * (sizeof(bool) + sizeof(value_type) * dim())};
         auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
@@ -894,12 +984,14 @@ class HashTable {
    * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
+   * @param unique_key If all keys in the same batch are unique.
+   *
    */
   void find_or_insert(const size_type n, const key_type* keys,  // (n)
                       value_type** values,                      // (n)
                       bool* founds,                             // (n)
                       score_type* scores = nullptr,             // (n)
-                      cudaStream_t stream = 0,
+                      cudaStream_t stream = 0, bool unique_key = true,
                       bool ignore_evict_strategy = false) {
     if (n == 0) {
       return;
@@ -916,18 +1008,41 @@ class HashTable {
 
     insert_unique_lock lock(mutex_, stream);
 
-    using Selector = SelectFindOrInsertPtrKernel<key_type, value_type,
-                                                 score_type, evict_strategy>;
-    static thread_local int step_counter = 0;
-    static thread_local float load_factor = 0.0;
+    constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
 
-    if (((step_counter++) % kernel_select_interval_) == 0) {
-      load_factor = fast_load_factor(0, stream, false);
+    if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
+      constexpr uint32_t BLOCK_SIZE = 128U;
+
+      const size_type dev_ws_size{n * sizeof(key_type**)};
+      auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+      auto keys_ptr{dev_ws.get<key_type**>(0)};
+      CUDA_CHECK(cudaMemsetAsync(keys_ptr, 0, dev_ws_size, stream));
+
+      find_or_insert_ptr_kernel_lock_key<key_type, value_type, score_type,
+                                         BLOCK_SIZE, evict_strategy>
+          <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+              table_->buckets, table_->buckets_size, table_->buckets_num,
+              options_.max_bucket_size, options_.dim, keys, values, scores,
+              keys_ptr, n, founds, EvictStrategyParam.global_epoch);
+
+      find_or_insert_ptr_kernel_unlock_key<key_type>
+          <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+              keys, keys_ptr, n);
+    } else {
+      using Selector = SelectFindOrInsertPtrKernel<key_type, value_type,
+                                                   score_type, evict_strategy>;
+      static thread_local int step_counter = 0;
+      static thread_local float load_factor = 0.0;
+
+      if (((step_counter++) % kernel_select_interval_) == 0) {
+        load_factor = fast_load_factor(0, stream, false);
+      }
+      Selector::execute_kernel(load_factor, options_.block_size,
+                               options_.max_bucket_size, table_->buckets_num,
+                               options_.dim, stream, n, d_table_,
+                               table_->buckets, keys, values, scores, founds,
+                               EvictStrategyParam.global_epoch);
     }
-    Selector::execute_kernel(
-        load_factor, options_.block_size, options_.max_bucket_size,
-        table_->buckets_num, options_.dim, stream, n, d_table_, table_->buckets,
-        keys, values, scores, founds, EvictStrategyParam.global_epoch);
 
     CudaCheckError();
   }
@@ -994,14 +1109,33 @@ class HashTable {
                                  EvictStrategyParam.global_epoch);
       }
     } else {
-      const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
+      const size_type dev_ws_size{
+          n * (sizeof(value_type*) + sizeof(key_type) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
       auto d_dst{dev_ws.get<value_type**>(0)};
-      auto d_src_offset{reinterpret_cast<int*>(d_dst + n)};
+      auto keys_ptr{reinterpret_cast<key_type**>(d_dst + n)};
+      auto d_src_offset{reinterpret_cast<int*>(keys_ptr + n)};
 
       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
 
-      {
+      constexpr uint32_t MinBucketCapacityFilter =
+          sizeof(VecD_Load) / sizeof(D);
+
+      bool filter_condition =
+          options_.max_bucket_size >= MinBucketCapacityFilter &&
+          !options_.io_by_cpu && unique_key;
+
+      if (filter_condition) {
+        constexpr uint32_t BLOCK_SIZE = 128U;
+
+        tlp_update_kernel_hybrid<key_type, value_type, score_type,
+                                 evict_strategy>
+            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+                table_->buckets, table_->buckets_num, options_.max_bucket_size,
+                options_.dim, keys, d_dst, scores, keys_ptr, d_src_offset,
+                EvictStrategyParam.global_epoch, n);
+
+      } else {
         const size_t block_size = options_.block_size;
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
@@ -1022,7 +1156,16 @@ class HashTable {
                             d_src_offset_ptr, thrust::less<uintptr_t>());
       }
 
-      if (options_.io_by_cpu) {
+      if (filter_condition) {
+        const size_t block_size = options_.io_block_size;
+        const size_t N = n * dim();
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+
+        write_kernel_unlock_key<key_type, value_type, score_type>
+            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
+                                                   dim(), keys, keys_ptr, N);
+
+      } else if (options_.io_by_cpu) {
         const size_type host_ws_size{dev_ws_size +
                                      n * sizeof(value_type) * dim()};
         auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
@@ -1176,7 +1319,20 @@ class HashTable {
 
       CUDA_CHECK(cudaMemsetAsync(src, 0, dev_ws_size, stream));
 
-      {
+      constexpr uint32_t MinBucketCapacityFilter =
+          sizeof(VecD_Load) / sizeof(D);
+
+      bool filter_condition =
+          options_.max_bucket_size >= MinBucketCapacityFilter;
+
+      if (filter_condition) {
+        constexpr uint32_t BLOCK_SIZE = 128U;
+
+        tlp_lookup_kernel_hybrid<key_type, value_type, score_type>
+            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+                table_->buckets, table_->buckets_num, options_.max_bucket_size,
+                options_.dim, keys, src, scores, dst_offset, founds, n);
+      } else {
         const size_t block_size = options_.block_size;
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
@@ -1228,13 +1384,14 @@ class HashTable {
    * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
+   * @param unique_key If all keys in the same batch are unique.
    *
    */
   void find(const size_type n, const key_type* keys,  // (n)
             value_type** values,                      // (n)
             bool* founds,                             // (n)
             score_type* scores = nullptr,             // (n)
-            cudaStream_t stream = 0) const {
+            cudaStream_t stream = 0, bool unique_key = true) const {
     if (n == 0) {
       return;
     }
@@ -1243,17 +1400,27 @@ class HashTable {
 
     read_shared_lock lock(mutex_, stream);
 
-    using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
-    static thread_local int step_counter = 0;
-    static thread_local float load_factor = 0.0;
+    constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
+    if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
+      constexpr uint32_t BLOCK_SIZE = 128U;
+      tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type>
+          <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+              table_->buckets, table_->buckets_num, options_.max_bucket_size,
+              options_.dim, keys, values, scores, founds, n);
+    } else {
+      using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
+      static thread_local int step_counter = 0;
+      static thread_local float load_factor = 0.0;
 
-    if (((step_counter++) % kernel_select_interval_) == 0) {
-      load_factor = fast_load_factor(0, stream, false);
+      if (((step_counter++) % kernel_select_interval_) == 0) {
+        load_factor = fast_load_factor(0, stream, false);
+      }
+
+      Selector::execute_kernel(load_factor, options_.block_size,
+                               options_.max_bucket_size, table_->buckets_num,
+                               options_.dim, stream, n, d_table_,
+                               table_->buckets, keys, values, scores, founds);
     }
-    Selector::execute_kernel(load_factor, options_.block_size,
-                             options_.max_bucket_size, table_->buckets_num,
-                             options_.dim, stream, n, d_table_, table_->buckets,
-                             keys, values, scores, founds);
 
     CudaCheckError();
   }

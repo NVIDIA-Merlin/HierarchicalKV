@@ -37,6 +37,15 @@ using VecD_Load = byte16;
 // Vector Type of digests for computation.
 using VecD_Comp = byte4;
 
+template <typename T>
+__forceinline__ __device__ T* __shfl_sync_ptr(uint32_t mask, T* var,
+                                              int srcLane,
+                                              int width = warpSize) {
+  uint64_t var64 = reinterpret_cast<uint64_t>(var);
+  var64 = __shfl_sync(mask, var64, srcLane, width);
+  return reinterpret_cast<T*>(var64);
+}
+
 // Select from double buffer.
 // If i % 2 == 0, select buffer 0, else buffer 1.
 __forceinline__ __device__ int same_buf(int i) { return (i & 0x01) ^ 0; }
@@ -46,6 +55,12 @@ __forceinline__ __device__ int diff_buf(int i) { return (i & 0x01) ^ 1; }
 template <typename K>
 __forceinline__ __device__ D empty_digest() {
   const K hashed_key = Murmur3HashDevice(static_cast<K>(EMPTY_KEY));
+  return static_cast<D>(hashed_key >> 32);
+}
+
+template <typename K>
+__forceinline__ __device__ D reclaim_digest() {
+  const K hashed_key = Murmur3HashDevice(static_cast<K>(RECLAIM_KEY));
   return static_cast<D>(hashed_key >> 32);
 }
 
@@ -599,7 +614,15 @@ __forceinline__ __device__ Bucket<K, V, S>* get_key_position(
   const size_t global_idx = hashed_key % (buckets_num * bucket_max_size);
   bkt_idx = global_idx / bucket_max_size;
   start_idx = global_idx % bucket_max_size;
+  start_idx -= start_idx % 4;
   return buckets + bkt_idx;
+}
+
+__forceinline__ __device__ uint32_t get_start_position(
+    const uint64_t& global_idx, const uint64_t& bucket_capacity) {
+  uint32_t start_idx = global_idx & (bucket_capacity - 1);
+  start_idx -= start_idx % 4;
+  return start_idx;
 }
 
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
