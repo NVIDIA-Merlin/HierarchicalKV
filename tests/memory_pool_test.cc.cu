@@ -380,6 +380,12 @@ void test_borrow_return_with_context() {
     ASSERT_EQ(pool.current_stock(), 0);
     ASSERT_EQ(pool.num_pending(), 1);
 
+    // Await unfinished GPU work (ensure stable situation).
+    pool.await_pending(stream);
+    std::cout << ".:: Await pending ::.\n" << pool << std::endl;
+    ASSERT_EQ(pool.current_stock(), 1);
+    ASSERT_EQ(pool.num_pending(), 0);
+
     // Borrow and return one buffer (shared ptr).
     {
       auto buffer{pool.get_shared(buffer_size, stream)};
@@ -390,6 +396,12 @@ void test_borrow_return_with_context() {
     std::cout << ".:: Return 1 (shared) ::.\n" << pool << std::endl;
     ASSERT_EQ(pool.current_stock(), 0);
     ASSERT_EQ(pool.num_pending(), 1);
+
+    // Await unfinished GPU work (ensure stable situation).
+    pool.await_pending(stream);
+    std::cout << ".:: Await pending ::.\n" << pool << std::endl;
+    ASSERT_EQ(pool.current_stock(), 1);
+    ASSERT_EQ(pool.num_pending(), 0);
 
     // Borrow static workspace with less than `max_stock` buffers.
     {
@@ -402,7 +414,7 @@ void test_borrow_return_with_context() {
     ASSERT_EQ(pool.current_stock(), 0);
     ASSERT_EQ(pool.num_pending(), 2);
 
-    // Await unfinished GPU work.
+    // Await unfinished GPU work (ensure stable situation).
     pool.await_pending(stream);
     std::cout << ".:: Await pending ::.\n" << pool << std::endl;
     ASSERT_EQ(pool.current_stock(), 2);
@@ -424,19 +436,37 @@ void test_borrow_return_with_context() {
     std::cout << ".:: Return 6 (static) ::.\n" << pool << std::endl;
     ASSERT_GE(pool.num_pending(), 1);
 
-    // Ensure stable situation by
-    //  - ensuring that all pending buffers dealt with.
-    //  - pinning 3 buffers, while clearing the remaining stock
-    //  - Then we pin 1 of the 3 buffers and release it to make it pending.
-    //  - Result: 2 stock buffers, 1 pending.
-    pool.await_pending();
-    ASSERT_EQ(pool.num_pending(), 0);
-    {
-      auto ws{pool.get_workspace<3>(buffer_size, stream)};
-      pool.deplete_stock();
-      ASSERT_EQ(pool.current_stock(), 0);
-    }
+    // Await unfinished GPU work (ensure stable situation).
     pool.await_pending(stream);
+    std::cout << ".:: Await pending ::.\n" << pool << std::endl;
+    ASSERT_EQ(pool.current_stock(), 3);
+    ASSERT_EQ(pool.num_pending(), 0);
+
+    // Pin 1 and deplete stock.
+    {
+      auto ws{pool.get_workspace<1>(buffer_size, stream)};
+      pool.deplete_stock();
+      std::cout << ".:: Deplete stock ::.\n" << pool << std::endl;
+      ASSERT_EQ(pool.current_stock(), 0);
+      ASSERT_EQ(pool.num_pending(), 0);
+    }
+    std::cout << ".:: Deplete stock ::.\n" << pool << std::endl;
+    ASSERT_EQ(pool.current_stock(), 0);
+    ASSERT_EQ(pool.num_pending(), 1);
+
+    // Await unfinished GPU work (ensure stable situation).
+    pool.await_pending(stream);
+    std::cout << ".:: Await pending ::.\n" << pool << std::endl;
+    ASSERT_EQ(pool.current_stock(), 1);
+    ASSERT_EQ(pool.num_pending(), 0);
+
+    // Increase stock to 3 buffers.
+    { auto ws{pool.get_workspace<3>(buffer_size, stream)}; }
+    pool.await_pending(stream);
+    ASSERT_EQ(pool.current_stock(), 3);
+    ASSERT_EQ(pool.num_pending(), 0);
+
+    // Pin 1 of the 3 buffers and release it to make it pending.
     { auto ws{pool.get_workspace<1>(buffer_size, stream)}; }
     ASSERT_EQ(pool.current_stock(), 2);
     ASSERT_EQ(pool.num_pending(), 1);
