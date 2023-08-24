@@ -270,37 +270,32 @@ The <code class="docutils literal notranslate"><span class="pre">score_type</spa
 <td class="text-left"><p>64</p></td>
 <td class="text-left"><p>The dimension of the value vectors.</p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p><strong>evict_strategy</strong></p></td>
-<td class="text-left"><p>EvictStrategy</p></td>
-<td class="text-left"><p>LRU</p></td>
-<td class="text-left"><p>The evict strategy.</p></td>
-</tr>
-<tr class="row-odd"><td class="text-left"><p><strong>max_bucket_size*</strong></p></td>
+<tr class="row-even"><td class="text-left"><p><strong>max_bucket_size*</strong></p></td>
 <td class="text-left"><p>size_t</p></td>
 <td class="text-left"><p>128</p></td>
 <td class="text-left"><p>The length of each bucket.</p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p><strong>max_load_factor*</strong></p></td>
+<tr class="row-odd"><td class="text-left"><p><strong>max_load_factor*</strong></p></td>
 <td class="text-left"><p>float</p></td>
 <td class="text-left"><p>0.5f</p></td>
 <td class="text-left"><p>The max load factor before rehashing.</p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p><strong>block_size*</strong></p></td>
+<tr class="row-even"><td class="text-left"><p><strong>block_size*</strong></p></td>
 <td class="text-left"><p>int</p></td>
 <td class="text-left"><p>128</p></td>
 <td class="text-left"><p>The default block size for CUDA kernels.</p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p><strong>io_block_size*</strong></p></td>
+<tr class="row-odd"><td class="text-left"><p><strong>io_block_size*</strong></p></td>
 <td class="text-left"><p>int</p></td>
 <td class="text-left"><p>1024</p></td>
 <td class="text-left"><p>The block size for IO CUDA kernels.</p></td>
 </tr>
-<tr class="row-odd"><td class="text-left"><p><strong>device_id*</strong></p></td>
+<tr class="row-even"><td class="text-left"><p><strong>device_id*</strong></p></td>
 <td class="text-left"><p>int</p></td>
 <td class="text-left"><p>-1</p></td>
 <td class="text-left"><p>The ID of device. Managed internally when set to <code class="docutils literal notranslate"><span class="pre">-1</span></code></p></td>
 </tr>
-<tr class="row-even"><td class="text-left"><p><strong>io_by_cpu*</strong></p></td>
+<tr class="row-odd"><td class="text-left"><p><strong>io_by_cpu*</strong></p></td>
 <td class="text-left"><p>bool</p></td>
 <td class="text-left"><p>false</p></td>
 <td class="text-left"><p>The flag indicating if the CPU handles IO.</p></td>
@@ -427,31 +422,31 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>1.161</p></td>
-<td class="text-right"><p>2.813</p></td>
-<td class="text-right"><p>1.708</p></td>
-<td class="text-right"><p>1.942</p></td>
-<td class="text-right"><p>4.147</p></td>
+<td class="text-right"><p>1.153</p></td>
+<td class="text-right"><p>2.580</p></td>
+<td class="text-right"><p>1.706</p></td>
+<td class="text-right"><p>1.798</p></td>
+<td class="text-right"><p>4.111</p></td>
 <td class="text-right"><p>1.801</p></td>
-<td class="text-right"><p>1.023</p></td>
+<td class="text-right"><p>1.083</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>1.004</p></td>
-<td class="text-right"><p>2.785</p></td>
-<td class="text-right"><p>0.669</p></td>
-<td class="text-right"><p>0.865</p></td>
+<td class="text-right"><p>1.010</p></td>
+<td class="text-right"><p>2.561</p></td>
+<td class="text-right"><p>0.683</p></td>
+<td class="text-right"><p>1.863</p></td>
 <td class="text-right"><p>1.939</p></td>
-<td class="text-right"><p>1.302</p></td>
-<td class="text-right"><p>0.873</p></td>
+<td class="text-right"><p>1.305</p></td>
+<td class="text-right"><p>0.994</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.364</p></td>
-<td class="text-right"><p>2.801</p></td>
-<td class="text-right"><p>0.370</p></td>
-<td class="text-right"><p>0.499</p></td>
-<td class="text-right"><p>0.930</p></td>
-<td class="text-right"><p>0.392</p></td>
-<td class="text-right"><p>0.315</p></td>
+<td class="text-right"><p>0.366</p></td>
+<td class="text-right"><p>2.580</p></td>
+<td class="text-right"><p>0.371</p></td>
+<td class="text-right"><p>1.894</p></td>
+<td class="text-right"><p>0.932</p></td>
+<td class="text-right"><p>0.393</p></td>
+<td class="text-right"><p>0.517</p></td>
 </tr>
 </tbody>
 </table>
@@ -464,16 +459,16 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>2.213</p></td>
-<td class="text-right"><p>19.096</p></td>
+<td class="text-right"><p>2.180</p></td>
+<td class="text-right"><p>18.766</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>2.165</p></td>
-<td class="text-right"><p>19.825</p></td>
+<td class="text-right"><p>2.179</p></td>
+<td class="text-right"><p>18.873</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>2.067</p></td>
-<td class="text-right"><p>2.818</p></td>
+<td class="text-right"><p>2.081</p></td>
+<td class="text-right"><p>2.813</p></td>
 </tr>
 </tbody>
 </table>
@@ -494,31 +489,31 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>1.071</p></td>
-<td class="text-right"><p>2.490</p></td>
-<td class="text-right"><p>1.264</p></td>
-<td class="text-right"><p>1.602</p></td>
-<td class="text-right"><p>4.136</p></td>
-<td class="text-right"><p>1.801</p></td>
-<td class="text-right"><p>0.949</p></td>
+<td class="text-right"><p>1.068</p></td>
+<td class="text-right"><p>2.325</p></td>
+<td class="text-right"><p>1.277</p></td>
+<td class="text-right"><p>1.759</p></td>
+<td class="text-right"><p>4.113</p></td>
+<td class="text-right"><p>1.807</p></td>
+<td class="text-right"><p>0.932</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.866</p></td>
-<td class="text-right"><p>2.462</p></td>
-<td class="text-right"><p>0.637</p></td>
-<td class="text-right"><p>0.853</p></td>
-<td class="text-right"><p>1.939</p></td>
-<td class="text-right"><p>1.302</p></td>
-<td class="text-right"><p>0.740</p></td>
+<td class="text-right"><p>0.862</p></td>
+<td class="text-right"><p>2.309</p></td>
+<td class="text-right"><p>0.651</p></td>
+<td class="text-right"><p>1.754</p></td>
+<td class="text-right"><p>1.934</p></td>
+<td class="text-right"><p>1.304</p></td>
+<td class="text-right"><p>0.874</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.359</p></td>
-<td class="text-right"><p>2.573</p></td>
-<td class="text-right"><p>0.348</p></td>
-<td class="text-right"><p>0.492</p></td>
-<td class="text-right"><p>0.925</p></td>
-<td class="text-right"><p>0.377</p></td>
-<td class="text-right"><p>0.278</p></td>
+<td class="text-right"><p>0.360</p></td>
+<td class="text-right"><p>2.349</p></td>
+<td class="text-right"><p>0.346</p></td>
+<td class="text-right"><p>1.825</p></td>
+<td class="text-right"><p>0.926</p></td>
+<td class="text-right"><p>0.373</p></td>
+<td class="text-right"><p>0.470</p></td>
 </tr>
 </tbody>
 </table>
@@ -531,16 +526,16 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.709</p></td>
-<td class="text-right"><p>15.918</p></td>
+<td class="text-right"><p>0.701</p></td>
+<td class="text-right"><p>15.185</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.575</p></td>
-<td class="text-right"><p>14.923</p></td>
+<td class="text-right"><p>0.578</p></td>
+<td class="text-right"><p>13.840</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>0.567</p></td>
-<td class="text-right"><p>0.758</p></td>
+<td class="text-right"><p>0.777</p></td>
 </tr>
 </tbody>
 </table>
@@ -561,31 +556,31 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.868</p></td>
-<td class="text-right"><p>2.122</p></td>
-<td class="text-right"><p>0.916</p></td>
-<td class="text-right"><p>1.116</p></td>
-<td class="text-right"><p>4.451</p></td>
-<td class="text-right"><p>1.838</p></td>
-<td class="text-right"><p>0.773</p></td>
+<td class="text-right"><p>0.862</p></td>
+<td class="text-right"><p>2.041</p></td>
+<td class="text-right"><p>0.930</p></td>
+<td class="text-right"><p>1.543</p></td>
+<td class="text-right"><p>4.399</p></td>
+<td class="text-right"><p>1.854</p></td>
+<td class="text-right"><p>0.807</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.670</p></td>
-<td class="text-right"><p>2.112</p></td>
-<td class="text-right"><p>0.570</p></td>
-<td class="text-right"><p>0.790</p></td>
-<td class="text-right"><p>1.984</p></td>
-<td class="text-right"><p>1.289</p></td>
-<td class="text-right"><p>0.587</p></td>
+<td class="text-right"><p>0.662</p></td>
+<td class="text-right"><p>2.022</p></td>
+<td class="text-right"><p>0.579</p></td>
+<td class="text-right"><p>1.541</p></td>
+<td class="text-right"><p>1.983</p></td>
+<td class="text-right"><p>1.299</p></td>
+<td class="text-right"><p>0.771</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.333</p></td>
-<td class="text-right"><p>2.162</p></td>
+<td class="text-right"><p>0.334</p></td>
+<td class="text-right"><p>2.052</p></td>
 <td class="text-right"><p>0.335</p></td>
-<td class="text-right"><p>0.467</p></td>
-<td class="text-right"><p>0.940</p></td>
+<td class="text-right"><p>1.590</p></td>
+<td class="text-right"><p>0.939</p></td>
 <td class="text-right"><p>0.393</p></td>
-<td class="text-right"><p>0.240</p></td>
+<td class="text-right"><p>0.473</p></td>
 </tr>
 </tbody>
 </table>
@@ -599,15 +594,15 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>0.321</p></td>
-<td class="text-right"><p>11.050</p></td>
+<td class="text-right"><p>10.791</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.301</p></td>
-<td class="text-right"><p>10.965</p></td>
+<td class="text-right"><p>0.298</p></td>
+<td class="text-right"><p>10.864</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.292</p></td>
-<td class="text-right"><p>0.390</p></td>
+<td class="text-right"><p>0.293</p></td>
+<td class="text-right"><p>0.393</p></td>
 </tr>
 </tbody>
 </table>
@@ -630,28 +625,28 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.118</p></td>
-<td class="text-right"><p>0.145</p></td>
-<td class="text-right"><p>0.119</p></td>
-<td class="text-right"><p>0.147</p></td>
-<td class="text-right"><p>4.097</p></td>
-<td class="text-right"><p>1.807</p></td>
+<td class="text-right"><p>0.083</p></td>
+<td class="text-right"><p>0.123</p></td>
+<td class="text-right"><p>0.115</p></td>
+<td class="text-right"><p>0.131</p></td>
+<td class="text-right"><p>4.015</p></td>
+<td class="text-right"><p>1.804</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.116</p></td>
-<td class="text-right"><p>0.144</p></td>
-<td class="text-right"><p>0.115</p></td>
-<td class="text-right"><p>0.142</p></td>
-<td class="text-right"><p>1.932</p></td>
-<td class="text-right"><p>1.300</p></td>
+<td class="text-right"><p>0.082</p></td>
+<td class="text-right"><p>0.123</p></td>
+<td class="text-right"><p>0.111</p></td>
+<td class="text-right"><p>0.129</p></td>
+<td class="text-right"><p>1.911</p></td>
+<td class="text-right"><p>1.136</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.091</p></td>
-<td class="text-right"><p>0.126</p></td>
-<td class="text-right"><p>0.092</p></td>
-<td class="text-right"><p>0.114</p></td>
-<td class="text-right"><p>0.927</p></td>
-<td class="text-right"><p>0.379</p></td>
+<td class="text-right"><p>0.069</p></td>
+<td class="text-right"><p>0.110</p></td>
+<td class="text-right"><p>0.085</p></td>
+<td class="text-right"><p>0.106</p></td>
+<td class="text-right"><p>0.929</p></td>
+<td class="text-right"><p>0.393</p></td>
 </tr>
 </tbody>
 </table>
@@ -665,15 +660,15 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>0.322</p></td>
-<td class="text-right"><p>11.206</p></td>
+<td class="text-right"><p>10.720</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.300</p></td>
-<td class="text-right"><p>11.072</p></td>
+<td class="text-right"><p>0.299</p></td>
+<td class="text-right"><p>10.587</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.292</p></td>
-<td class="text-right"><p>0.388</p></td>
+<td class="text-right"><p>0.293</p></td>
+<td class="text-right"><p>0.394</p></td>
 </tr>
 </tbody>
 </table>
@@ -694,27 +689,27 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
 <td class="text-right"><p>0.049</p></td>
-<td class="text-right"><p>0.072</p></td>
-<td class="text-right"><p>0.047</p></td>
-<td class="text-right"><p>0.068</p></td>
-<td class="text-right"><p>3.559</p></td>
-<td class="text-right"><p>1.718</p></td>
+<td class="text-right"><p>0.073</p></td>
+<td class="text-right"><p>0.048</p></td>
+<td class="text-right"><p>0.070</p></td>
+<td class="text-right"><p>3.530</p></td>
+<td class="text-right"><p>1.730</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.048</p></td>
+<td class="text-right"><p>0.049</p></td>
 <td class="text-right"><p>0.072</p></td>
 <td class="text-right"><p>0.048</p></td>
 <td class="text-right"><p>0.069</p></td>
-<td class="text-right"><p>1.854</p></td>
-<td class="text-right"><p>1.251</p></td>
+<td class="text-right"><p>1.849</p></td>
+<td class="text-right"><p>1.261</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
 <td class="text-right"><p>0.044</p></td>
-<td class="text-right"><p>0.067</p></td>
+<td class="text-right"><p>0.068</p></td>
 <td class="text-right"><p>0.044</p></td>
-<td class="text-right"><p>0.061</p></td>
-<td class="text-right"><p>0.912</p></td>
-<td class="text-right"><p>0.360</p></td>
+<td class="text-right"><p>0.062</p></td>
+<td class="text-right"><p>0.911</p></td>
+<td class="text-right"><p>0.393</p></td>
 </tr>
 </tbody>
 </table>
@@ -727,16 +722,16 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-right"><p>0.50</p></td>
-<td class="text-right"><p>0.319</p></td>
-<td class="text-right"><p>10.175</p></td>
+<td class="text-right"><p>0.321</p></td>
+<td class="text-right"><p>11.148</p></td>
 </tr>
 <tr class="row-odd"><td class="text-right"><p>0.75</p></td>
-<td class="text-right"><p>0.298</p></td>
-<td class="text-right"><p>11.606</p></td>
+<td class="text-right"><p>0.299</p></td>
+<td class="text-right"><p>11.269</p></td>
 </tr>
 <tr class="row-even"><td class="text-right"><p>1.00</p></td>
-<td class="text-right"><p>0.292</p></td>
-<td class="text-right"><p>0.388</p></td>
+<td class="text-right"><p>0.293</p></td>
+<td class="text-right"><p>0.396</p></td>
 </tr>
 </tbody>
 </table>

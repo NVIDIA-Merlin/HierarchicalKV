@@ -31,13 +31,17 @@ Includes
 
 - ``limits``
 
+- ``memory``
+
+- ``merlin/allocator.cuh``
+
 - ``merlin/array_kernels.cuh``
 
 - ``merlin/core_kernels.cuh``
 
 - ``merlin/flexible_buffer.cuh``
 
-- ``merlin/group_lock.hpp``
+- ``merlin/group_lock.cuh``
 
 - ``merlin/memory_pool.cuh``
 
