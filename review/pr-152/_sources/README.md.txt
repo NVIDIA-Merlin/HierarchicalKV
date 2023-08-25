@@ -76,7 +76,7 @@ The `score_type` must be `uint64_t`. For more detail, please refer to [`class Ev
 
 | Name           | Definition of `Score`                                                                                                                                                                                           |
 |:---------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| __Lru__        | Device clock, in nano second (could be a little difference from host clock).                                                                                                                                    |
+| __Lru__        | Device clock in a nanosecond, which could differ slightly from host clock.                                                                                                                                      |
 | __Lfu__        | Frequency provided by caller via the input parameter of `scores` of `insert-like` APIs as the increment of frequency.                                                                                           |
 | __EpochLru__   | The high 32bits is the global epoch provided via the input parameter of `global_epoch`, <br>the low 32bits is equal to `(device_clock >> 20) & 0xffffffff` with granularity close to 1 ms.                      |
 | __EpochLfu__   | The high 32bits is the global epoch provided via the input parameter of `global_epoch`, <br>the low 32bits is the frequency, <br>the frequency will keep constant after reaching the max value of `0xffffffff`. |
