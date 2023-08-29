@@ -73,12 +73,34 @@ endforeach()
 
 message(CMAKE_CUDA_FLAGS="${CMAKE_CUDA_FLAGS}")
 
+# Sub projects.
+add_subdirectory(tests/googletest)
+
+function(add_subdirectory_rocksdb)
+  set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+  set(WITH_SNAPPY OFF)
+  set(WITH_LZ4 OFF)
+  set(WITH_ZLIB OFF)
+  set(WITH_ZSTD OFF)
+  set(WITH_GFLAGS OFF)
+  set(ROCKSDB_BUILD_SHARED OFF)
+  set(WITH_JNI OFF)
+  set(WITH_TESTS OFF)
+  set(WITH_BENCHMARK_TOOLS OFF)
+  set(WITH_CORE_TOOLS OFF)
+  set(WITH_TOOLS OFF)
+  set(WITH_ALL_TESTS OFF)
+  set(WITH_EXAMPLES OFF)
+  set(WITH_BENCHMARK OFF)
+  add_subdirectory(third_party/rocksdb)
+endfunction()
+add_subdirectory_rocksdb()
+
 include_directories(
   ${PROJECT_SOURCE_DIR}/include
+  ${PROJECT_SOURCE_DIR}/third_party/rocksdb/include
   ${PROJECT_SOURCE_DIR}/tests/googletest/googletest/include
 )
-
-ADD_SUBDIRECTORY(tests/googletest)
 
 link_directories(
 )
@@ -135,3 +157,8 @@ add_executable(find_or_insert_ptr_test tests/find_or_insert_ptr_test.cc.cu)
 target_compile_features(find_or_insert_ptr_test PUBLIC cxx_std_14)
 set_target_properties(find_or_insert_ptr_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(find_or_insert_ptr_test gtest_main)
+
+add_executable(ext_storage_rocksdb_test tests/ext_storage_rocksdb_test.cc.cu)
+target_compile_features(ext_storage_rocksdb_test PUBLIC cxx_std_14)
+set_target_properties(ext_storage_rocksdb_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(ext_storage_rocksdb_test gtest_main rocksdb)
