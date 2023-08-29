@@ -121,12 +121,6 @@ using EraseIfPredict = bool (*)(
     const S& threshold  ///< The threshold to compare with the `score` argument.
 );
 
-#if THRUST_VERSION >= 101600
-static constexpr auto& thrust_par = thrust::cuda::par_nosync;
-#else
-static constexpr auto& thrust_par = thrust::cuda::par;
-#endif
-
 /**
  * A HierarchicalKV hash table is a concurrent and hierarchical hash table that
  * is powered by GPUs and can use HBM and host memory as storage for key-value
@@ -361,7 +355,7 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(d_dst));
         thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
 
-        thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + n,
+        thrust::sort_by_key(thrust::cuda::par_nosync.on(stream), d_dst_ptr, d_dst_ptr + n,
                             d_src_offset_ptr, thrust::less<uintptr_t>());
       }
 
@@ -686,7 +680,7 @@ class HashTable {
       thrust::device_ptr<uintptr_t> dst_ptr(reinterpret_cast<uintptr_t*>(dst));
       thrust::device_ptr<int> src_offset_ptr(src_offset);
 
-      thrust::sort_by_key(thrust_par.on(stream), dst_ptr, dst_ptr + n,
+      thrust::sort_by_key(thrust::cuda::par_nosync.on(stream), dst_ptr, dst_ptr + n,
                           src_offset_ptr, thrust::less<uintptr_t>());
     }
 
@@ -780,7 +774,7 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(d_table_value_addrs));
         thrust::device_ptr<int> param_key_index_ptr(param_key_index);
 
-        thrust::sort_by_key(thrust_par.on(stream), table_value_ptr,
+        thrust::sort_by_key(thrust::cuda::par_nosync.on(stream), table_value_ptr,
                             table_value_ptr + n, param_key_index_ptr,
                             thrust::less<uintptr_t>());
       }
@@ -963,7 +957,7 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(d_dst));
         thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
 
-        thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + n,
+        thrust::sort_by_key(thrust::cuda::par_nosync.on(stream), d_dst_ptr, d_dst_ptr + n,
                             d_src_offset_ptr, thrust::less<uintptr_t>());
       }
 
@@ -1079,7 +1073,7 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(src));
         thrust::device_ptr<int> dst_offset_ptr(dst_offset);
 
-        thrust::sort_by_key(thrust_par.on(stream), src_ptr, src_ptr + n,
+        thrust::sort_by_key(thrust::cuda::par_nosync.on(stream), src_ptr, src_ptr + n,
                             dst_offset_ptr, thrust::less<uintptr_t>());
       }
 
@@ -1433,7 +1427,7 @@ class HashTable {
 
     for (size_type start_i = 0; start_i < N; start_i += step) {
       size_type end_i = std::min(start_i + step, N);
-      h_size += thrust::reduce(thrust_par.on(stream), size_ptr + start_i,
+      h_size += thrust::reduce(thrust::cuda::par_nosync.on(stream), size_ptr + start_i,
                                size_ptr + end_i, 0, thrust::plus<int>());
     }
 
@@ -1751,7 +1745,7 @@ class HashTable {
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-    int size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
+    int size = thrust::reduce(thrust::cuda::par_nosync.on(stream), size_ptr, size_ptr + N, 0,
                               thrust::plus<int>());
 
     CudaCheckError();

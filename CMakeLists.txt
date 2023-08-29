@@ -75,10 +75,14 @@ message(CMAKE_CUDA_FLAGS="${CMAKE_CUDA_FLAGS}")
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/include
-  ${PROJECT_SOURCE_DIR}/tests/googletest/googletest/include
+  ${PROJECT_SOURCE_DIR}/third_party/libcudacxx/include
+  ${PROJECT_SOURCE_DIR}/third_party/thrust/include
+  ${PROJECT_SOURCE_DIR}/third_party/googletest/googletest/include
 )
 
-ADD_SUBDIRECTORY(tests/googletest)
+ADD_SUBDIRECTORY(third_party/googletest)
+ADD_SUBDIRECTORY(third_party/libcudacxx)
+ADD_SUBDIRECTORY(third_party/thrust)
 
 link_directories(
 )
