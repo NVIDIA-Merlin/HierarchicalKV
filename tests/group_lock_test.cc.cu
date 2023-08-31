@@ -27,76 +27,76 @@ using namespace std::chrono_literals;
 // Test the basic functionality of the group_shared_mutex
 TEST(GroupSharedMutexTest, BasicFunctionality) {
   group_shared_mutex mutex;
-  ASSERT_EQ(mutex.reader_count(), 0);
-  ASSERT_EQ(mutex.writer_count(), 0);
+  ASSERT_EQ(mutex.read_count(), 0);
+  ASSERT_EQ(mutex.update_count(), 0);
 
   {
-    // Multiple readers can acquire the lock simultaneously
-    reader_shared_lock reader1(mutex);
-    ASSERT_EQ(mutex.reader_count(), 1);
-    reader_shared_lock reader2(mutex);
-    ASSERT_EQ(mutex.reader_count(), 2);
+    // Multiple reads can acquire the lock simultaneously
+    read_shared_lock read1(mutex);
+    ASSERT_EQ(mutex.read_count(), 1);
+    read_shared_lock read2(mutex);
+    ASSERT_EQ(mutex.read_count(), 2);
   }
-  ASSERT_EQ(mutex.reader_count(), 0);
-  ASSERT_EQ(mutex.writer_count(), 0);
+  ASSERT_EQ(mutex.read_count(), 0);
+  ASSERT_EQ(mutex.update_count(), 0);
 
   {
-    // A writer is blocked by the readers
-    writer_shared_lock writer(mutex, std::defer_lock);
-    EXPECT_FALSE(writer.owns_lock());
-    ASSERT_EQ(mutex.reader_count(), 0);
-    ASSERT_EQ(mutex.writer_count(), 0);
-    writer.lock();
-    ASSERT_EQ(mutex.reader_count(), 0);
-    ASSERT_EQ(mutex.writer_count(), 1);
-    EXPECT_TRUE(writer.owns_lock());
+    // A update is blocked by the reads
+    update_shared_lock update(mutex, std::defer_lock);
+    EXPECT_FALSE(update.owns_lock());
+    ASSERT_EQ(mutex.read_count(), 0);
+    ASSERT_EQ(mutex.update_count(), 0);
+    update.lock();
+    ASSERT_EQ(mutex.read_count(), 0);
+    ASSERT_EQ(mutex.update_count(), 1);
+    EXPECT_TRUE(update.owns_lock());
   }
-  ASSERT_EQ(mutex.reader_count(), 0);
-  ASSERT_EQ(mutex.writer_count(), 0);
+  ASSERT_EQ(mutex.read_count(), 0);
+  ASSERT_EQ(mutex.update_count(), 0);
 
-  // A unique lock is also blocked by the readers
+  // A unique lock is also blocked by the reads
   {
-    write_read_lock unique(mutex, std::defer_lock);
-    ASSERT_EQ(mutex.reader_count(), 0);
-    ASSERT_EQ(mutex.writer_count(), 0);
+    update_read_lock unique(mutex, std::defer_lock);
+    ASSERT_EQ(mutex.read_count(), 0);
+    ASSERT_EQ(mutex.update_count(), 0);
     EXPECT_FALSE(unique.owns_lock());
     unique.lock();
     EXPECT_TRUE(unique.owns_lock());
-    ASSERT_EQ(mutex.reader_count(), 1);
-    ASSERT_EQ(mutex.writer_count(), 1);
+    ASSERT_EQ(mutex.read_count(), 1);
+    ASSERT_EQ(mutex.update_count(), 1);
 
     EXPECT_DEATH(unique.lock(), "trying to lock twice!");
   }
-  ASSERT_EQ(mutex.reader_count(), 0);
-  ASSERT_EQ(mutex.writer_count(), 0);
+  ASSERT_EQ(mutex.read_count(), 0);
+  ASSERT_EQ(mutex.update_count(), 0);
 }
 
 TEST(GroupSharedMutexTest, AdvancedFunctionalitySingleStream) {
   group_shared_mutex mutex;
-  bool multiple_reader = false;
-  bool multiple_writer = false;
+  bool multiple_read = false;
+  bool multiple_update = false;
 
-  // Test multiple readers
-  std::vector<std::thread> readers;
+  // Test multiple reads
+  std::vector<std::thread> reads;
   for (int i = 0; i < 50; ++i) {
-    readers.emplace_back([&]() {
-      reader_shared_lock reader(mutex);
-      EXPECT_TRUE(mutex.reader_count() > 0);
-      if (mutex.reader_count() > 1) multiple_reader = true;
+    reads.emplace_back([&]() {
+      read_shared_lock read(mutex);
+      EXPECT_TRUE(mutex.read_count() > 0);
+      if (mutex.read_count() > 1) multiple_read = true;
       std::this_thread::sleep_for(1000ms);
-      ASSERT_EQ(mutex.writer_count(), 0);
+      ASSERT_EQ(mutex.update_count(), 0);
     });
   }
 
-  // Test multiple writers
-  std::vector<std::thread> writers;
+  // Test multiple updates
+  std::vector<std::thread> updates;
   for (int i = 0; i < 50; ++i) {
-    writers.emplace_back([&]() {
-      writer_shared_lock writer(mutex);
-      EXPECT_TRUE(mutex.writer_count() > 0);
-      if (mutex.writer_count() > 1) multiple_writer = true;
+    updates.emplace_back([&]() {
+      update_shared_lock update(mutex);
+      EXPECT_TRUE(mutex.update_count() > 0);
+      if (mutex.update_count() > 1) multiple_update = true;
       std::this_thread::sleep_for(1000ms);
-      ASSERT_EQ(mutex.reader_count(), 0);
+      ASSERT_EQ(mutex.read_count(), 0);
     });
   }
 
@@ -104,18 +104,18 @@ TEST(GroupSharedMutexTest, AdvancedFunctionalitySingleStream) {
   std::vector<std::thread> uniques;
   for (int i = 0; i < 50; ++i) {
     uniques.emplace_back([&]() {
-      write_read_lock unique(mutex);
-      ASSERT_EQ(mutex.reader_count(), 1);
-      ASSERT_EQ(mutex.reader_count(), 1);
+      update_read_lock unique(mutex);
+      ASSERT_EQ(mutex.read_count(), 1);
+      ASSERT_EQ(mutex.update_count(), 1);
       std::this_thread::sleep_for(100ms);
     });
   }
 
-  for (auto& th : readers) {
+  for (auto& th : reads) {
     th.join();
   }
 
-  for (auto& th : writers) {
+  for (auto& th : updates) {
     th.join();
   }
 
@@ -123,45 +123,45 @@ TEST(GroupSharedMutexTest, AdvancedFunctionalitySingleStream) {
     th.join();
   }
 
-  EXPECT_TRUE(multiple_writer);
-  EXPECT_TRUE(multiple_reader);
+  EXPECT_TRUE(multiple_update);
+  EXPECT_TRUE(multiple_read);
 }
 
 TEST(GroupSharedMutexTest, AdvancedFunctionalityMultiStream) {
   group_shared_mutex mutex;
-  bool multiple_reader = false;
-  bool multiple_writer = false;
+  bool multiple_read = false;
+  bool multiple_update = false;
 
-  // Test multiple readers
-  std::vector<std::thread> readers;
+  // Test multiple reads
+  std::vector<std::thread> reads;
   for (int i = 0; i < 50; ++i) {
-    readers.emplace_back([&]() {
+    reads.emplace_back([&]() {
       cudaStream_t stream;
       CUDA_CHECK(cudaStreamCreate(&stream));
 
-      reader_shared_lock reader(mutex);
-      EXPECT_TRUE(mutex.reader_count() > 0);
-      if (mutex.reader_count() > 1) multiple_reader = true;
+      read_shared_lock read(mutex);
+      EXPECT_TRUE(mutex.read_count() > 0);
+      if (mutex.read_count() > 1) multiple_read = true;
       std::this_thread::sleep_for(1000ms);
-      ASSERT_EQ(mutex.writer_count(), 0);
+      ASSERT_EQ(mutex.update_count(), 0);
 
       CUDA_CHECK(cudaStreamSynchronize(stream));
       CUDA_CHECK(cudaStreamDestroy(stream));
     });
   }
 
-  // Test multiple writers
-  std::vector<std::thread> writers;
+  // Test multiple updates
+  std::vector<std::thread> updates;
   for (int i = 0; i < 50; ++i) {
-    writers.emplace_back([&]() {
+    updates.emplace_back([&]() {
       cudaStream_t stream;
       CUDA_CHECK(cudaStreamCreate(&stream));
 
-      writer_shared_lock writer(mutex);
-      EXPECT_TRUE(mutex.writer_count() > 0);
-      if (mutex.writer_count() > 1) multiple_writer = true;
+      update_shared_lock update(mutex);
+      EXPECT_TRUE(mutex.update_count() > 0);
+      if (mutex.update_count() > 1) multiple_update = true;
       std::this_thread::sleep_for(1000ms);
-      ASSERT_EQ(mutex.reader_count(), 0);
+      ASSERT_EQ(mutex.read_count(), 0);
 
       CUDA_CHECK(cudaStreamSynchronize(stream));
       CUDA_CHECK(cudaStreamDestroy(stream));
@@ -175,9 +175,9 @@ TEST(GroupSharedMutexTest, AdvancedFunctionalityMultiStream) {
       cudaStream_t stream;
       CUDA_CHECK(cudaStreamCreate(&stream));
 
-      write_read_lock unique(mutex);
-      ASSERT_EQ(mutex.reader_count(), 1);
-      ASSERT_EQ(mutex.reader_count(), 1);
+      update_read_lock unique(mutex);
+      ASSERT_EQ(mutex.read_count(), 1);
+      ASSERT_EQ(mutex.read_count(), 1);
       std::this_thread::sleep_for(100ms);
 
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -185,11 +185,11 @@ TEST(GroupSharedMutexTest, AdvancedFunctionalityMultiStream) {
     });
   }
 
-  for (auto& th : readers) {
+  for (auto& th : reads) {
     th.join();
   }
 
-  for (auto& th : writers) {
+  for (auto& th : updates) {
     th.join();
   }
 
@@ -197,6 +197,6 @@ TEST(GroupSharedMutexTest, AdvancedFunctionalityMultiStream) {
     th.join();
   }
 
-  EXPECT_TRUE(multiple_writer);
-  EXPECT_TRUE(multiple_reader);
+  EXPECT_TRUE(multiple_update);
+  EXPECT_TRUE(multiple_read);
 }
