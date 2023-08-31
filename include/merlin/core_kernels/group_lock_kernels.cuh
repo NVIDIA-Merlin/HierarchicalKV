@@ -22,54 +22,54 @@ namespace merlin {
 namespace group_lock {
 
 __global__ void init_kernel(
-    cuda::atomic<int, cuda::thread_scope_device>* writer_count,
-    cuda::atomic<int, cuda::thread_scope_device>* reader_count,
+    cuda::atomic<int, cuda::thread_scope_device>* update_count,
+    cuda::atomic<int, cuda::thread_scope_device>* read_count,
     cuda::atomic<bool, cuda::thread_scope_device>* unique_flag) {
-  new (writer_count) cuda::atomic<int, cuda::thread_scope_device>{0};
-  new (reader_count) cuda::atomic<int, cuda::thread_scope_device>{0};
+  new (update_count) cuda::atomic<int, cuda::thread_scope_device>{0};
+  new (read_count) cuda::atomic<int, cuda::thread_scope_device>{0};
   new (unique_flag) cuda::atomic<bool, cuda::thread_scope_device>{false};
 }
 __global__ void lock_read_kernel(
-    cuda::atomic<int, cuda::thread_scope_device>* writer_count,
-    cuda::atomic<int, cuda::thread_scope_device>* reader_count) {
+    cuda::atomic<int, cuda::thread_scope_device>* update_count,
+    cuda::atomic<int, cuda::thread_scope_device>* read_count) {
   for (;;) {
-    while (writer_count->load(cuda::std::memory_order_relaxed)) {
+    while (update_count->load(cuda::std::memory_order_relaxed)) {
     }
-    reader_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (writer_count->load(cuda::std::memory_order_relaxed) == 0) {
+    read_count->fetch_add(1, cuda::std::memory_order_relaxed);
+    if (update_count->load(cuda::std::memory_order_relaxed) == 0) {
       break;
     }
-    reader_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+    read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
   }
 }
 
 __global__ void unlock_read_kernel(
-    cuda::atomic<int, cuda::thread_scope_device>* reader_count) {
-  reader_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+    cuda::atomic<int, cuda::thread_scope_device>* read_count) {
+  read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
 }
 
-__global__ void lock_write_kernel(
-    cuda::atomic<int, cuda::thread_scope_device>* writer_count,
-    cuda::atomic<int, cuda::thread_scope_device>* reader_count) {
+__global__ void lock_update_kernel(
+    cuda::atomic<int, cuda::thread_scope_device>* update_count,
+    cuda::atomic<int, cuda::thread_scope_device>* read_count) {
   for (;;) {
-    while (reader_count->load(cuda::std::memory_order_relaxed)) {
+    while (read_count->load(cuda::std::memory_order_relaxed)) {
     }
-    writer_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (reader_count->load(cuda::std::memory_order_relaxed) == 0) {
+    update_count->fetch_add(1, cuda::std::memory_order_relaxed);
+    if (read_count->load(cuda::std::memory_order_relaxed) == 0) {
       break;
     }
-    writer_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+    update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
   }
 }
 
-__global__ void unlock_write_kernel(
-    cuda::atomic<int, cuda::thread_scope_device>* writer_count) {
-  writer_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+__global__ void unlock_update_kernel(
+    cuda::atomic<int, cuda::thread_scope_device>* update_count) {
+  update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
 }
 
-__global__ void lock_write_read_kernel(
-    cuda::atomic<int, cuda::thread_scope_device>* writer_count,
-    cuda::atomic<int, cuda::thread_scope_device>* reader_count,
+__global__ void lock_update_read_kernel(
+    cuda::atomic<int, cuda::thread_scope_device>* update_count,
+    cuda::atomic<int, cuda::thread_scope_device>* read_count,
     cuda::atomic<bool, cuda::thread_scope_device>* unique_flag) {
   /* Lock unique flag */
   bool expected = false;
@@ -78,46 +78,46 @@ __global__ void lock_write_read_kernel(
     expected = false;
   }
 
-  /* Ban writer */
+  /* Ban update */
   for (;;) {
-    while (writer_count->load(cuda::std::memory_order_relaxed)) {
+    while (update_count->load(cuda::std::memory_order_relaxed)) {
     }
-    reader_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (writer_count->load(cuda::std::memory_order_relaxed) == 0) {
+    read_count->fetch_add(1, cuda::std::memory_order_relaxed);
+    if (update_count->load(cuda::std::memory_order_relaxed) == 0) {
       break;
     }
-    reader_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+    read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
   }
 
-  /* Ban reader */
+  /* Ban read */
   for (;;) {
-    while (reader_count->load(cuda::std::memory_order_relaxed) > 1) {
+    while (read_count->load(cuda::std::memory_order_relaxed) > 1) {
     }
-    writer_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (reader_count->load(cuda::std::memory_order_relaxed) == 1) {
+    update_count->fetch_add(1, cuda::std::memory_order_relaxed);
+    if (read_count->load(cuda::std::memory_order_relaxed) == 1) {
       break;
     }
-    writer_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+    update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
   }
 }
 
-__global__ void unlock_write_read_kernel(
-    cuda::atomic<int, cuda::thread_scope_device>* writer_count,
-    cuda::atomic<int, cuda::thread_scope_device>* reader_count,
+__global__ void unlock_update_read_kernel(
+    cuda::atomic<int, cuda::thread_scope_device>* update_count,
+    cuda::atomic<int, cuda::thread_scope_device>* read_count,
     cuda::atomic<bool, cuda::thread_scope_device>* unique_flag) {
-  reader_count->fetch_sub(1, cuda::std::memory_order_relaxed);
-  writer_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+  read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+  update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
   unique_flag->store(false, cuda::std::memory_order_relaxed);
 }
 
-__global__ void writer_count_kernel(
-    int* counter, cuda::atomic<int, cuda::thread_scope_device>* writer_count) {
-  *counter = writer_count->load(cuda::std::memory_order_relaxed);
+__global__ void update_count_kernel(
+    int* counter, cuda::atomic<int, cuda::thread_scope_device>* update_count) {
+  *counter = update_count->load(cuda::std::memory_order_relaxed);
 }
 
-__global__ void reader_count_kernel(
-    int* counter, cuda::atomic<int, cuda::thread_scope_device>* reader_count) {
-  *counter = reader_count->load(cuda::std::memory_order_relaxed);
+__global__ void read_count_kernel(
+    int* counter, cuda::atomic<int, cuda::thread_scope_device>* read_count) {
+  *counter = read_count->load(cuda::std::memory_order_relaxed);
 }
 
 }  // namespace group_lock
