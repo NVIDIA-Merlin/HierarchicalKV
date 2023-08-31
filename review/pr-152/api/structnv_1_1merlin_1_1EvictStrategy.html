@@ -104,7 +104,7 @@
 <dd><p>The eviction strategies. </p>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>The <code class="docutils literal notranslate"><span class="pre">score</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. On <code class="docutils literal notranslate"><span class="pre">kLru</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> parameter of the APIs should keep <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key is assigned internally in LRU(Least Recently Used) policy. On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be provided by caller.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">Score</span></code> concept is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. On <code class="docutils literal notranslate"><span class="pre">kLru</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> parameter of the APIs should keep <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key is assigned internally in LRU(Least Recently Used) policy. On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code> mode, the <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be provided by caller.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
@@ -116,15 +116,27 @@
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>For <code class="docutils literal notranslate"><span class="pre">kEpochLru</span></code> and <code class="docutils literal notranslate"><span class="pre">kEpochLfu</span></code>, the high 32bits would be set to <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code> while the low 32 bits is <code class="docutils literal notranslate"><span class="pre">timestamp</span></code> or <code class="docutils literal notranslate"><span class="pre">frequency</span></code>.</p>
+<p>on <code class="docutils literal notranslate"><span class="pre">kLfu</span></code>, Frequency increment provided by caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs as the increment of frequency. when the scores reaches to the max of <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>, it will not increase any more.</p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>on <code class="docutils literal notranslate"><span class="pre">kLFU</span></code>, when the scores reaches to the max of <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>, it will not increase any more.</p>
+<p>On <code class="docutils literal notranslate"><span class="pre">kEpochLru</span></code>, the high 32bits is the global epoch provided via the input parameter of <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code>, the low 32bits is equal to <code class="docutils literal notranslate"><span class="pre">(device_clock</span> <span class="pre">&lt;blockquote&gt;&lt;blockquote&gt;20)</span> <span class="pre">&amp;</span> <span class="pre">0xffffffff</span></code> with granularity close to 1 ms. </p>
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
-<p>on <code class="docutils literal notranslate"><span class="pre">kLkEpochLfu</span></code>, when the lower 32bit stand for frequency reaches to the max of <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code>, it will not increase any more. </p>
+<p>On <code class="docutils literal notranslate"><span class="pre">kEpochLfu</span></code>, the high 32bits is the global epoch provided via the input parameter of <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code>, the low 32bits is the frequency, the frequency will keep constant after reaching the max value of <code class="docutils literal notranslate"><span class="pre">0xffffffff</span></code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code>, fully provided by the caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs. </p>
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-functions">Public Static Functions</p>
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t">
+<span id="_CPPv3N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t"></span><span id="_CPPv2N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t"></span><span id="nv::merlin::EvictStrategy::set_global_epoch__uint64_tC"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a5f99db07cd93691ab2e6a6e60a2b84db"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">set_global_epoch</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <span class="pre">uint64_t</span> <em><span class="pre">epoch</span></em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
 </div>
 <div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-attributes">Public Static Attributes</p>
@@ -143,13 +155,13 @@
 <dl class="cpp var">
 <dt id="_CPPv4N2nv6merlin13EvictStrategy9kEpochLruE">
 <span id="_CPPv3N2nv6merlin13EvictStrategy9kEpochLruE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy9kEpochLruE"></span><span id="nv::merlin::EvictStrategy::kEpochLru__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a642751a4cf5008d31a35d2c4362eb9ad"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kEpochLru</span></code> <span class="pre">=</span> <span class="pre">2</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy9kEpochLruE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Epoch(High 32bits) + LRU(Low 32bits) mode. </p>
+<dd><p>Epoch Lru mode. </p>
 </dd></dl>
 
 <dl class="cpp var">
 <dt id="_CPPv4N2nv6merlin13EvictStrategy9kEpochLfuE">
 <span id="_CPPv3N2nv6merlin13EvictStrategy9kEpochLfuE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy9kEpochLfuE"></span><span id="nv::merlin::EvictStrategy::kEpochLfu__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a11179796050916611d7c7c499269c763"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kEpochLfu</span></code> <span class="pre">=</span> <span class="pre">3</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy9kEpochLfuE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Epoch(High 32bits) + LFU(Low 32bits) mode. </p>
+<dd><p>Epoch Lfu mode. </p>
 </dd></dl>
 
 <dl class="cpp var">

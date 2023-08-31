@@ -216,7 +216,7 @@ The <code class="docutils literal notranslate"><span class="pre">score_type</spa
 <td class="text-left"><p>Device clock in a nanosecond, which could differ slightly from host clock.</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>Lfu</strong></p></td>
-<td class="text-left"><p>Frequency provided by caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs as the increment of frequency.</p></td>
+<td class="text-left"><p>Frequency increment provided by caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs as the increment of frequency.</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>EpochLru</strong></p></td>
 <td class="text-left"><p>The high 32bits is the global epoch provided via the input parameter of <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code>, <br>the low 32bits is equal to <code class="docutils literal notranslate"><span class="pre">(device_clock</span> <span class="pre">&gt;&gt;</span> <span class="pre">20)</span> <span class="pre">&amp;</span> <span class="pre">0xffffffff</span></code> with granularity close to 1 ms.</p></td>
