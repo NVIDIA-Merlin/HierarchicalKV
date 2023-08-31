@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>File merlin_hashtable.cuh &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/banner.css" type="text/css" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/file_merlin_hashtable.cuh.html" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="../_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+  <div class="banner">
+    <p class="banner">
+      Beginning in January 2023, versions for all NVIDIA Merlin projects
+      will change from semantic versioning like <code>4.0</code>
+      to calendar versioning like <code>23.01</code>.</p>
+  </div>
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Introduction</a></li>
+<li class="toctree-l1"><a class="reference internal" href="index.html">API Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">File merlin_hashtable.cuh</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="file-merlin-hashtable-cuh">
+<span id="id1"></span><h1>File merlin_hashtable.cuh<a class="headerlink" href="#file-merlin-hashtable-cuh" title="Permalink to this headline"></a></h1>
+<div class="contents local topic" id="contents">
+<p class="topic-title">Contents</p>
+<ul class="simple">
+<li><p><a class="reference internal" href="#definition-merlin-hashtable-cuh" id="id2">Definition (<code class="docutils literal notranslate"><span class="pre">merlin_hashtable.cuh</span></code>)</a></p></li>
+<li><p><a class="reference internal" href="#includes" id="id3">Includes</a></p></li>
+<li><p><a class="reference internal" href="#namespaces" id="id4">Namespaces</a></p></li>
+<li><p><a class="reference internal" href="#classes" id="id5">Classes</a></p></li>
+<li><p><a class="reference internal" href="#enums" id="id6">Enums</a></p></li>
+<li><p><a class="reference internal" href="#typedefs" id="id7">Typedefs</a></p></li>
+<li><p><a class="reference internal" href="#variables" id="id8">Variables</a></p></li>
+</ul>
+</div>
+<div class="section" id="definition-merlin-hashtable-cuh">
+<h2>Definition (<code class="docutils literal notranslate"><span class="pre">merlin_hashtable.cuh</span></code>)<a class="headerlink" href="#definition-merlin-hashtable-cuh" title="Permalink to this headline"></a></h2>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="program_listing_file_merlin_hashtable.cuh.html">Program Listing for File merlin_hashtable.cuh</a></li>
+</ul>
+</div>
+</div>
+<div class="section" id="includes">
+<h2>Includes<a class="headerlink" href="#includes" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">atomic</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">cstdint</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">limits</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">memory</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/allocator.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/array_kernels.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/core_kernels.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/flexible_buffer.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/group_lock.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/memory_pool.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/types.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">merlin/utils.cuh</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">mutex</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">shared_mutex</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">thrust/device_vector.h</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">thrust/execution_policy.h</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">thrust/sort.h</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">type_traits</span></code></p></li>
+</ul>
+</div>
+<div class="section" id="namespaces">
+<h2>Namespaces<a class="headerlink" href="#namespaces" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="namespace_nv.html#namespace-nv"><span class="std std-ref">Namespace nv</span></a></p></li>
+<li><p><a class="reference internal" href="namespace_nv__merlin.html#namespace-nv-merlin"><span class="std std-ref">Namespace nv::merlin</span></a></p></li>
+</ul>
+</div>
+<div class="section" id="classes">
+<h2>Classes<a class="headerlink" href="#classes" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="structnv_1_1merlin_1_1HashTableOptions.html#exhale-struct-structnv-1-1merlin-1-1hashtableoptions"><span class="std std-ref">Struct HashTableOptions</span></a></p></li>
+<li><p><a class="reference internal" href="classnv_1_1merlin_1_1HashTable.html#exhale-class-classnv-1-1merlin-1-1hashtable"><span class="std std-ref">Template Class HashTable</span></a></p></li>
+</ul>
+</div>
+<div class="section" id="enums">
+<h2>Enums<a class="headerlink" href="#enums" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015.html#exhale-enum-merlin-hashtable-8cuh-1a8c9f1dcaae52c7049c17f0999ad62015"><span class="std std-ref">Enum EvictStrategy</span></a></p></li>
+</ul>
+</div>
+<div class="section" id="typedefs">
+<h2>Typedefs<a class="headerlink" href="#typedefs" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="typedef_merlin__hashtable_8cuh_1a5001706db6e977358e7f76ad6773703a.html#exhale-typedef-merlin-hashtable-8cuh-1a5001706db6e977358e7f76ad6773703a"><span class="std std-ref">Typedef nv::merlin::EraseIfPredict</span></a></p></li>
+</ul>
+</div>
+<div class="section" id="variables">
+<h2>Variables<a class="headerlink" href="#variables" title="Permalink to this headline"></a></h2>
+<ul class="simple">
+<li><p><a class="reference internal" href="variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html#exhale-variable-merlin-hashtable-8cuh-1a359fe56354918308560f46cb3136a3da"><span class="std std-ref">Variable nv::merlin::thrust_par</span></a></p></li>
+</ul>
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2022, NVIDIA.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+    <!-- Theme Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-NVJ1Y1YJHK"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-NVJ1Y1YJHK', {
+          'anonymize_ip': false,
+      });
+    </script> 
+
+</body>
+</html>
