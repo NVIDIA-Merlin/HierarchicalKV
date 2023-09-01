@@ -401,7 +401,6 @@ Program Listing for File merlin_hashtable.cuh
    
        CUDA_CHECK(
            cudaMemsetAsync(d_evicted_counter, 0, sizeof(size_type), stream));
-       EvictStrategy::set_global_epoch(static_cast<S>(IGNORED_GLOBAL_EPOCH));
        insert_and_evict(n, keys, values, scores, evicted_keys, evicted_values,
                         evicted_scores, d_evicted_counter, stream, unique_key,
                         ignore_evict_strategy);
