@@ -1331,6 +1331,16 @@
 <span class="w">                   </span><span class="s">&quot;the scores should be specified when running on &quot;</span>
 <span class="w">                   </span><span class="s">&quot;customized mode.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">((</span><span class="n">evict_strategy</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">EvictStrategy</span><span class="o">::</span><span class="n">kEpochLru</span><span class="w"> </span><span class="o">||</span>
+<span class="w">         </span><span class="n">evict_strategy</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">EvictStrategy</span><span class="o">::</span><span class="n">kEpochLfu</span><span class="p">))</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">          </span><span class="n">EvictStrategyParam</span><span class="p">.</span><span class="n">global_epoch</span><span class="w"> </span><span class="o">!=</span>
+<span class="w">              </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="n">S</span><span class="o">&gt;</span><span class="p">(</span><span class="n">IGNORED_GLOBAL_EPOCH</span><span class="p">),</span>
+<span class="w">          </span><span class="s">&quot;the global_epoch is invalid and should be assigned by calling &quot;</span>
+<span class="w">          </span><span class="s">&quot;`EvictStrategy::set_global_epoch` when running on &quot;</span>
+<span class="w">          </span><span class="s">&quot;Epoch LRU or Epoch LFU mode.&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
 <span class="w">  </span><span class="p">}</span>
 
 <span class="w">  </span><span class="kr">inline</span><span class="w"> </span><span class="kt">void</span><span class="w"> </span><span class="n">sync_table_configuration</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>

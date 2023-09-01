@@ -1255,6 +1255,16 @@ Program Listing for File merlin_hashtable.cuh
                       "the scores should be specified when running on "
                       "customized mode.");
        }
+   
+       if ((evict_strategy == EvictStrategy::kEpochLru ||
+            evict_strategy == EvictStrategy::kEpochLfu)) {
+         MERLIN_CHECK(
+             EvictStrategyParam.global_epoch !=
+                 static_cast<S>(IGNORED_GLOBAL_EPOCH),
+             "the global_epoch is invalid and should be assigned by calling "
+             "`EvictStrategy::set_global_epoch` when running on "
+             "Epoch LRU or Epoch LFU mode.");
+       }
      }
    
      inline void sync_table_configuration() {
