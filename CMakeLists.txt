@@ -126,7 +126,7 @@ target_compile_features(dynamic_max_capacity_test PUBLIC cxx_std_14)
 set_target_properties(dynamic_max_capacity_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(dynamic_max_capacity_test gtest_main)
 
-add_executable(group_lock_test tests/group_lock_test.cc)
+add_executable(group_lock_test tests/group_lock_test.cc.cu)
 target_compile_features(group_lock_test PUBLIC cxx_std_14)
 set_target_properties(group_lock_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(group_lock_test gtest_main)

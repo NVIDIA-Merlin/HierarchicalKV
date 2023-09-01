@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-#include "merlin/group_lock.hpp"
 #include <gtest/gtest.h>
 #include <chrono>
 #include <system_error>
 #include <thread>
 #include <vector>
+#include "merlin/group_lock.cuh"
 
 using namespace nv::merlin;
 using namespace std::chrono_literals;
@@ -71,7 +71,7 @@ TEST(GroupSharedMutexTest, BasicFunctionality) {
   ASSERT_EQ(mutex.writer_count(), 0);
 }
 
-TEST(GroupSharedMutexTest, AdvancedFunctionality) {
+TEST(GroupSharedMutexTest, AdvancedFunctionalitySingleStream) {
   group_shared_mutex mutex;
   bool multiple_reader = false;
   bool multiple_writer = false;
@@ -108,6 +108,80 @@ TEST(GroupSharedMutexTest, AdvancedFunctionality) {
       ASSERT_EQ(mutex.reader_count(), 1);
       ASSERT_EQ(mutex.reader_count(), 1);
       std::this_thread::sleep_for(100ms);
+    });
+  }
+
+  for (auto& th : readers) {
+    th.join();
+  }
+
+  for (auto& th : writers) {
+    th.join();
+  }
+
+  for (auto& th : uniques) {
+    th.join();
+  }
+
+  EXPECT_TRUE(multiple_writer);
+  EXPECT_TRUE(multiple_reader);
+}
+
+TEST(GroupSharedMutexTest, AdvancedFunctionalityMultiStream) {
+  group_shared_mutex mutex;
+  bool multiple_reader = false;
+  bool multiple_writer = false;
+
+  // Test multiple readers
+  std::vector<std::thread> readers;
+  for (int i = 0; i < 50; ++i) {
+    readers.emplace_back([&]() {
+      cudaStream_t stream;
+      CUDA_CHECK(cudaStreamCreate(&stream));
+
+      reader_shared_lock reader(mutex);
+      EXPECT_TRUE(mutex.reader_count() > 0);
+      if (mutex.reader_count() > 1) multiple_reader = true;
+      std::this_thread::sleep_for(1000ms);
+      ASSERT_EQ(mutex.writer_count(), 0);
+
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      CUDA_CHECK(cudaStreamDestroy(stream));
+    });
+  }
+
+  // Test multiple writers
+  std::vector<std::thread> writers;
+  for (int i = 0; i < 50; ++i) {
+    writers.emplace_back([&]() {
+      cudaStream_t stream;
+      CUDA_CHECK(cudaStreamCreate(&stream));
+
+      writer_shared_lock writer(mutex);
+      EXPECT_TRUE(mutex.writer_count() > 0);
+      if (mutex.writer_count() > 1) multiple_writer = true;
+      std::this_thread::sleep_for(1000ms);
+      ASSERT_EQ(mutex.reader_count(), 0);
+
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      CUDA_CHECK(cudaStreamDestroy(stream));
+    });
+  }
+
+  // Test multiple uniques
+  std::vector<std::thread> uniques;
+  for (int i = 0; i < 50; ++i) {
+    uniques.emplace_back([&]() {
+      cudaStream_t stream;
+      CUDA_CHECK(cudaStreamCreate(&stream));
+
+      write_read_lock unique(mutex);
+      ASSERT_EQ(mutex.reader_count(), 1);
+      ASSERT_EQ(mutex.reader_count(), 1);
+      std::this_thread::sleep_for(100ms);
+
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      CUDA_CHECK(cudaStreamDestroy(stream));
     });
   }
 
