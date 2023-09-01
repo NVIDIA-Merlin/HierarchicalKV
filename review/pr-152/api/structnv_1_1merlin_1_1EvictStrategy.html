@@ -116,6 +116,10 @@
 </div>
 <div class="admonition note">
 <p class="admonition-title">Note</p>
+<p>For <code class="docutils literal notranslate"><span class="pre">kEpochLru</span></code> and <code class="docutils literal notranslate"><span class="pre">kEpochLfu</span></code>, the high 32bits would be set to <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code> while the low 32 bits is <code class="docutils literal notranslate"><span class="pre">timestamp</span></code> or <code class="docutils literal notranslate"><span class="pre">frequency</span></code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
 <p>on <code class="docutils literal notranslate"><span class="pre">kLfu</span></code>, Frequency increment provided by caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs as the increment of frequency. when the scores reaches to the max of <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>, it will not increase any more.</p>
 </div>
 <div class="admonition note">
