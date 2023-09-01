@@ -30,7 +30,7 @@
 #include "merlin/array_kernels.cuh"
 #include "merlin/core_kernels.cuh"
 #include "merlin/flexible_buffer.cuh"
-#include "merlin/group_lock.hpp"
+#include "merlin/group_lock.cuh"
 #include "merlin/memory_pool.cuh"
 #include "merlin/types.cuh"
 #include "merlin/utils.cuh"
@@ -52,6 +52,9 @@ namespace merlin {
  *
  * @note on `kLru`, Set the score to the Device clock in a nanosecond, which
  * could differ slightly from the host clock.
+ *
+ * @note For `kEpochLru` and `kEpochLfu`, the high 32bits would be set to
+ * `global_epoch` while the low 32 bits is `timestamp` or `frequency`.
  *
  * @note on `kLfu`, Frequency increment provided by caller via the input
  * parameter of `scores` of `insert-like` APIs as the increment of frequency.
@@ -347,7 +350,7 @@ class HashTable {
       check_evict_strategy(scores);
     }
 
-    writer_shared_lock lock(mutex_);
+    writer_shared_lock lock(mutex_, stream);
 
     if (is_fast_mode()) {
       using Selector = SelectUpsertKernelWithIO<key_type, value_type,
@@ -490,7 +493,7 @@ class HashTable {
       check_evict_strategy(scores);
     }
 
-    writer_shared_lock lock(mutex_);
+    writer_shared_lock lock(mutex_, stream);
 
     // TODO: Currently only need eviction when using HashTable as HBM cache.
     if (!is_fast_mode()) {
@@ -689,7 +692,7 @@ class HashTable {
       check_evict_strategy(scores);
     }
 
-    writer_shared_lock lock(mutex_);
+    writer_shared_lock lock(mutex_, stream);
 
     const size_type dev_ws_size{
         n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -768,7 +771,7 @@ class HashTable {
       check_evict_strategy(scores);
     }
 
-    writer_shared_lock lock(mutex_);
+    writer_shared_lock lock(mutex_, stream);
 
     if (is_fast_mode()) {
       using Selector =
@@ -894,7 +897,7 @@ class HashTable {
       check_evict_strategy(scores);
     }
 
-    writer_shared_lock lock(mutex_);
+    writer_shared_lock lock(mutex_, stream);
 
     using Selector = SelectFindOrInsertPtrKernel<key_type, value_type,
                                                  score_type, evict_strategy>;
@@ -944,7 +947,7 @@ class HashTable {
       return;
     }
 
-    writer_shared_lock lock(mutex_);
+    writer_shared_lock lock(mutex_, stream);
 
     if (is_fast_mode()) {
       static thread_local int step_counter = 0;
@@ -1060,7 +1063,7 @@ class HashTable {
 
     CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
 
-    reader_shared_lock lock(mutex_);
+    reader_shared_lock lock(mutex_, stream);
 
     const uint32_t value_size = options_.dim * sizeof(V);
 
@@ -1164,7 +1167,7 @@ class HashTable {
 
     CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
 
-    reader_shared_lock lock(mutex_);
+    reader_shared_lock lock(mutex_, stream);
 
     using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
     static thread_local int step_counter = 0;
@@ -1194,7 +1197,7 @@ class HashTable {
       return;
     }
 
-    write_read_lock lock(mutex_);
+    write_read_lock lock(mutex_, stream);
 
     {
       const size_t block_size = options_.block_size;
@@ -1245,7 +1248,7 @@ class HashTable {
   template <template <typename, typename> class PredFunctor>
   size_type erase_if(const key_type& pattern, const score_type& threshold,
                      cudaStream_t stream = 0) {
-    write_read_lock lock(mutex_);
+    write_read_lock lock(mutex_, stream);
 
     auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
     auto d_count{dev_ws.get<size_type*>(0)};
@@ -1278,7 +1281,7 @@ class HashTable {
    * object.
    */
   void clear(cudaStream_t stream = 0) {
-    write_read_lock lock(mutex_);
+    write_read_lock lock(mutex_, stream);
 
     const size_t block_size = options_.block_size;
     const size_t N = table_->buckets_num * table_->bucket_max_size;
@@ -1320,7 +1323,7 @@ class HashTable {
                     value_type* values,            // (n, DIM)
                     score_type* scores = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
-    reader_shared_lock lock(mutex_);
+    reader_shared_lock lock(mutex_, stream);
 
     CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
     if (offset >= table_->capacity) {
@@ -1413,7 +1416,7 @@ class HashTable {
                        value_type* values,            // (n, DIM)
                        score_type* scores = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
-    reader_shared_lock lock(mutex_);
+    reader_shared_lock lock(mutex_, stream);
     CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
 
     if (offset >= table_->capacity) {
@@ -1456,7 +1459,7 @@ class HashTable {
    * @return The table size.
    */
   size_type size(cudaStream_t stream = 0) const {
-    reader_shared_lock lock(mutex_);
+    reader_shared_lock lock(mutex_, stream);
 
     size_type h_size = 0;
 
@@ -1508,7 +1511,7 @@ class HashTable {
     }
 
     {
-      write_read_lock lock(mutex_);
+      write_read_lock lock(mutex_, stream);
 
       // Once we have exclusive access, make sure that pending GPU calls have
       // been processed.
@@ -1618,7 +1621,7 @@ class HashTable {
         dump_kernel_shared_memory_size<K, V, S>(shared_mem_size_);
 
     // Request exclusive access (to make sure capacity won't change anymore).
-    write_read_lock lock(mutex_);
+    write_read_lock lock(mutex_, stream);
 
     const size_type total_size{capacity()};
     const size_type n{std::min(max_workspace_size / tuple_size, total_size)};
@@ -1778,7 +1781,7 @@ class HashTable {
   inline float fast_load_factor(const size_type delta = 0,
                                 cudaStream_t stream = 0,
                                 const bool need_lock = true) const {
-    reader_shared_lock lock(mutex_, std::defer_lock);
+    reader_shared_lock lock(mutex_, std::defer_lock, stream);
     if (need_lock) {
       lock.lock();
     }
