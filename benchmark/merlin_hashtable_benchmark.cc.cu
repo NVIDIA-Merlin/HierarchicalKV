@@ -73,8 +73,13 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
 
   CUDA_CHECK(cudaMemset(h_vectors, 0, key_num_per_op * sizeof(V) * dim));
 
+  bool need_scores = (Table::evict_strategy == EvictStrategy::kLfu ||
+                      Table::evict_strategy == EvictStrategy::kEpochLfu ||
+                      Table::evict_strategy == EvictStrategy::kCustomized);
+
   K* d_keys;
-  S* d_scores = nullptr;
+  S* d_scores_real;
+  S* d_scores;
   V* d_vectors;
   V* d_def_val;
   V** d_vectors_ptr;
@@ -85,6 +90,7 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
   S* d_evict_scores;
 
   CUDA_CHECK(cudaMalloc(&d_keys, key_num_per_op * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_scores_real, key_num_per_op * sizeof(S)));
   CUDA_CHECK(cudaMalloc(&d_vectors, key_num_per_op * sizeof(V) * dim));
   CUDA_CHECK(cudaMalloc(&d_def_val, key_num_per_op * sizeof(V) * dim));
   CUDA_CHECK(cudaMalloc(&d_vectors_ptr, key_num_per_op * sizeof(V*)));
@@ -98,6 +104,8 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
   CUDA_CHECK(cudaMemset(d_def_val, 2, key_num_per_op * sizeof(V) * dim));
   CUDA_CHECK(cudaMemset(d_vectors_ptr, 0, key_num_per_op * sizeof(V*)));
   CUDA_CHECK(cudaMemset(d_found, 0, key_num_per_op * sizeof(bool)));
+
+  d_scores = need_scores ? d_scores_real : nullptr;
 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
@@ -114,11 +122,16 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
   K start = 0UL;
 
   S threshold = benchmark::host_nano<S>();
-  for (int i = 0; i < loop_num_init; i++) {
+  int global_epoch = 0;
+  for (; global_epoch < loop_num_init; global_epoch++) {
+    EvictStrategy::set_global_epoch(global_epoch);
     uint64_t key_num_cur_insert =
-        i == loop_num_init - 1 ? key_num_remain : key_num_per_op;
+        global_epoch == loop_num_init - 1 ? key_num_remain : key_num_per_op;
     create_continuous_keys<K, S>(h_keys, h_scores, key_num_cur_insert, start);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_cur_insert * sizeof(K),
+                          cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_scores_real, h_scores,
+                          key_num_cur_insert * sizeof(S),
                           cudaMemcpyHostToDevice));
     table->find_or_insert(key_num_cur_insert, d_keys, d_vectors_ptr, d_found,
                           d_scores, stream);
@@ -139,6 +152,8 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
     create_continuous_keys<K, S>(h_keys, h_scores, key_num_append, start);
     CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_append * sizeof(K),
                           cudaMemcpyHostToDevice));
+    CUDA_CHECK(cudaMemcpy(d_scores_real, h_scores, key_num_append * sizeof(S),
+                          cudaMemcpyHostToDevice));
     table->insert_or_assign(key_num_append, d_keys, d_vectors, d_scores,
                             stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -149,7 +164,8 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
 
   // For trigger the kernel selection in advance.
   int key_num_per_op_warmup = 1;
-  for (int i = 0; i < 9; i++) {
+  for (int i = 0; i < 9; i++, global_epoch++) {
+    EvictStrategy::set_global_epoch(global_epoch);
     switch (api) {
       case API_Select::find: {
         table->find(key_num_per_op_warmup, d_keys, d_vectors, d_found, d_scores,
@@ -246,7 +262,11 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
                                 Hit_Mode::last_insert, start, true /*reset*/);
   CUDA_CHECK(cudaMemcpy(d_keys, h_keys, key_num_per_op * sizeof(K),
                         cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_scores_real, h_scores, key_num_per_op * sizeof(K),
+                        cudaMemcpyHostToDevice));
   auto timer = benchmark::Timer<double>();
+  global_epoch++;
+  EvictStrategy::set_global_epoch(global_epoch);
   switch (api) {
     case API_Select::find: {
       timer.start();
@@ -369,6 +389,7 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
   CUDA_CHECK(cudaFreeHost(h_found));
 
   CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_scores_real));
   CUDA_CHECK(cudaFree(d_vectors));
   CUDA_CHECK(cudaFree(d_def_val));
   CUDA_CHECK(cudaFree(d_vectors_ptr));

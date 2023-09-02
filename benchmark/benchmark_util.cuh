@@ -106,10 +106,10 @@ inline uint64_t getTimestamp() {
 
 template <class K, class S>
 void create_continuous_keys(K* h_keys, S* h_scores, const int key_num_per_op,
-                            const K start = 0) {
+                            const K start = 0, int freq_range = 1000) {
   for (K i = 0; i < key_num_per_op; i++) {
     h_keys[i] = start + static_cast<K>(i);
-    if (h_scores != nullptr) h_scores[i] = getTimestamp();
+    if (h_scores != nullptr) h_scores[i] = h_keys[i] % freq_range;
   }
 }
 
@@ -135,7 +135,8 @@ template <typename K, typename S>
 void create_keys_for_hitrate(K* h_keys, S* h_scores, const int key_num_per_op,
                              const float hitrate = 0.6f,
                              const Hit_Mode hit_mode = Hit_Mode::last_insert,
-                             const K end = 0, const bool reset = false) {
+                             const K end = 0, const bool reset = false,
+                             int freq_range = 1000) {
   int divide = static_cast<int>(key_num_per_op * hitrate);
   if (Hit_Mode::random == hit_mode) {
     std::random_device rd;
@@ -154,13 +155,13 @@ void create_keys_for_hitrate(K* h_keys, S* h_scores, const int key_num_per_op,
     int i = 0;
     for (auto existed_value : numbers) {
       h_keys[i] = existed_value;
-      if (h_scores != nullptr) h_scores[i] = getTimestamp();
+      if (h_scores != nullptr) h_scores[i] = h_keys[i] % freq_range;
       i++;
     }
   } else {
     // else keep its original value, but update scores
     for (int i = 0; i < divide; i++) {
-      if (h_scores != nullptr) h_scores[i] = getTimestamp();
+      if (h_scores != nullptr) h_scores[i] = getTimestamp() % freq_range;
     }
   }
 
@@ -170,7 +171,7 @@ void create_keys_for_hitrate(K* h_keys, S* h_scores, const int key_num_per_op,
   }
   for (int i = divide; i < key_num_per_op; i++) {
     h_keys[i] = new_value--;
-    if (h_scores != nullptr) h_scores[i] = getTimestamp();
+    if (h_scores != nullptr) h_scores[i] = getTimestamp() % freq_range;
   }
 }
 
