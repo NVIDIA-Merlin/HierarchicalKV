@@ -23,16 +23,17 @@ namespace merlin {
 
 // Use 1 thread to deal with a KV-pair, including copying value.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128>
+          typename VecV = byte16, uint32_t BLOCK_SIZE = 128, int Strategy = -1>
 __global__ void tlp_v1_upsert_and_evict_kernel_unique(
     Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, uint32_t bucket_capacity, const uint32_t dim,
     const K* __restrict__ keys, const VecV* __restrict__ values,
     const S* __restrict__ scores, K* __restrict__ evicted_keys,
     VecV* __restrict__ evicted_values, S* __restrict__ evicted_scores,
-    uint64_t n, uint64_t* __restrict__ evicted_counter) {
+    uint64_t n, uint64_t* __restrict__ evicted_counter, const S global_epoch) {
   using BUCKET = Bucket<K, V, S>;
   using CopyValue = CopyValueMultipleGroup<VecV, 1>;
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   // bucket_capacity is a multiple of 4.
   constexpr uint32_t STRIDE_S = 4;
@@ -54,7 +55,7 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
   uint32_t bucket_size{0};
   if (kv_idx < n) {
     key = keys[kv_idx];
-    score = scores != nullptr ? scores[kv_idx] : static_cast<S>(MAX_SCORE);
+    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
     if (!IS_RESERVED_KEY(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
@@ -114,9 +115,9 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
         key_pos = possible_pos;
-        score = scores == nullptr ? device_nano<S>() : score;
-        update_score_digest<K, V, S>(bucket_keys_ptr, bucket_capacity, key_pos,
-                                     key, score);
+        ScoreFunctor::update_with_digest(
+            bucket_keys_ptr, key_pos, scores, kv_idx, score, bucket_capacity,
+            get_digest<K>(key), (occupy_result != OccupyResult::DUPLICATE));
         break;
       } else if (bucket_size == bucket_capacity) {
         continue;
@@ -139,9 +140,9 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
       if (result) {
         occupy_result = OccupyResult::OCCUPIED_EMPTY;
         key_pos = possible_pos;
-        score = scores == nullptr ? device_nano<S>() : score;
-        update_score_digest<K, V, S>(bucket_keys_ptr, bucket_capacity, key_pos,
-                                     key, score);
+        ScoreFunctor::update_with_digest(
+            bucket_keys_ptr, key_pos, scores, kv_idx, score, bucket_capacity,
+            get_digest<K>(key), (occupy_result != OccupyResult::DUPLICATE));
         atomicAdd(bucket_size_ptr, 1);
         break;
       }
@@ -187,7 +188,7 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
         }
       }
     }
-    score = scores == nullptr ? device_nano<S>() : score;
+    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
     if (score < min_score) {
       occupy_result = OccupyResult::REFUSED;
       evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx, key,
@@ -210,9 +211,10 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
             verify_score_ptr->load(cuda::std::memory_order_relaxed);
         if (verify_score <= min_score) {
           key_pos = min_pos;
-          score = scores == nullptr ? device_nano<S>() : score;
-          update_score_digest<K, V, S>(bucket_keys_ptr, bucket_capacity,
-                                       key_pos, key, score);
+          ScoreFunctor::update_with_digest(
+              bucket_keys_ptr, key_pos, scores, kv_idx, score, bucket_capacity,
+              get_digest<K>(key), (occupy_result != OccupyResult::DUPLICATE));
+
           if (expected_key == static_cast<K>(RECLAIM_KEY)) {
             occupy_result = OccupyResult::OCCUPIED_RECLAIMED;
             atomicAdd(bucket_size_ptr, 1);
@@ -248,16 +250,17 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
 // Use 1 thread to deal with a KV-pair, but use a threads group cto copy value.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
           typename VecV = byte16, uint32_t BLOCK_SIZE = 128,
-          uint32_t GROUP_SIZE = 16>
+          uint32_t GROUP_SIZE = 16, int Strategy = -1>
 __global__ void tlp_v2_upsert_and_evict_kernel_unique(
     Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, uint32_t bucket_capacity, const uint32_t dim,
     const K* __restrict__ keys, const VecV* __restrict__ values,
     const S* __restrict__ scores, K* __restrict__ evicted_keys,
     VecV* __restrict__ evicted_values, S* __restrict__ evicted_scores,
-    uint64_t n, uint64_t* __restrict__ evicted_counter) {
+    uint64_t n, uint64_t* __restrict__ evicted_counter, const S global_epoch) {
   using BUCKET = Bucket<K, V, S>;
   using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   // bucket_capacity is a multiple of 4.
   constexpr uint32_t STRIDE_S = 4;
@@ -281,7 +284,7 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
   uint32_t bucket_size{0};
   if (kv_idx < n) {
     key = keys[kv_idx];
-    score = scores != nullptr ? scores[kv_idx] : static_cast<S>(MAX_SCORE);
+    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
     if (!IS_RESERVED_KEY(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
@@ -341,9 +344,9 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
         key_pos = possible_pos;
-        score = scores == nullptr ? device_nano<S>() : score;
-        update_score_digest<K, V, S>(bucket_keys_ptr, bucket_capacity, key_pos,
-                                     key, score);
+        ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
+                                         kv_idx, score, bucket_capacity,
+                                         get_digest<K>(key), false);
         break;
       } else if (bucket_size == bucket_capacity) {
         continue;
@@ -366,9 +369,9 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
       if (result) {
         occupy_result = OccupyResult::OCCUPIED_EMPTY;
         key_pos = possible_pos;
-        score = scores == nullptr ? device_nano<S>() : score;
-        update_score_digest<K, V, S>(bucket_keys_ptr, bucket_capacity, key_pos,
-                                     key, score);
+        ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
+                                         kv_idx, score, bucket_capacity,
+                                         get_digest<K>(key), true);
         atomicAdd(bucket_size_ptr, 1);
         break;
       }
@@ -420,7 +423,7 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
         }
       }
     }
-    score = scores == nullptr ? device_nano<S>() : score;
+    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
     if (score < min_score) {
       occupy_result = OccupyResult::REFUSED;
       evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx, key,
@@ -443,9 +446,9 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
             verify_score_ptr->load(cuda::std::memory_order_relaxed);
         if (verify_score <= min_score) {
           key_pos = min_pos;
-          score = scores == nullptr ? device_nano<S>() : score;
-          update_score_digest<K, V, S>(bucket_keys_ptr, bucket_capacity,
-                                       key_pos, key, score);
+          ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
+                                           kv_idx, score, bucket_capacity,
+                                           get_digest<K>(key), true);
           if (expected_key == static_cast<K>(RECLAIM_KEY)) {
             occupy_result = OccupyResult::OCCUPIED_RECLAIMED;
             atomicAdd(bucket_size_ptr, 1);
@@ -596,14 +599,14 @@ struct SharedMemoryManager_Pipeline_UpsertAndEvict {
 };
 
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128>
+          typename VecV = byte16, uint32_t BLOCK_SIZE = 128, int Strategy = -1>
 __global__ void pipeline_upsert_and_evict_kernel_unique(
     Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, const uint32_t dim, const K* __restrict__ keys,
     const VecV* __restrict__ values, const S* __restrict__ scores,
     K* __restrict__ evicted_keys, VecV* __restrict__ evicted_values,
     S* __restrict__ evicted_scores, uint64_t n,
-    uint64_t* __restrict__ evicted_counter) {
+    uint64_t* __restrict__ evicted_counter, const S global_epoch) {
   // Here, GROUP_SIZE * Comp_LEN = BUCKET_SIZE.
   constexpr uint32_t BUCKET_SIZE = 128;
   constexpr uint32_t GROUP_SIZE = 32;
@@ -616,6 +619,7 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
   using SMM =
       SharedMemoryManager_Pipeline_UpsertAndEvict<K, V, S, VecV, BLOCK_SIZE,
                                                   GROUP_SIZE, BUCKET_SIZE>;
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   extern __shared__ __align__(sizeof(byte16)) byte smem[];
 
@@ -730,10 +734,12 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
         if (rank == i) {
           occupy_result = OccupyResult::DUPLICATE;
           S* sm_param_scores = SMM::param_scores(smem);
-          S score = scores == nullptr ? device_nano<S>() : sm_param_scores[tx];
           key_pos = possible_pos;
-          update_score_digest<K, V, S>(bucket_keys_ptr, BUCKET_SIZE, key_pos,
-                                       key, score);
+          S score = ScoreFunctor::desired_when_missed(sm_param_scores, tx,
+                                                      global_epoch);
+          ScoreFunctor::update_with_digest(
+              bucket_keys_ptr, key_pos, sm_param_scores, tx, score, BUCKET_SIZE,
+              get_digest<K>(key), false);
         }
       } else if (bucket_size_cur < BUCKET_SIZE) {
         VecD_Comp empty_digests_ = empty_digests<K>();
@@ -763,13 +769,14 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
             if (rank == i) {
               occupy_result = OccupyResult::OCCUPIED_EMPTY;
               S* sm_param_scores = SMM::param_scores(smem);
-              S score =
-                  scores == nullptr ? device_nano<S>() : sm_param_scores[tx];
+              S score = ScoreFunctor::desired_when_missed(sm_param_scores, tx,
+                                                          global_epoch);
               int** sm_buckets_size_ptr = SMM::buckets_size_ptr(smem);
               int* bucket_size_ptr = sm_buckets_size_ptr[tx];
               key_pos = possible_pos;
-              update_score_digest<K, V, S>(bucket_keys_ptr, BUCKET_SIZE,
-                                           key_pos, key, score);
+              ScoreFunctor::update_with_digest(
+                  bucket_keys_ptr, key_pos, sm_param_scores, tx, score,
+                  BUCKET_SIZE, get_digest<K>(key), true);
               atomicAdd(bucket_size_ptr, 1);
             }
             break;
@@ -796,8 +803,8 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
       occupy_result_cur = g.shfl(occupy_result, i - 1);
       uint32_t tx_cur = groupID * GROUP_SIZE + i - 1;
       S* sm_param_scores = SMM::param_scores(smem);
-      S score_cur =
-          scores == nullptr ? device_nano<S>() : sm_param_scores[tx_cur];
+      S score_cur = ScoreFunctor::desired_when_missed(sm_param_scores, tx_cur,
+                                                      global_epoch);
       int** sm_buckets_size_ptr = SMM::buckets_size_ptr(smem);
       auto bucket_size_ptr = sm_buckets_size_ptr[tx_cur];
       __pipeline_wait_prior(3);
@@ -863,8 +870,10 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
                                           min_score_global);
                   }
                   key_pos = min_pos_global;
-                  update_score_digest<K, V, S>(bucket_keys_ptr, BUCKET_SIZE,
-                                               key_pos, key, score_cur);
+                  ScoreFunctor::update_with_digest(
+                      bucket_keys_ptr, key_pos, sm_param_scores, tx_cur,
+                      score_cur, BUCKET_SIZE, get_digest<K>(key), true);
+
                 } else {
                   min_score_key->store(expected_key,
                                        cuda::std::memory_order_release);
@@ -931,7 +940,8 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
   auto occupy_result_cur = g.shfl(occupy_result, GROUP_SIZE - 1);
   uint32_t tx_cur = groupID * GROUP_SIZE + GROUP_SIZE - 1;
   S* sm_param_scores = SMM::param_scores(smem);
-  S score_cur = scores == nullptr ? device_nano<S>() : sm_param_scores[tx_cur];
+  S score_cur =
+      ScoreFunctor::desired_when_missed(sm_param_scores, tx_cur, global_epoch);
   int** sm_buckets_size_ptr = SMM::buckets_size_ptr(smem);
   auto bucket_size_ptr = sm_buckets_size_ptr[tx_cur];
   __pipeline_wait_prior(1);
@@ -996,8 +1006,9 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
                                       expected_key, min_score_global);
               }
               key_pos = min_pos_global;
-              update_score_digest<K, V, S>(bucket_keys_ptr, BUCKET_SIZE,
-                                           key_pos, key, score_cur);
+              ScoreFunctor::update_with_digest(
+                  bucket_keys_ptr, key_pos, sm_param_scores, tx_cur, score_cur,
+                  BUCKET_SIZE, get_digest<K>(key), true);
             } else {
               min_score_key->store(expected_key,
                                    cuda::std::memory_order_release);
@@ -1097,7 +1108,7 @@ struct Params_UpsertAndEvict {
       uint32_t dim_, const K* __restrict__ keys_, const V* __restrict__ values_,
       const S* __restrict__ scores_, K* __restrict__ evicted_keys_,
       V* __restrict__ evicted_values_, S* __restrict__ evicted_scores_,
-      size_t n_, size_t* evicted_counter_)
+      size_t n_, size_t* evicted_counter_, const S global_epoch_)
       : load_factor(load_factor_),
         buckets(buckets_),
         buckets_size(buckets_size_),
@@ -1111,7 +1122,8 @@ struct Params_UpsertAndEvict {
         evicted_values(evicted_values_),
         evicted_scores(evicted_scores_),
         n(n_),
-        evicted_counter(evicted_counter_) {}
+        evicted_counter(evicted_counter_),
+        global_epoch(global_epoch_) {}
   float load_factor;
   Bucket<K, V, S>* __restrict__ buckets;
   int* buckets_size;
@@ -1126,25 +1138,27 @@ struct Params_UpsertAndEvict {
   S* __restrict__ evicted_scores;
   uint64_t n;
   uint64_t* evicted_counter;
+  const S global_epoch;
 };
 
-template <typename K, typename V, typename S, typename VecV>
+template <typename K, typename V, typename S, typename VecV, int Strategy>
 struct Launch_TLPv1_UpsertAndEvict {
   using Params = Params_UpsertAndEvict<K, V, S>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     params.dim = params.dim * sizeof(V) / sizeof(VecV);
-    tlp_v1_upsert_and_evict_kernel_unique<K, V, S, VecV, BLOCK_SIZE>
+    tlp_v1_upsert_and_evict_kernel_unique<K, V, S, VecV, BLOCK_SIZE, Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             params.buckets, params.buckets_size, params.buckets_num,
             params.bucket_capacity, params.dim, params.keys,
             reinterpret_cast<const VecV*>(params.values), params.scores,
             params.evicted_keys, reinterpret_cast<VecV*>(params.evicted_values),
-            params.evicted_scores, params.n, params.evicted_counter);
+            params.evicted_scores, params.n, params.evicted_counter,
+            params.global_epoch);
   }
 };
 
-template <typename K, typename V, typename S, typename VecV>
+template <typename K, typename V, typename S, typename VecV, int Strategy>
 struct Launch_TLPv2_UpsertAndEvict {
   using Params = Params_UpsertAndEvict<K, V, S>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
@@ -1153,30 +1167,32 @@ struct Launch_TLPv2_UpsertAndEvict {
     if (params.dim <= 8) {
       constexpr int GROUP_SIZE = 8;
       tlp_v2_upsert_and_evict_kernel_unique<K, V, S, VecV, BLOCK_SIZE,
-                                            GROUP_SIZE>
+                                            GROUP_SIZE, Strategy>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_size, params.buckets_num,
               params.bucket_capacity, params.dim, params.keys,
               reinterpret_cast<const VecV*>(params.values), params.scores,
               params.evicted_keys,
               reinterpret_cast<VecV*>(params.evicted_values),
-              params.evicted_scores, params.n, params.evicted_counter);
+              params.evicted_scores, params.n, params.evicted_counter,
+              params.global_epoch);
     } else {
       constexpr int GROUP_SIZE = 16;
       tlp_v2_upsert_and_evict_kernel_unique<K, V, S, VecV, BLOCK_SIZE,
-                                            GROUP_SIZE>
+                                            GROUP_SIZE, Strategy>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_size, params.buckets_num,
               params.bucket_capacity, params.dim, params.keys,
               reinterpret_cast<const VecV*>(params.values), params.scores,
               params.evicted_keys,
               reinterpret_cast<VecV*>(params.evicted_values),
-              params.evicted_scores, params.n, params.evicted_counter);
+              params.evicted_scores, params.n, params.evicted_counter,
+              params.global_epoch);
     }
   }
 };
 
-template <typename K, typename V, typename S, typename VecV>
+template <typename K, typename V, typename S, typename VecV, int Strategy>
 struct Launch_Pipeline_UpsertAndEvict {
   using Params = Params_UpsertAndEvict<K, V, S>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
@@ -1191,14 +1207,15 @@ struct Launch_Pipeline_UpsertAndEvict {
     uint32_t shared_mem = SMM::total_size(params.dim);
     shared_mem =
         (shared_mem + sizeof(byte16) - 1) / sizeof(byte16) * sizeof(byte16);
-    pipeline_upsert_and_evict_kernel_unique<K, V, S, VecV, BLOCK_SIZE>
+    pipeline_upsert_and_evict_kernel_unique<K, V, S, VecV, BLOCK_SIZE, Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
            stream>>>(params.buckets, params.buckets_size, params.buckets_num,
                      params.dim, params.keys,
                      reinterpret_cast<const VecV*>(params.values),
                      params.scores, params.evicted_keys,
                      reinterpret_cast<VecV*>(params.evicted_values),
-                     params.evicted_scores, params.n, params.evicted_counter);
+                     params.evicted_scores, params.n, params.evicted_counter,
+                     params.global_epoch);
   }
 };
 
@@ -1217,11 +1234,11 @@ struct ValueConfig_UpsertAndEvict<Sm80> {
   static constexpr uint32_t size_pipeline = 128 * sizeof(byte4);
 };
 
-template <typename K, typename V, typename S, typename ArchTag>
+template <typename K, typename V, typename S, int Strategy, typename ArchTag>
 struct KernelSelector_UpsertAndEvict;
 
-template <typename K, typename V, typename S>
-struct KernelSelector_UpsertAndEvict<K, V, S, Sm80> {
+template <typename K, typename V, typename S, int Strategy>
+struct KernelSelector_UpsertAndEvict<K, V, S, Strategy, Sm80> {
   using ArchTag = Sm80;
   using ValueConfig = ValueConfig_UpsertAndEvict<ArchTag>;
   using Params = Params_UpsertAndEvict<K, V, S>;
@@ -1248,72 +1265,72 @@ struct KernelSelector_UpsertAndEvict<K, V, S, Sm80> {
     auto launch_TLPv1 = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else {
         using VecV = byte;
-        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv1_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       }
     };
 
     auto launch_TLPv2 = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else {
         using VecV = byte;
-        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                  stream);
+        Launch_TLPv2_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       }
     };
 
     auto launch_Pipeline = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                     stream);
+        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                     stream);
+        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                     stream);
+        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                     stream);
+        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       } else {
         using VecV = byte;
-        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV>::launch_kernel(params,
-                                                                     stream);
+        Launch_Pipeline_UpsertAndEvict<K, V, S, VecV, Strategy>::launch_kernel(
+            params, stream);
       }
     };
 
@@ -1352,15 +1369,18 @@ struct KernelSelector_UpsertAndEvict<K, V, S, Sm80> {
   }  // End function
 };
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
 __global__ void upsert_and_evict_kernel_with_io_core(
     const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, const V* __restrict values,
     const S* __restrict scores, K* __restrict evicted_keys,
-    V* __restrict evicted_values, S* __restrict evicted_scores, size_t N) {
+    V* __restrict evicted_values, S* __restrict evicted_scores,
+    const S global_epoch, size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int* buckets_size = table->buckets_size;
+
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
        t += blockDim.x * gridDim.x) {
@@ -1372,7 +1392,7 @@ __global__ void upsert_and_evict_kernel_with_io_core(
     if (IS_RESERVED_KEY(insert_key)) continue;
 
     const S insert_score =
-        scores != nullptr ? scores[key_idx] : static_cast<S>(MAX_SCORE);
+        ScoreFunctor::desired_when_missed(scores, key_idx, global_epoch);
     const V* insert_value = values + key_idx * dim;
 
     size_t bkt_idx = 0;
@@ -1392,7 +1412,9 @@ __global__ void upsert_and_evict_kernel_with_io_core(
             key_pos, src_lane, bucket_max_size);
       } else {
         start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
-        occupy_result = find_and_lock_when_full<K, V, S, TILE_SIZE>(
+        occupy_result = find_and_lock_when_full<K, V, S, TILE_SIZE,
+                                                ScoreFunctor::LOCK_MEM_ORDER,
+                                                ScoreFunctor::UNLOCK_MEM_ORDER>(
             g, bucket, insert_key, insert_score, evicted_key, start_idx,
             key_pos, src_lane, bucket_max_size);
       }
@@ -1400,8 +1422,10 @@ __global__ void upsert_and_evict_kernel_with_io_core(
     } while (occupy_result == OccupyResult::CONTINUE);
 
     if (occupy_result == OccupyResult::REFUSED) {
-      evicted_keys[key_idx] = insert_key;
-      evicted_scores[key_idx] = insert_score;
+      if (g.thread_rank() == 0) {
+        evicted_keys[key_idx] = insert_key;
+        evicted_scores[key_idx] = insert_score;
+      }
       copy_vector<V, TILE_SIZE>(g, insert_value, evicted_values + key_idx * dim,
                                 dim);
       continue;
@@ -1416,9 +1440,9 @@ __global__ void upsert_and_evict_kernel_with_io_core(
     if (occupy_result == OccupyResult::EVICT) {
       if (g.thread_rank() == src_lane) {
         evicted_keys[key_idx] = evicted_key;
-      }
-      if (scores != nullptr) {
-        evicted_scores[key_idx] = scores[key_idx];
+        if (scores != nullptr) {
+          evicted_scores[key_idx] = scores[key_idx];
+        }
       }
       copy_vector<V, TILE_SIZE>(g, bucket->vectors + key_pos * dim,
                                 evicted_values + key_idx * dim, dim);
@@ -1427,15 +1451,16 @@ __global__ void upsert_and_evict_kernel_with_io_core(
     copy_vector<V, TILE_SIZE>(g, insert_value, bucket->vectors + key_pos * dim,
                               dim);
     if (g.thread_rank() == src_lane) {
-      update_score(bucket, key_pos, scores, key_idx);
+      ScoreFunctor::update(bucket, key_pos, scores, key_idx, insert_score,
+                           (occupy_result != OccupyResult::DUPLICATE));
       bucket->digests(key_pos)[0] = get_digest<K>(insert_key);
       (bucket->keys(key_pos))
-          ->store(insert_key, cuda::std::memory_order_relaxed);
+          ->store(insert_key, ScoreFunctor::UNLOCK_MEM_ORDER);
     }
   }
 }
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, int Strategy>
 struct SelectUpsertAndEvictKernelWithIO {
   static void execute_kernel(
       const float& load_factor, const int& block_size,
@@ -1444,34 +1469,38 @@ struct SelectUpsertAndEvictKernelWithIO {
       const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
       const K* __restrict keys, const V* __restrict values,
       const S* __restrict scores, K* __restrict evicted_keys,
-      V* __restrict evicted_values, S* __restrict evicted_scores) {
+      V* __restrict evicted_values, S* __restrict evicted_scores,
+      const S global_epoch) {
     if (load_factor <= 0.5) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      upsert_and_evict_kernel_with_io_core<K, V, S, tile_size>
+      upsert_and_evict_kernel_with_io_core<K, V, S, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
-              scores, evicted_keys, evicted_values, evicted_scores, N);
+              scores, evicted_keys, evicted_values, evicted_scores,
+              global_epoch, N);
 
     } else if (load_factor <= 0.875) {
       const unsigned int tile_size = 8;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      upsert_and_evict_kernel_with_io_core<K, V, S, tile_size>
+      upsert_and_evict_kernel_with_io_core<K, V, S, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
-              scores, evicted_keys, evicted_values, evicted_scores, N);
+              scores, evicted_keys, evicted_values, evicted_scores,
+              global_epoch, N);
 
     } else {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      upsert_and_evict_kernel_with_io_core<K, V, S, tile_size>
+      upsert_and_evict_kernel_with_io_core<K, V, S, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
-              scores, evicted_keys, evicted_values, evicted_scores, N);
+              scores, evicted_keys, evicted_values, evicted_scores,
+              global_epoch, N);
     }
     return;
   }

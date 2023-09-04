@@ -50,27 +50,102 @@ The main classes and structs are below, but reading the comments in the source c
 
 For regular API doc, please refer to [API Docs](https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html)
 
-## API Maturity Matrix
+### API Maturity Matrix
 
 `industry-validated` means the API has been well-tested and verified in at least one real-world scenario.
 
-| Name                 | Description                                                                                                           | Function           |
-|:---------------------|:----------------------------------------------------------------------------------------------------------------------|:-------------------|
-| __insert_or_assign__ | Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.    | industry-validated |
-| __insert_and_evict__ | Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key. | industry-validated |
-| __find_or_insert__   | Search for the specified keys. If missing, insert it.                                                                 | well-tested        |
-| __assign__           | Update for each key and ignore the missed one.                                                                        | well-tested        |
-| __accum_or_assign__  | Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.      | well-tested        |
-| __find_or_insert\*__ | Search for the specified keys and return the pointers of values. If missing, insert it.                               | well-tested        |
-| __find__             | Search for the specified keys.                                                                                        | industry-validated |
-| __find\*__           | Search and return the pointers of values, thread-unsafe but with high performance.                                    | well-tested        |
-| __export_batch__     | Exports a certain number of the key-value-score tuples.                                                               | industry-validated |
-| __export_batch_if__  | Exports a certain number of the key-value-score tuples which match specific conditions.                               | industry-validated |
-| __warmup__           | Move the hot key-values from HMEM to HBM                                                                              | June 15, 2023      |
+| Name                 | Description                                                                                                              | Function           |
+|:---------------------|:-------------------------------------------------------------------------------------------------------------------------|:-------------------|
+| __insert_or_assign__ | Insert or assign for the specified keys. <br>Overwrite one key with minimum score when bucket is full.                   | industry-validated |
+| __insert_and_evict__ | Insert new keys, and evict keys with minimum score when bucket is full.                                                  | industry-validated |
+| __find_or_insert__   | Search for the specified keys, and insert them when missed.                                                              | well-tested        |
+| __assign__           | Update for each key and bypass when missed.                                                                              | well-tested        |
+| __accum_or_assign__  | Search and update for each key. If found, add value as a delta to the original value. <br>If missed, update it directly. | well-tested        |
+| __find_or_insert\*__ | Search for the specified keys and return the pointers of values. Insert them firstly when missing.                       | well-tested        |
+| __find__             | Search for the specified keys.                                                                                           | industry-validated |
+| __find\*__           | Search and return the pointers of values, thread-unsafe but with high performance.                                       | well-tested        |
+| __export_batch__     | Exports a certain number of the key-value-score tuples.                                                                  | industry-validated |
+| __export_batch_if__  | Exports a certain number of the key-value-score tuples which match specific conditions.                                  | industry-validated |
+| __warmup__           | Move the hot key-values from HMEM to HBM                                                                                 | June 15, 2023      |
 
-## Usage restrictions
 
-- The `key_type` must be `uint64_t` or `int64_t`.
+### Evict Strategy
+
+The `score` is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. Eviction only happens when a bucket is full.
+The `score_type` must be `uint64_t`. For more detail, please refer to [`class EvictStrategy`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L52).
+
+| Name           | Definition of `Score`                                                                                                                                                                                           |
+|:---------------|:----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| __Lru__        | Device clock in a nanosecond, which could differ slightly from host clock.                                                                                                                                      |
+| __Lfu__        | Frequency increment provided by caller via the input parameter of `scores` of `insert-like` APIs as the increment of frequency.                                                                                 |
+| __EpochLru__   | The high 32bits is the global epoch provided via the input parameter of `global_epoch`, <br>the low 32bits is equal to `(device_clock >> 20) & 0xffffffff` with granularity close to 1 ms.                      |
+| __EpochLfu__   | The high 32bits is the global epoch provided via the input parameter of `global_epoch`, <br>the low 32bits is the frequency, <br>the frequency will keep constant after reaching the max value of `0xffffffff`. |
+| __Customized__ | Fully provided by the caller via the input parameter of `scores` of `insert-like` APIs.                                                                                                                         |
+
+
+* __Note__:
+  - The `insert-like` APIs mean the APIs of `insert_or_assign`, `insert_and_evict`, `find_or_insert`, `accum_or_assign`, and `find_or_insert`. 
+  - The `global_epoch` should be maintained by the caller and input as the input parameter of `insert-like` APIs.
+
+### Configuration Options
+
+It's recommended to keep the default configuration for the options ending with `*`.
+
+| Name                    | Type            | Default | Description                                           |
+|:------------------------|:----------------|:--------|:------------------------------------------------------|
+| __init_capacity__       | size_t          | 0       | The initial capacity of the hash table.               |
+| __max_capacity__        | size_t          | 0       | The maximum capacity of the hash table.               |
+| __max_hbm_for_vectors__ | size_t          | 0       | The maximum HBM for vectors, in bytes.                |
+| __dim__                 | size_t          | 64      | The dimension of the value vectors.                   |
+| __max_bucket_size*__    | size_t          | 128     | The length of each bucket.                            |
+| __max_load_factor*__    | float           | 0.5f    | The max load factor before rehashing.                 |
+| __block_size*__         | int             | 128     | The default block size for CUDA kernels.              |
+| __io_block_size*__      | int             | 1024    | The block size for IO CUDA kernels.                   |
+| __device_id*__          | int             | -1      | The ID of device. Managed internally when set to `-1` |
+| __io_by_cpu*__          | bool            | false   | The flag indicating if the CPU handles IO.            |
+
+For more detail, please refer to [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60).
+
+### How to use:
+
+```cpp
+#include "merlin_hashtable.cuh"
+
+
+using TableOptions = nv::merlin::HashTableOptions;
+using EvictStrategy = nv::merlin::EvictStrategy;
+
+int main(int argc, char *argv[])
+{
+  using K = uint64_t;
+  using V = float;
+  using S = uint64_t;
+  
+  // 1. Define the table and use LRU eviction strategy.
+  using HKVTable = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>;
+  std::unique_ptr<HKVTable> table = std::make_unique<HKVTable>();
+  
+  // 2. Define the configuration options.
+  TableOptions options;
+  options.init_capacity = 16 * 1024 * 1024;
+  options.max_capacity = options.init_capacity;
+  options.dim = 16;
+  options.max_hbm_for_vectors = nv::merlin::GB(16);
+  
+  
+  // 3. Initialize the table memory resource.
+  table->init(options);
+  
+  // 4. Use table to do something.
+  
+  return 0;
+}
+
+```
+
+### Usage restrictions
+
+- The `key_type` must be `int64_t` or `uint64_t`.
 - The `score_type` must be `uint64_t`.
 - The keys of `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
 

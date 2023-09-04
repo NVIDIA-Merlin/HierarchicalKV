@@ -711,18 +711,20 @@ __global__ void read_kernel(const V** __restrict src, V* __restrict dst,
 
 /* Accum kernel with customized scores.
  */
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
 __global__ void accum_kernel(
     const Table<K, V, S>* __restrict table, const K* __restrict keys,
     V** __restrict vectors, const S* __restrict scores,
     const bool* __restrict existed, Bucket<K, V, S>* __restrict buckets,
     int* __restrict buckets_size, const size_t bucket_max_size,
     const size_t buckets_num, int* __restrict src_offset,
-    bool* __restrict status, size_t N) {
+    bool* __restrict status, const S global_epoch, size_t N) {
   const size_t dim = table->dim;
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
+
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_pos = -1;
@@ -774,7 +776,8 @@ __global__ void accum_kernel(
               local_size++;
             }
             *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-            update_score(bucket, key_pos, scores, key_idx);
+            ScoreFunctor::update_without_missed(bucket, key_pos, scores,
+                                                key_idx, global_epoch);
           }
         }
         local_size = g.shfl(local_size, src_lane);
@@ -791,7 +794,8 @@ __global__ void accum_kernel(
         (bucket->keys(key_pos))
             ->store(insert_key, cuda::std::memory_order_relaxed);
         *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-        update_score(bucket, key_pos, scores, key_idx);
+        ScoreFunctor::update_without_missed(bucket, key_pos, scores, key_idx,
+                                            global_epoch);
       }
       refresh_bucket_score<K, V, S, TILE_SIZE>(g, bucket, bucket_max_size);
     }

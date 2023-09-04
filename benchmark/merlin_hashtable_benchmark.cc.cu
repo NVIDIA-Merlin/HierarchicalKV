@@ -53,13 +53,14 @@ std::string rep(int n) { return std::string(n, ' '); }
 using K = uint64_t;
 using S = uint64_t;
 using V = float;
-using MerlinHashTable = nv::merlin::HashTable<K, V, S>;
+using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
 
-float test_one_api(std::shared_ptr<MerlinHashTable>& table,
-                   const API_Select api, const size_t dim,
-                   const size_t init_capacity, const size_t key_num_per_op,
-                   const float load_factor, const float hitrate = 0.6f) {
+template <class Table>
+float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
+                   const size_t dim, const size_t init_capacity,
+                   const size_t key_num_per_op, const float load_factor,
+                   const float hitrate = 0.6f) {
   K* h_keys;
   S* h_scores;
   V* h_vectors;
@@ -458,9 +459,9 @@ void test_main(std::vector<API_Select>& apis, const size_t dim,
   options.dim = dim;
   options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
   options.io_by_cpu = io_by_cpu;
-  options.evict_strategy = EvictStrategy::kLru;
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>;
 
-  std::shared_ptr<MerlinHashTable> table = std::make_shared<MerlinHashTable>();
+  std::shared_ptr<Table> table = std::make_shared<Table>();
   table->init(options);
 
   for (float load_factor : load_factors) {
@@ -472,10 +473,10 @@ void test_main(std::vector<API_Select>& apis, const size_t dim,
       CUDA_CHECK(cudaDeviceSynchronize());
       // There is a sampling of load_factor after several times call to target
       // API. Two consecutive calls can avoid the impact of sampling.
-      auto res1 = test_one_api(table, api, dim, init_capacity, key_num_per_op,
-                               load_factor);
-      auto res2 = test_one_api(table, api, dim, init_capacity, key_num_per_op,
-                               load_factor);
+      auto res1 = test_one_api<Table>(table, api, dim, init_capacity,
+                                      key_num_per_op, load_factor);
+      auto res2 = test_one_api<Table>(table, api, dim, init_capacity,
+                                      key_num_per_op, load_factor);
       auto res = std::max(res1, res2);
       std::cout << "|";
       switch (api) {

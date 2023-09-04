@@ -121,7 +121,8 @@ uint64_t getTimestamp() {
 }
 
 template <class K, class S>
-void create_random_keys(K* h_keys, S* h_scores, int KEY_NUM) {
+void create_random_keys(K* h_keys, S* h_scores, int KEY_NUM,
+                        int freq_range = 1000) {
   std::unordered_set<K> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
@@ -133,7 +134,7 @@ void create_random_keys(K* h_keys, S* h_scores, int KEY_NUM) {
   }
   for (const K num : numbers) {
     h_keys[i] = num;
-    h_scores[i] = getTimestamp();
+    h_scores[i] = num % freq_range;
     i++;
   }
 }
@@ -185,6 +186,33 @@ void create_random_keys(size_t dim, K* h_keys, S* h_scores, V* h_vectors,
     if (h_vectors != nullptr) {
       for (size_t j = 0; j < dim; j++) {
         h_vectors[i * dim + j] = static_cast<V>(num * 0.00001);
+      }
+    }
+    i++;
+  }
+}
+
+template <class K, class S, class V>
+void create_random_keys_advanced(
+    size_t dim, K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
+    size_t range = std::numeric_limits<uint64_t>::max, int freq_range = 10) {
+  std::unordered_set<K> numbers;
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<K> distr;
+  int i = 0;
+
+  while (numbers.size() < KEY_NUM) {
+    numbers.insert(distr(eng) % range);
+  }
+  for (const K num : numbers) {
+    h_keys[i] = num;
+    if (h_scores != nullptr) {
+      h_scores[i] = num % freq_range;
+    }
+    if (h_vectors != nullptr) {
+      for (size_t j = 0; j < dim; j++) {
+        h_vectors[i * dim + j] = static_cast<float>(num * 0.00001);
       }
     }
     i++;
@@ -250,6 +278,51 @@ void create_keys_in_one_buckets(K* h_keys, S* h_scores, V* h_vectors,
     }
     i++;
   }
+}
+
+template <class K, class S, class V, size_t DIM = 16>
+void create_keys_in_one_buckets_lfu(K* h_keys, S* h_scores, V* h_vectors,
+                                    int KEY_NUM, int capacity,
+                                    int bucket_max_size = 128,
+                                    int bucket_idx = 0, K min = 0,
+                                    K max = static_cast<K>(0xFFFFFFFFFFFFFFFD),
+                                    int freq_range = 1000) {
+  std::unordered_set<K> numbers;
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<K> distr;
+  K candidate;
+  K hashed_key;
+  size_t global_idx;
+  size_t bkt_idx;
+  int i = 0;
+
+  while (numbers.size() < KEY_NUM) {
+    candidate = (distr(eng) % (max - min)) + min;
+    hashed_key = Murmur3HashHost(candidate);
+    global_idx = hashed_key & (capacity - 1);
+    bkt_idx = global_idx / bucket_max_size;
+    if (bkt_idx == bucket_idx) {
+      numbers.insert(candidate);
+    }
+  }
+  for (const K num : numbers) {
+    h_keys[i] = num;
+    if (h_scores != nullptr) {
+      h_scores[i] = num % freq_range;
+    }
+    for (size_t j = 0; j < DIM; j++) {
+      *(h_vectors + i * DIM + j) = static_cast<float>(num * 0.00001);
+    }
+    i++;
+  }
+}
+
+template <class S>
+S make_expected_score_for_epochlfu(S global_epoch, S original_score) {
+  bool if_overflow = (original_score >= static_cast<S>(0xFFFFFFFF));
+  return ((global_epoch << 32) | (if_overflow ? (static_cast<S>(0xFFFFFFFF))
+                                              : original_score & 0xFFFFFFFF));
 }
 
 template <typename T>
@@ -497,9 +570,8 @@ bool allEqualGpu(T* a, T* b, size_t n, cudaStream_t stream) {
   return ndiff == 0;
 }
 
-#define TableType nv::merlin::HashTable<K, V, S>
-template <typename K, typename V, typename S>
-bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
+template <typename K, typename V, typename S, typename Table>
+bool tables_equal(Table* a, Table* b, bool check_score, cudaStream_t stream) {
   size_t size = a->size(stream);
   if (size != b->size(stream)) {
     return false;
@@ -529,6 +601,11 @@ bool tables_equal(TableType* a, TableType* b, cudaStream_t stream) {
                   stream);
   b->find(size, d_keys, d_vectors_in_b, d_founds_in_b, d_scores_in_b, stream);
   if (!allTrueGpu(d_founds_in_b, size, stream)) {
+    CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_scores,
+                       d_founds_in_b, d_vectors_in_b, d_scores_in_b);
+    return false;
+  }
+  if (check_score && !allEqualGpu<S>(d_scores, d_scores_in_b, size, stream)) {
     CUDA_FREE_POINTERS(stream, d_size, d_keys, d_vectors, d_scores,
                        d_founds_in_b, d_vectors_in_b, d_scores_in_b);
     return false;
