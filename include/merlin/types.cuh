@@ -50,6 +50,7 @@ constexpr uint64_t LOCKED_KEY = UINT64_C(0xFFFFFFFFFFFFFFFD);
 constexpr uint64_t RESERVED_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFC);
 constexpr uint64_t MAX_SCORE = UINT64_C(0xFFFFFFFFFFFFFFFF);
 constexpr uint64_t EMPTY_SCORE = UINT64_C(0);
+constexpr uint64_t IGNORED_GLOBAL_EPOCH = UINT64_C(0xFFFFFFFFFFFFFFFF);
 
 #define IS_RESERVED_KEY(key) ((RESERVED_KEY_MASK & (key)) == RESERVED_KEY_MASK)
 #define IS_VACANT_KEY(key) ((VACANT_KEY_MASK & (key)) == VACANT_KEY_MASK)
@@ -267,6 +268,24 @@ struct Sm86 {
 struct Sm90 {
   static int const kComputeCapability = 90;
 };
+
+/* This struct is mainly for keeping the code readable, it should be strictly
+ * consistent with `EvictStrategy::EvictStrategyEnum`.
+ */
+struct EvictStrategyInternal {
+  constexpr static int kLru = 0;         ///< LRU mode.
+  constexpr static int kLfu = 1;         ///< LFU mode.
+  constexpr static int kEpochLru = 2;    ///< Epoch + LRU mode.
+  constexpr static int kEpochLfu = 3;    ///< Epoch + LFU mode.
+  constexpr static int kCustomized = 4;  ///< Customized mode.
+};
+
+union EvictStrategyParamUnion {  ///< Parameter for specialized strategy.
+  uint64_t global_epoch;
+};
+
+thread_local static EvictStrategyParamUnion EvictStrategyParam = {
+    static_cast<uint64_t>(IGNORED_GLOBAL_EPOCH)};
 
 }  // namespace merlin
 }  // namespace nv

@@ -23,13 +23,15 @@ namespace merlin {
 
 // Use 1 thread to deal with a KV-pair, including copying value.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128>
+          typename VecV = byte16, uint32_t BLOCK_SIZE = 128, int Strategy = -1>
 __global__ void tlp_update_kernel_with_io(
     Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
     uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
-    const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n) {
+    const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n,
+    const S global_epoch) {
   using BUCKET = Bucket<K, V, S>;
   using CopyValue = CopyValueMultipleGroup<VecV, 1>;
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
@@ -42,9 +44,8 @@ __global__ void tlp_update_kernel_with_io(
   uint32_t key_pos = {0};
   if (kv_idx < n) {
     key = keys[kv_idx];
-    if (scores != nullptr) {
-      score = scores[kv_idx];
-    }
+    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
+
     if (!IS_RESERVED_KEY(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
@@ -102,8 +103,9 @@ __global__ void tlp_update_kernel_with_io(
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
         key_pos = possible_pos;
-        score = scores == nullptr ? device_nano<S>() : score;
-        update_score<K, V, S>(bucket_keys_ptr, bucket_capacity, key_pos, score);
+        ScoreFunctor::update_without_missed(bucket_keys_ptr, bucket_capacity,
+                                            key_pos, scores, kv_idx,
+                                            global_epoch);
         VecV* bucket_value_ptr = bucket_values_ptr + key_pos * dim;
         const VecV* param_value_ptr = values + kv_idx * dim;
         CopyValue::ldg_stg(0, bucket_value_ptr, param_value_ptr, dim);
@@ -131,14 +133,14 @@ __global__ void tlp_update_kernel_with_io(
     }
   }
 }
-
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
           typename VecV = byte16, uint32_t BLOCK_SIZE = 128,
-          uint32_t GROUP_SIZE = 16>
+          uint32_t GROUP_SIZE = 16, int Strategy = -1>
 __global__ void pipeline_update_kernel_with_io(
     Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
     const uint32_t dim, const K* __restrict__ keys,
-    const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n) {
+    const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n,
+    const S global_epoch) {
   constexpr uint32_t BUCKET_SIZE = 128;
   constexpr int GROUP_NUM = BLOCK_SIZE / GROUP_SIZE;
   constexpr uint32_t Comp_LEN = sizeof(VecD_Comp) / sizeof(D);
@@ -150,6 +152,7 @@ __global__ void pipeline_update_kernel_with_io(
   using BUCKET = Bucket<K, V, S>;
   using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
   using CopyScore = CopyScoreByPassCache<S, K, BUCKET_SIZE>;
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   __shared__ VecD_Comp sm_target_digests[BLOCK_SIZE];
   __shared__ K sm_target_keys[BLOCK_SIZE];
@@ -360,14 +363,13 @@ __global__ void pipeline_update_kernel_with_io(
       }
       succ = g.shfl(succ, src_lane);
       if (target_pos >= 0 && succ == 1) {
-        S score_ = scores ? CopyScore::lgs(sm_scores[groupID] + same_buf(i))
-                          : device_nano<S>();
         auto tmp = reinterpret_cast<VecV*>(sm_values_buffer);
         VecV* v_src = tmp + (groupID * 2 + same_buf(i)) * dim;
         VecV* v_dst = value_ptr + target_pos * dim;
         CopyValue::lds_stg(rank, v_dst, v_src, dim);
-        S* score_ptr = BUCKET::scores(keys_ptr, BUCKET_SIZE, target_pos);
-        CopyScore::stg(score_ptr, score_);
+        ScoreFunctor::update_without_missed(keys_ptr, BUCKET_SIZE, target_pos,
+                                            sm_scores[groupID] + same_buf(i), 0,
+                                            global_epoch);
         if (rank == 0) {
           auto key_address = BUCKET::keys(keys_ptr, target_pos);
           key_address->store(target_key, cuda::std::memory_order_release);
@@ -441,15 +443,14 @@ __global__ void pipeline_update_kernel_with_io(
     }
     succ = g.shfl(succ, src_lane);
     if (target_pos >= 0 && succ == 1) {
-      S score_ = (!scores)
-                     ? device_nano<S>()
-                     : CopyScore::lgs(sm_scores[groupID] + same_buf(loop_num));
       auto tmp = reinterpret_cast<VecV*>(sm_values_buffer);
       VecV* v_src = tmp + (groupID * 2 + same_buf(loop_num)) * dim;
       VecV* v_dst = value_ptr + target_pos * dim;
       CopyValue::lds_stg(rank, v_dst, v_src, dim);
-      S* score_ptr = BUCKET::scores(keys_ptr, BUCKET_SIZE, target_pos);
-      CopyScore::stg(score_ptr, score_);
+      ScoreFunctor::update_without_missed(
+          keys_ptr, BUCKET_SIZE, target_pos,
+          sm_scores[groupID] + same_buf(loop_num), 0, global_epoch);
+
       auto key_ptr = BUCKET::keys(keys_ptr, target_pos);
       if (rank == 0) {
         auto key_address = BUCKET::keys(keys_ptr, target_pos);
@@ -474,16 +475,13 @@ __global__ void pipeline_update_kernel_with_io(
     }
     succ = g.shfl(succ, src_lane);
     if (target_pos >= 0 && succ == 1) {
-      S score_ =
-          (!scores)
-              ? device_nano<S>()
-              : CopyScore::lgs(sm_scores[groupID] + same_buf(loop_num + 1));
       auto tmp = reinterpret_cast<VecV*>(sm_values_buffer);
       VecV* v_src = tmp + (groupID * 2 + same_buf(loop_num + 1)) * dim;
       VecV* v_dst = value_ptr + target_pos * dim;
       CopyValue::lds_stg(rank, v_dst, v_src, dim);
-      S* score_ptr = BUCKET::scores(keys_ptr, BUCKET_SIZE, target_pos);
-      CopyScore::stg(score_ptr, score_);
+      ScoreFunctor::update_without_missed(
+          keys_ptr, BUCKET_SIZE, target_pos,
+          sm_scores[groupID] + same_buf(loop_num + 1), 0, global_epoch);
       if (rank == 0) {
         auto key_address = BUCKET::keys(keys_ptr, target_pos);
         key_address->store(target_key, cuda::std::memory_order_release);
@@ -497,7 +495,7 @@ struct Params_Update {
   Params_Update(float load_factor_, Bucket<K, V, S>* __restrict__ buckets_,
                 size_t buckets_num_, uint32_t bucket_capacity_, uint32_t dim_,
                 const K* __restrict__ keys_, const V* __restrict__ values_,
-                const S* __restrict__ scores_, size_t n_)
+                const S* __restrict__ scores_, size_t n_, const S global_epoch_)
       : load_factor(load_factor_),
         buckets(buckets_),
         buckets_num(buckets_num_),
@@ -506,7 +504,8 @@ struct Params_Update {
         keys(keys_),
         values(values_),
         scores(scores_),
-        n(n_) {}
+        n(n_),
+        global_epoch(global_epoch_) {}
   float load_factor;
   Bucket<K, V, S>* __restrict__ buckets;
   size_t buckets_num;
@@ -516,24 +515,25 @@ struct Params_Update {
   const V* __restrict__ values;
   const S* __restrict__ scores;
   uint64_t n;
+  const S global_epoch;
 };
 
-template <typename K, typename V, typename S, typename VecV>
+template <typename K, typename V, typename S, typename VecV, int Strategy>
 struct Launch_TLP_Update {
   using Params = Params_Update<K, V, S>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     params.dim = params.dim * sizeof(V) / sizeof(VecV);
-    tlp_update_kernel_with_io<K, V, S, VecV, BLOCK_SIZE>
+    tlp_update_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             params.buckets, params.buckets_num, params.bucket_capacity,
             params.dim, params.keys,
             reinterpret_cast<const VecV*>(params.values), params.scores,
-            params.n);
+            params.n, params.global_epoch);
   }
 };
 
-template <typename K, typename V, typename S, typename VecV>
+template <typename K, typename V, typename S, typename VecV, int Strategy>
 struct Launch_Pipeline_Update {
   using Params = Params_Update<K, V, S>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
@@ -545,11 +545,12 @@ struct Launch_Pipeline_Update {
     uint32_t shared_mem = GROUP_NUM * 2 * params.dim * sizeof(VecV);
     shared_mem =
         (shared_mem + sizeof(byte16) - 1) / sizeof(byte16) * sizeof(byte16);
-    pipeline_update_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, GROUP_SIZE>
+    pipeline_update_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, GROUP_SIZE,
+                                   Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
            stream>>>(params.buckets, params.buckets_num, params.dim,
                      params.keys, reinterpret_cast<const VecV*>(params.values),
-                     params.scores, params.n);
+                     params.scores, params.n, params.global_epoch);
   }
 };
 
@@ -566,11 +567,11 @@ struct ValueConfig_Update<Sm80> {
   static constexpr uint32_t size_pipeline = 128 * sizeof(byte4);
 };
 
-template <typename K, typename V, typename S, typename ArchTag>
+template <typename K, typename V, typename S, int Strategy, typename ArchTag>
 struct KernelSelector_Update;
 
-template <typename K, typename V, typename S>
-struct KernelSelector_Update<K, V, S, Sm80> {
+template <typename K, typename V, typename S, int Strategy>
+struct KernelSelector_Update<K, V, S, Strategy, Sm80> {
   using ArchTag = Sm80;
   using ValueConfig = ValueConfig_Update<ArchTag>;
   using Params = Params_Update<K, V, S>;
@@ -593,38 +594,48 @@ struct KernelSelector_Update<K, V, S, Sm80> {
     auto launch_TLP = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_TLP_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                  stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_TLP_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                  stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_TLP_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                  stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_TLP_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                  stream);
       } else {
         using VecV = byte;
-        Launch_TLP_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                  stream);
       }
     };
 
     auto launch_Pipeline = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_Pipeline_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                       stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_Pipeline_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                       stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_Pipeline_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                       stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_Pipeline_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                       stream);
       } else {
         using VecV = byte;
-        Launch_Pipeline_Update<K, V, S, VecV>::launch_kernel(params, stream);
+        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+                                                                       stream);
       }
     };
     // This part is according to the test on A100.
@@ -648,14 +659,16 @@ struct KernelSelector_Update<K, V, S, Sm80> {
  * update with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
 __global__ void update_kernel_with_io(
     const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, const V* __restrict values,
-    const S* __restrict scores, const size_t N) {
+    const S* __restrict scores, const S global_epoch, const size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int* buckets_size = table->buckets_size;
+
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
        t += blockDim.x * gridDim.x) {
@@ -692,7 +705,8 @@ __global__ void update_kernel_with_io(
       copy_vector<V, TILE_SIZE>(g, update_value,
                                 bucket->vectors + key_pos * dim, dim);
       if (src_lane == g.thread_rank()) {
-        update_score(bucket, key_pos, scores, key_idx);
+        ScoreFunctor::update_without_missed(bucket, key_pos, scores, key_idx,
+                                            global_epoch);
       }
     }
 
@@ -703,7 +717,7 @@ __global__ void update_kernel_with_io(
   }
 }
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, int Strategy>
 struct SelectUpdateKernelWithIO {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
@@ -712,38 +726,41 @@ struct SelectUpdateKernelWithIO {
                              const Table<K, V, S>* __restrict table,
                              Bucket<K, V, S>* buckets, const K* __restrict keys,
                              const V* __restrict values,
-                             const S* __restrict scores) {
+                             const S* __restrict scores, const S global_epoch) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      update_kernel_with_io<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, buckets,
-                                                 bucket_max_size, buckets_num,
-                                                 dim, keys, values, scores, N);
+      update_kernel_with_io<K, V, S, Strategy, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(
+              table, buckets, bucket_max_size, buckets_num, dim, keys, values,
+              scores, global_epoch, N);
     } else {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      update_kernel_with_io<K, V, S, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(table, buckets,
-                                                 bucket_max_size, buckets_num,
-                                                 dim, keys, values, scores, N);
+      update_kernel_with_io<K, V, S, Strategy, tile_size>
+          <<<grid_size, block_size, 0, stream>>>(
+              table, buckets, bucket_max_size, buckets_num, dim, keys, values,
+              scores, global_epoch, N);
     }
     return;
   }
 };
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
 __global__ void update_kernel(const Table<K, V, S>* __restrict table,
                               Bucket<K, V, S>* buckets,
                               const size_t bucket_max_size,
                               const size_t buckets_num, const size_t dim,
                               const K* __restrict keys, V** __restrict vectors,
                               const S* __restrict scores,
-                              int* __restrict src_offset, size_t N) {
+                              int* __restrict src_offset, const S global_epoch,
+                              size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int* buckets_size = table->buckets_size;
+
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
        t += blockDim.x * gridDim.x) {
@@ -778,7 +795,8 @@ __global__ void update_kernel(const Table<K, V, S>* __restrict table,
     if (g.thread_rank() == src_lane) {
       if (occupy_result == OccupyResult::DUPLICATE) {
         *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-        update_score(bucket, key_pos, scores, key_idx);
+        ScoreFunctor::update_without_missed(bucket, key_pos, scores, key_idx,
+                                            global_epoch);
       } else {
         *(vectors + key_idx) = nullptr;
       }

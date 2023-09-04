@@ -39,21 +39,49 @@ namespace nv {
 namespace merlin {
 
 /**
- * @brief Enumeration of the eviction strategies.
+ * @brief The eviction strategies.
  *
- * @note The `score` is introduced to define the importance of each key, the
- * larger, the more important, the less likely they will be evicted. On `kLru`
- * mode, the `scores` parameter of the APIs should keep `nullptr`, the score for
- * each key is assigned internally in LRU(Least Recently Used) policy. On
- * `kCustomized` mode, the `scores` should be provided by caller.
+ * @note The `Score` concept is introduced to define the importance of each key,
+ * the larger, the more important, the less likely they will be evicted. On
+ * `kLru` mode, the `scores` parameter of the APIs should keep `nullptr`, the
+ * score for each key is assigned internally in LRU(Least Recently Used) policy.
+ * On `kCustomized` mode, the `scores` should be provided by caller.
  *
  * @note Eviction occurs automatically when a bucket is full. The keys with the
  * minimum `score` value are evicted first.
  *
+ * @note on `kLru`, Set the score to the Device clock in a nanosecond, which
+ * could differ slightly from the host clock.
+ *
+ * @note on `kLfu`, Frequency increment provided by caller via the input
+ * parameter of `scores` of `insert-like` APIs as the increment of frequency.
+ * when the scores reaches to the max of `uint64_t`, it will not increase any
+ * more.
+ *
+ * @note On `kEpochLru`, the high 32bits is the global epoch provided via the
+ * input parameter of `global_epoch`, the low 32bits is equal to `(device_clock
+ * >> 20) & 0xffffffff` with granularity close to 1 ms.
+ *
+ * @note On `kEpochLfu`, the high 32bits is the global epoch provided via the
+ * input parameter of `global_epoch`, the low 32bits is the frequency, the
+ * frequency will keep constant after reaching the max value of `0xffffffff`.
+ *
+ * @note On `kCustomized`, fully provided by the caller via the input parameter
+ * of `scores` of `insert-like` APIs.
+ *
  */
-enum class EvictStrategy {
-  kLru = 0,        ///< LRU mode.
-  kCustomized = 1  ///< Customized mode.
+struct EvictStrategy {
+  enum EvictStrategyEnum {
+    kLru = 0,         ///< LRU mode.
+    kLfu = 1,         ///< LFU mode.
+    kEpochLru = 2,    ///< Epoch Lru mode.
+    kEpochLfu = 3,    ///< Epoch Lfu mode.
+    kCustomized = 4,  ///< Customized mode.
+  };
+
+  static void set_global_epoch(const uint64_t epoch) {
+    EvictStrategyParam.global_epoch = epoch;
+  }
 };
 
 /**
@@ -70,8 +98,7 @@ struct HashTableOptions {
   int io_block_size = 1024;        ///< The block size for IO CUDA kernels.
   int device_id = -1;              ///< The ID of device.
   bool io_by_cpu = false;  ///< The flag indicating if the CPU handles IO.
-  EvictStrategy evict_strategy = EvictStrategy::kLru;  ///< The evict strategy.
-  bool use_constant_memory = false;                    ///< reserved
+  bool use_constant_memory = false;  ///< reserved
   MemoryPoolOptions
       device_memory_pool;  ///< Configuration options for device memory pool.
   MemoryPoolOptions
@@ -150,13 +177,15 @@ static constexpr auto& thrust_par = thrust::cuda::par;
  *
  */
 template <typename K, typename V, typename S = uint64_t,
-          typename ArchTag = Sm80>
+          int Strategy = EvictStrategy::kLru, typename ArchTag = Sm80>
 class HashTable {
  public:
   using size_type = size_t;
   using key_type = K;
   using value_type = V;
   using score_type = S;
+  static constexpr int evict_strategy = Strategy;
+
   using Pred = EraseIfPredict<key_type, score_type>;
   using allocator_type = BaseAllocator;
 
@@ -233,9 +262,8 @@ class HashTable {
                  "Bucket size should be the pow of 2");
 
     MERLIN_CHECK(
-        (options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
-                128 ==
-            0,
+        (((options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
+          128) == 0),
         "Storage size of keys and scores in one bucket should be the mutiple "
         "of cache line size");
 
@@ -322,8 +350,8 @@ class HashTable {
     writer_shared_lock lock(mutex_);
 
     if (is_fast_mode()) {
-      using Selector =
-          SelectUpsertKernelWithIO<key_type, value_type, score_type>;
+      using Selector = SelectUpsertKernelWithIO<key_type, value_type,
+                                                score_type, evict_strategy>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -335,7 +363,7 @@ class HashTable {
           load_factor, options_.block_size, options_.max_bucket_size,
           table_->buckets_num, options_.dim, stream, n, d_table_,
           table_->buckets, keys, reinterpret_cast<const value_type*>(values),
-          scores);
+          scores, EvictStrategyParam.global_epoch);
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -349,11 +377,11 @@ class HashTable {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        upsert_kernel<key_type, value_type, score_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                d_table_, table_->buckets, options_.max_bucket_size,
-                table_->buckets_num, options_.dim, keys, d_dst, scores,
-                d_src_offset, N);
+        upsert_kernel<key_type, value_type, score_type, evict_strategy,
+                      TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+            d_table_, table_->buckets, options_.max_bucket_size,
+            table_->buckets_num, options_.dim, keys, d_dst, scores,
+            d_src_offset, EvictStrategyParam.global_epoch, N);
       }
 
       {
@@ -476,8 +504,9 @@ class HashTable {
       load_factor = fast_load_factor(0, stream, false);
     }
 
-    using Selector = KernelSelector_UpsertAndEvict<key_type, value_type,
-                                                   score_type, ArchTag>;
+    using Selector =
+        KernelSelector_UpsertAndEvict<key_type, value_type, score_type,
+                                      evict_strategy, ArchTag>;
     if (Selector::callable(unique_key,
                            static_cast<uint32_t>(options_.max_bucket_size),
                            static_cast<uint32_t>(options_.dim))) {
@@ -485,7 +514,8 @@ class HashTable {
           load_factor, table_->buckets, table_->buckets_size,
           table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
           static_cast<uint32_t>(options_.dim), keys, values, scores,
-          evicted_keys, evicted_values, evicted_scores, n, d_evicted_counter);
+          evicted_keys, evicted_values, evicted_scores, n, d_evicted_counter,
+          EvictStrategyParam.global_epoch);
       Selector::select_kernel(kernelParams, stream);
     } else {
       // always use max tile to avoid data-deps as possible.
@@ -507,13 +537,14 @@ class HashTable {
       CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY),
                                  n * sizeof(K), stream));
       using Selector =
-          SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type>;
+          SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
+                                           evict_strategy>;
 
-      Selector::execute_kernel(load_factor, options_.block_size,
-                               options_.max_bucket_size, table_->buckets_num,
-                               options_.dim, stream, n, d_table_,
-                               table_->buckets, keys, values, scores,
-                               evicted_keys, evicted_values, evicted_scores);
+      Selector::execute_kernel(
+          load_factor, options_.block_size, options_.max_bucket_size,
+          table_->buckets_num, options_.dim, stream, n, d_table_,
+          table_->buckets, keys, values, scores, evicted_keys, evicted_values,
+          evicted_scores, EvictStrategyParam.global_epoch);
 
       keys_not_empty<K>
           <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
@@ -637,7 +668,6 @@ class HashTable {
    * scores anyway. If true, it does not check whether the scores confroms to
    * the evict strategy. If false, it requires the scores follow the evict
    * strategy of table.
-   *
    */
   void accum_or_assign(const size_type n,
                        const key_type* keys,                // (n)
@@ -675,11 +705,12 @@ class HashTable {
       const size_t N = n * TILE_SIZE;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      accum_kernel<key_type, value_type, score_type>
+      accum_kernel<key_type, value_type, score_type, evict_strategy>
           <<<grid_size, block_size, 0, stream>>>(
               d_table_, keys, dst, scores, accum_or_assigns, table_->buckets,
               table_->buckets_size, table_->bucket_max_size,
-              table_->buckets_num, src_offset, founds, N);
+              table_->buckets_num, src_offset, founds,
+              EvictStrategyParam.global_epoch, N);
     }
 
     if (!is_fast_mode()) {
@@ -718,7 +749,6 @@ class HashTable {
    * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
-   *
    */
   void find_or_insert(const size_type n, const key_type* keys,  // (n)
                       value_type* values,                       // (n * DIM)
@@ -742,7 +772,8 @@ class HashTable {
 
     if (is_fast_mode()) {
       using Selector =
-          SelectFindOrInsertKernelWithIO<key_type, value_type, score_type>;
+          SelectFindOrInsertKernelWithIO<key_type, value_type, score_type,
+                                         evict_strategy>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -752,7 +783,8 @@ class HashTable {
       Selector::execute_kernel(load_factor, options_.block_size,
                                options_.max_bucket_size, table_->buckets_num,
                                options_.dim, stream, n, d_table_,
-                               table_->buckets, keys, values, scores);
+                               table_->buckets, keys, values, scores,
+                               EvictStrategyParam.global_epoch);
     } else {
       const size_type dev_ws_size{
           n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -768,11 +800,12 @@ class HashTable {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        find_or_insert_kernel<key_type, value_type, score_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                d_table_, table_->buckets, options_.max_bucket_size,
-                table_->buckets_num, options_.dim, keys, d_table_value_addrs,
-                scores, founds, param_key_index, N);
+        find_or_insert_kernel<key_type, value_type, score_type, evict_strategy,
+                              TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+            d_table_, table_->buckets, options_.max_bucket_size,
+            table_->buckets_num, options_.dim, keys, d_table_value_addrs,
+            scores, founds, param_key_index, EvictStrategyParam.global_epoch,
+            N);
       }
 
       {
@@ -841,7 +874,6 @@ class HashTable {
    * If @p scores is `nullptr`, the score for each key will not be returned.
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
-   *
    */
   void find_or_insert(const size_type n, const key_type* keys,  // (n)
                       value_type** values,                      // (n)
@@ -864,18 +896,18 @@ class HashTable {
 
     writer_shared_lock lock(mutex_);
 
-    using Selector =
-        SelectFindOrInsertPtrKernel<key_type, value_type, score_type>;
+    using Selector = SelectFindOrInsertPtrKernel<key_type, value_type,
+                                                 score_type, evict_strategy>;
     static thread_local int step_counter = 0;
     static thread_local float load_factor = 0.0;
 
     if (((step_counter++) % kernel_select_interval_) == 0) {
       load_factor = fast_load_factor(0, stream, false);
     }
-    Selector::execute_kernel(load_factor, options_.block_size,
-                             options_.max_bucket_size, table_->buckets_num,
-                             options_.dim, stream, n, d_table_, table_->buckets,
-                             keys, values, scores, founds);
+    Selector::execute_kernel(
+        load_factor, options_.block_size, options_.max_bucket_size,
+        table_->buckets_num, options_.dim, stream, n, d_table_, table_->buckets,
+        keys, values, scores, founds, EvictStrategyParam.global_epoch);
 
     CudaCheckError();
   }
@@ -900,6 +932,7 @@ class HashTable {
    * @endparblock
    *
    * @param stream The CUDA stream that is used to execute the operation.
+   *
    * @param unique_key If all keys in the same batch are unique.
    */
   void assign(const size_type n,
@@ -920,23 +953,25 @@ class HashTable {
       if (((step_counter++) % kernel_select_interval_) == 0) {
         load_factor = fast_load_factor(0, stream, false);
       }
-      using Selector =
-          KernelSelector_Update<key_type, value_type, score_type, ArchTag>;
+      using Selector = KernelSelector_Update<key_type, value_type, score_type,
+                                             evict_strategy, ArchTag>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size),
                              static_cast<uint32_t>(options_.dim))) {
         typename Selector::Params kernelParams(
             load_factor, table_->buckets, table_->buckets_num,
             static_cast<uint32_t>(options_.max_bucket_size),
-            static_cast<uint32_t>(options_.dim), keys, values, scores, n);
+            static_cast<uint32_t>(options_.dim), keys, values, scores, n,
+            EvictStrategyParam.global_epoch);
         Selector::select_kernel(kernelParams, stream);
       } else {
-        using Selector =
-            SelectUpdateKernelWithIO<key_type, value_type, score_type>;
+        using Selector = SelectUpdateKernelWithIO<key_type, value_type,
+                                                  score_type, evict_strategy>;
         Selector::execute_kernel(load_factor, options_.block_size,
                                  options_.max_bucket_size, table_->buckets_num,
                                  options_.dim, stream, n, d_table_,
-                                 table_->buckets, keys, values, scores);
+                                 table_->buckets, keys, values, scores,
+                                 EvictStrategyParam.global_epoch);
       }
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
@@ -951,11 +986,11 @@ class HashTable {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        update_kernel<key_type, value_type, score_type, TILE_SIZE>
-            <<<grid_size, block_size, 0, stream>>>(
-                d_table_, table_->buckets, options_.max_bucket_size,
-                table_->buckets_num, options_.dim, keys, d_dst, scores,
-                d_src_offset, N);
+        update_kernel<key_type, value_type, score_type, evict_strategy,
+                      TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+            d_table_, table_->buckets, options_.max_bucket_size,
+            table_->buckets_num, options_.dim, keys, d_dst, scores,
+            d_src_offset, EvictStrategyParam.global_epoch, N);
       }
 
       {
@@ -1261,7 +1296,7 @@ class HashTable {
    * hash table.
    *
    * @param n The maximum number of exported pairs.
-   * @param offset The position of the key to remove.
+   * @param offset The position of the key to search.
    * @param d_counter Accumulates amount of successfully exported values.
    * @param keys The keys to dump from GPU-accessible memory with shape (n).
    * @param values The values to dump from GPU-accessible memory with shape
@@ -1698,6 +1733,7 @@ class HashTable {
                                    cudaMemcpyHostToDevice, stream));
       }
 
+      EvictStrategy::set_global_epoch(static_cast<S>(IGNORED_GLOBAL_EPOCH));
       insert_or_assign(count, d_keys, d_values, d_scores, stream, true);
       total_count += count;
 
@@ -1761,16 +1797,34 @@ class HashTable {
   }
 
   inline void check_evict_strategy(const score_type* scores) {
-    if (options_.evict_strategy == EvictStrategy::kLru) {
+    if (evict_strategy == EvictStrategy::kLru ||
+        evict_strategy == EvictStrategy::kEpochLru) {
       MERLIN_CHECK(scores == nullptr,
                    "the scores should not be specified when running on "
-                   "LRU mode.");
+                   "LRU or Epoch LRU mode.");
     }
 
-    if (options_.evict_strategy == EvictStrategy::kCustomized) {
+    if (evict_strategy == EvictStrategy::kLfu ||
+        evict_strategy == EvictStrategy::kEpochLfu) {
+      MERLIN_CHECK(scores != nullptr,
+                   "the scores should be specified when running on "
+                   "LFU or Epoch LFU mode.");
+    }
+
+    if (evict_strategy == EvictStrategy::kCustomized) {
       MERLIN_CHECK(scores != nullptr,
                    "the scores should be specified when running on "
                    "customized mode.");
+    }
+
+    if ((evict_strategy == EvictStrategy::kEpochLru ||
+         evict_strategy == EvictStrategy::kEpochLfu)) {
+      MERLIN_CHECK(
+          EvictStrategyParam.global_epoch !=
+              static_cast<S>(IGNORED_GLOBAL_EPOCH),
+          "the global_epoch is invalid and should be assigned by calling "
+          "`EvictStrategy::set_global_epoch` when running on "
+          "Epoch LRU or Epoch LFU mode.");
     }
   }
 

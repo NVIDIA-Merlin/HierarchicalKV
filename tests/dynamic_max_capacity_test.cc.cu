@@ -27,7 +27,7 @@ constexpr size_t dim = 64;
 using i64 = int64_t;
 using u64 = uint64_t;
 using f32 = float;
-using Table = nv::merlin::HashTable<i64, f32, u64>;
+using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
 
 /*
@@ -48,7 +48,7 @@ void test_dynamic_max_capcity_table() {
   opt.max_capacity = max_capacity;
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = uplimit * dim * sizeof(f32);
-  opt.evict_strategy = nv::merlin::EvictStrategy::kLru;
+  using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kLru>;
   opt.dim = dim;
 
   using Vec_t = test_util::ValueArray<f32, dim>;

@@ -25,9 +25,10 @@ constexpr uint64_t DIM = 64;
 using K = int64_t;
 using S = uint64_t;
 using V = float;
-using Table = nv::merlin::HashTable<K, V, S>;
+using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
 
+template <typename Table>
 void test_save_to_file() {
   std::string prefix = "checkpoint";
   size_t keynum = 1 * 1024 * 1024;
@@ -66,7 +67,6 @@ void test_save_to_file() {
   options.init_capacity = capacity;
   options.max_capacity = capacity;
   options.dim = DIM;
-  options.evict_strategy = nv::merlin::EvictStrategy::kLru;
 
   std::unique_ptr<Table> table_0 = std::make_unique<Table>();
   std::unique_ptr<Table> table_1 = std::make_unique<Table>();
@@ -74,8 +74,13 @@ void test_save_to_file() {
   table_1->init(options);
   printf("Init tables.\n");
 
-  table_0->insert_or_assign(keynum, d_keys, d_vectors, /*scores=*/nullptr,
-                            stream);
+  S global_epoch = 101;
+  S* temp_score = (Table::evict_strategy == EvictStrategy::kLru ||
+                   Table::evict_strategy == EvictStrategy::kEpochLru)
+                      ? nullptr
+                      : d_scores;
+  table_0->insert_or_assign(keynum, d_keys, d_vectors, temp_score, stream,
+                            global_epoch);
   printf("Fill table_0.\n");
   nv::merlin::LocalKVFile<K, V, S> file;
   std::string keys_path = prefix + ".keys";
@@ -89,11 +94,29 @@ void test_save_to_file() {
   table_1->load(&file, buffer_size, stream);
   file.close();
   printf("table_1 loads.\n");
-  ASSERT_TRUE(test_util::tables_equal(table_0.get(), table_1.get(), stream));
+  bool check_score = !(Table::evict_strategy == EvictStrategy::kLru ||
+                       Table::evict_strategy == EvictStrategy::kEpochLru);
+  ASSERT_TRUE((test_util::tables_equal<K, V, S, Table>(
+      table_0.get(), table_1.get(), check_score, stream)));
   printf("table_0 and table_1 are equal.\n");
   CUDA_FREE_POINTERS(stream, d_keys, d_vectors, d_scores, h_keys, h_vectors,
                      h_scores);
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
-TEST(SaveAndLoadTest, test_save_and_load) { test_save_to_file(); }
+TEST(SaveAndLoadTest, test_save_and_load_on_lru) {
+  test_save_to_file<nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>>();
+}
+TEST(SaveAndLoadTest, test_save_and_load_on_lfu) {
+  test_save_to_file<nv::merlin::HashTable<K, V, S, EvictStrategy::kLfu>>();
+}
+TEST(SaveAndLoadTest, test_save_and_load_on_epochlru) {
+  test_save_to_file<nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLru>>();
+}
+TEST(SaveAndLoadTest, test_save_and_load_on_epochlfu) {
+  test_save_to_file<nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLfu>>();
+}
+TEST(SaveAndLoadTest, test_save_and_load_on_customized) {
+  test_save_to_file<
+      nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>>();
+}
