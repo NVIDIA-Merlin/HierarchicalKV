@@ -79,16 +79,11 @@ Classes
 -------
 
 
+- :ref:`exhale_struct_structnv_1_1merlin_1_1EvictStrategy`
+
 - :ref:`exhale_struct_structnv_1_1merlin_1_1HashTableOptions`
 
 - :ref:`exhale_class_classnv_1_1merlin_1_1HashTable`
-
-
-Enums
------
-
-
-- :ref:`exhale_enum_merlin__hashtable_8cuh_1a8c9f1dcaae52c7049c17f0999ad62015`
 
 
 Typedefs

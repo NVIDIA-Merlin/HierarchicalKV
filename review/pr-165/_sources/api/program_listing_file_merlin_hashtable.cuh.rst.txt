@@ -50,9 +50,18 @@ Program Listing for File merlin_hashtable.cuh
    namespace nv {
    namespace merlin {
    
-   enum class EvictStrategy {
-     kLru = 0,        
-     kCustomized = 1  
+   struct EvictStrategy {
+     enum EvictStrategyEnum {
+       kLru = 0,         
+       kLfu = 1,         
+       kEpochLru = 2,    
+       kEpochLfu = 3,    
+       kCustomized = 4,  
+     };
+   
+     static void set_global_epoch(const uint64_t epoch) {
+       EvictStrategyParam.global_epoch = epoch;
+     }
    };
    
    struct HashTableOptions {
@@ -66,8 +75,7 @@ Program Listing for File merlin_hashtable.cuh
      int io_block_size = 1024;        
      int device_id = -1;              
      bool io_by_cpu = false;  
-     EvictStrategy evict_strategy = EvictStrategy::kLru;  
-     bool use_constant_memory = false;                    
+     bool use_constant_memory = false;  
      MemoryPoolOptions
          device_memory_pool;  
      MemoryPoolOptions
@@ -89,13 +97,15 @@ Program Listing for File merlin_hashtable.cuh
    #endif
    
    template <typename K, typename V, typename S = uint64_t,
-             typename ArchTag = Sm80>
+             int Strategy = EvictStrategy::kLru, typename ArchTag = Sm80>
    class HashTable {
     public:
      using size_type = size_t;
      using key_type = K;
      using value_type = V;
      using score_type = S;
+     static constexpr int evict_strategy = Strategy;
+   
      using Pred = EraseIfPredict<key_type, score_type>;
      using allocator_type = BaseAllocator;
    
@@ -160,9 +170,8 @@ Program Listing for File merlin_hashtable.cuh
                     "Bucket size should be the pow of 2");
    
        MERLIN_CHECK(
-           (options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
-                   128 ==
-               0,
+           (((options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
+             128) == 0),
            "Storage size of keys and scores in one bucket should be the mutiple "
            "of cache line size");
    
@@ -217,8 +226,8 @@ Program Listing for File merlin_hashtable.cuh
        insert_unique_lock lock(mutex_, stream);
    
        if (is_fast_mode()) {
-         using Selector =
-             SelectUpsertKernelWithIO<key_type, value_type, score_type>;
+         using Selector = SelectUpsertKernelWithIO<key_type, value_type,
+                                                   score_type, evict_strategy>;
          static thread_local int step_counter = 0;
          static thread_local float load_factor = 0.0;
    
@@ -230,7 +239,7 @@ Program Listing for File merlin_hashtable.cuh
              load_factor, options_.block_size, options_.max_bucket_size,
              table_->buckets_num, options_.dim, stream, n, d_table_,
              table_->buckets, keys, reinterpret_cast<const value_type*>(values),
-             scores);
+             scores, EvictStrategyParam.global_epoch);
        } else {
          const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
          auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
@@ -244,11 +253,11 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           upsert_kernel<key_type, value_type, score_type, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   d_table_, table_->buckets, options_.max_bucket_size,
-                   table_->buckets_num, options_.dim, keys, d_dst, scores,
-                   d_src_offset, N);
+           upsert_kernel<key_type, value_type, score_type, evict_strategy,
+                         TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+               d_table_, table_->buckets, options_.max_bucket_size,
+               table_->buckets_num, options_.dim, keys, d_dst, scores,
+               d_src_offset, EvictStrategyParam.global_epoch, N);
          }
    
          {
@@ -326,8 +335,9 @@ Program Listing for File merlin_hashtable.cuh
          load_factor = fast_load_factor(0, stream, false);
        }
    
-       using Selector = KernelSelector_UpsertAndEvict<key_type, value_type,
-                                                      score_type, ArchTag>;
+       using Selector =
+           KernelSelector_UpsertAndEvict<key_type, value_type, score_type,
+                                         evict_strategy, ArchTag>;
        if (Selector::callable(unique_key,
                               static_cast<uint32_t>(options_.max_bucket_size),
                               static_cast<uint32_t>(options_.dim))) {
@@ -335,7 +345,8 @@ Program Listing for File merlin_hashtable.cuh
              load_factor, table_->buckets, table_->buckets_size,
              table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
              static_cast<uint32_t>(options_.dim), keys, values, scores,
-             evicted_keys, evicted_values, evicted_scores, n, d_evicted_counter);
+             evicted_keys, evicted_values, evicted_scores, n, d_evicted_counter,
+             EvictStrategyParam.global_epoch);
          Selector::select_kernel(kernelParams, stream);
        } else {
          // always use max tile to avoid data-deps as possible.
@@ -357,13 +368,14 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY),
                                     n * sizeof(K), stream));
          using Selector =
-             SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type>;
+             SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
+                                              evict_strategy>;
    
-         Selector::execute_kernel(load_factor, options_.block_size,
-                                  options_.max_bucket_size, table_->buckets_num,
-                                  options_.dim, stream, n, d_table_,
-                                  table_->buckets, keys, values, scores,
-                                  evicted_keys, evicted_values, evicted_scores);
+         Selector::execute_kernel(
+             load_factor, options_.block_size, options_.max_bucket_size,
+             table_->buckets_num, options_.dim, stream, n, d_table_,
+             table_->buckets, keys, values, scores, evicted_keys, evicted_values,
+             evicted_scores, EvictStrategyParam.global_epoch);
    
          keys_not_empty<K>
              <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
@@ -440,11 +452,12 @@ Program Listing for File merlin_hashtable.cuh
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         accum_kernel<key_type, value_type, score_type>
+         accum_kernel<key_type, value_type, score_type, evict_strategy>
              <<<grid_size, block_size, 0, stream>>>(
                  d_table_, keys, dst, scores, accum_or_assigns, table_->buckets,
                  table_->buckets_size, table_->bucket_max_size,
-                 table_->buckets_num, src_offset, founds, N);
+                 table_->buckets_num, src_offset, founds,
+                 EvictStrategyParam.global_epoch, N);
        }
    
        if (!is_fast_mode()) {
@@ -491,7 +504,8 @@ Program Listing for File merlin_hashtable.cuh
    
        if (is_fast_mode()) {
          using Selector =
-             SelectFindOrInsertKernelWithIO<key_type, value_type, score_type>;
+             SelectFindOrInsertKernelWithIO<key_type, value_type, score_type,
+                                            evict_strategy>;
          static thread_local int step_counter = 0;
          static thread_local float load_factor = 0.0;
    
@@ -501,7 +515,8 @@ Program Listing for File merlin_hashtable.cuh
          Selector::execute_kernel(load_factor, options_.block_size,
                                   options_.max_bucket_size, table_->buckets_num,
                                   options_.dim, stream, n, d_table_,
-                                  table_->buckets, keys, values, scores);
+                                  table_->buckets, keys, values, scores,
+                                  EvictStrategyParam.global_epoch);
        } else {
          const size_type dev_ws_size{
              n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
@@ -517,11 +532,12 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           find_or_insert_kernel<key_type, value_type, score_type, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   d_table_, table_->buckets, options_.max_bucket_size,
-                   table_->buckets_num, options_.dim, keys, d_table_value_addrs,
-                   scores, founds, param_key_index, N);
+           find_or_insert_kernel<key_type, value_type, score_type, evict_strategy,
+                                 TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+               d_table_, table_->buckets, options_.max_bucket_size,
+               table_->buckets_num, options_.dim, keys, d_table_value_addrs,
+               scores, founds, param_key_index, EvictStrategyParam.global_epoch,
+               N);
          }
    
          {
@@ -593,18 +609,18 @@ Program Listing for File merlin_hashtable.cuh
    
        insert_unique_lock lock(mutex_, stream);
    
-       using Selector =
-           SelectFindOrInsertPtrKernel<key_type, value_type, score_type>;
+       using Selector = SelectFindOrInsertPtrKernel<key_type, value_type,
+                                                    score_type, evict_strategy>;
        static thread_local int step_counter = 0;
        static thread_local float load_factor = 0.0;
    
        if (((step_counter++) % kernel_select_interval_) == 0) {
          load_factor = fast_load_factor(0, stream, false);
        }
-       Selector::execute_kernel(load_factor, options_.block_size,
-                                options_.max_bucket_size, table_->buckets_num,
-                                options_.dim, stream, n, d_table_, table_->buckets,
-                                keys, values, scores, founds);
+       Selector::execute_kernel(
+           load_factor, options_.block_size, options_.max_bucket_size,
+           table_->buckets_num, options_.dim, stream, n, d_table_, table_->buckets,
+           keys, values, scores, founds, EvictStrategyParam.global_epoch);
    
        CudaCheckError();
      }
@@ -626,23 +642,25 @@ Program Listing for File merlin_hashtable.cuh
          if (((step_counter++) % kernel_select_interval_) == 0) {
            load_factor = fast_load_factor(0, stream, false);
          }
-         using Selector =
-             KernelSelector_Update<key_type, value_type, score_type, ArchTag>;
+         using Selector = KernelSelector_Update<key_type, value_type, score_type,
+                                                evict_strategy, ArchTag>;
          if (Selector::callable(unique_key,
                                 static_cast<uint32_t>(options_.max_bucket_size),
                                 static_cast<uint32_t>(options_.dim))) {
            typename Selector::Params kernelParams(
                load_factor, table_->buckets, table_->buckets_num,
                static_cast<uint32_t>(options_.max_bucket_size),
-               static_cast<uint32_t>(options_.dim), keys, values, scores, n);
+               static_cast<uint32_t>(options_.dim), keys, values, scores, n,
+               EvictStrategyParam.global_epoch);
            Selector::select_kernel(kernelParams, stream);
          } else {
-           using Selector =
-               SelectUpdateKernelWithIO<key_type, value_type, score_type>;
+           using Selector = SelectUpdateKernelWithIO<key_type, value_type,
+                                                     score_type, evict_strategy>;
            Selector::execute_kernel(load_factor, options_.block_size,
                                     options_.max_bucket_size, table_->buckets_num,
                                     options_.dim, stream, n, d_table_,
-                                    table_->buckets, keys, values, scores);
+                                    table_->buckets, keys, values, scores,
+                                    EvictStrategyParam.global_epoch);
          }
        } else {
          const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
@@ -657,11 +675,11 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           update_kernel<key_type, value_type, score_type, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   d_table_, table_->buckets, options_.max_bucket_size,
-                   table_->buckets_num, options_.dim, keys, d_dst, scores,
-                   d_src_offset, N);
+           update_kernel<key_type, value_type, score_type, evict_strategy,
+                         TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+               d_table_, table_->buckets, options_.max_bucket_size,
+               table_->buckets_num, options_.dim, keys, d_dst, scores,
+               d_src_offset, EvictStrategyParam.global_epoch, N);
          }
    
          {
@@ -1169,6 +1187,7 @@ Program Listing for File merlin_hashtable.cuh
                                       cudaMemcpyHostToDevice, stream));
          }
    
+         EvictStrategy::set_global_epoch(static_cast<S>(IGNORED_GLOBAL_EPOCH));
          insert_or_assign(count, d_keys, d_values, d_scores, stream, true);
          total_count += count;
    
@@ -1219,16 +1238,34 @@ Program Listing for File merlin_hashtable.cuh
      }
    
      inline void check_evict_strategy(const score_type* scores) {
-       if (options_.evict_strategy == EvictStrategy::kLru) {
+       if (evict_strategy == EvictStrategy::kLru ||
+           evict_strategy == EvictStrategy::kEpochLru) {
          MERLIN_CHECK(scores == nullptr,
                       "the scores should not be specified when running on "
-                      "LRU mode.");
+                      "LRU or Epoch LRU mode.");
        }
    
-       if (options_.evict_strategy == EvictStrategy::kCustomized) {
+       if (evict_strategy == EvictStrategy::kLfu ||
+           evict_strategy == EvictStrategy::kEpochLfu) {
+         MERLIN_CHECK(scores != nullptr,
+                      "the scores should be specified when running on "
+                      "LFU or Epoch LFU mode.");
+       }
+   
+       if (evict_strategy == EvictStrategy::kCustomized) {
          MERLIN_CHECK(scores != nullptr,
                       "the scores should be specified when running on "
                       "customized mode.");
+       }
+   
+       if ((evict_strategy == EvictStrategy::kEpochLru ||
+            evict_strategy == EvictStrategy::kEpochLfu)) {
+         MERLIN_CHECK(
+             EvictStrategyParam.global_epoch !=
+                 static_cast<S>(IGNORED_GLOBAL_EPOCH),
+             "the global_epoch is invalid and should be assigned by calling "
+             "`EvictStrategy::set_global_epoch` when running on "
+             "Epoch LRU or Epoch LFU mode.");
        }
      }
    

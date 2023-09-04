@@ -62,8 +62,6 @@
 <li class="toctree-l2"><a class="reference internal" href="#benefits">Benefits</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#key-ideas">Key ideas</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#api-documentation">API Documentation</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#api-maturity-matrix">API Maturity Matrix</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#usage-restrictions">Usage restrictions</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#contributors">Contributors</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#how-to-build">How to build</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#benchmark-performance-w-i-p">Benchmark &amp; Performance(W.I.P)</a></li>
@@ -145,9 +143,8 @@ The library simplifies the common challenges to building, evaluating, and servin
 <li><p><a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a></p></li>
 </ul>
 <p>For regular API doc, please refer to <a class="reference external" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/index.html">API Docs</a></p>
-</div>
 <div class="section" id="api-maturity-matrix">
-<h2>API Maturity Matrix<a class="headerlink" href="#api-maturity-matrix" title="Permalink to this headline"></a></h2>
+<h3>API Maturity Matrix<a class="headerlink" href="#api-maturity-matrix" title="Permalink to this headline"></a></h3>
 <p><code class="docutils literal notranslate"><span class="pre">industry-validated</span></code> means the API has been well-tested and verified in at least one real-world scenario.</p>
 <table class="colwidths-auto docutils align-default">
 <thead>
@@ -158,27 +155,27 @@ The library simplifies the common challenges to building, evaluating, and servin
 </thead>
 <tbody>
 <tr class="row-even"><td class="text-left"><p><strong>insert_or_assign</strong></p></td>
-<td class="text-left"><p>Insert or assign for the specified keys. If the target bucket is full, overwrite the key with minimum score in it.</p></td>
+<td class="text-left"><p>Insert or assign for the specified keys. <br>Overwrite one key with minimum score when bucket is full.</p></td>
 <td class="text-left"><p>industry-validated</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>insert_and_evict</strong></p></td>
-<td class="text-left"><p>Insert new keys. If the target bucket is full, the keys with minimum score will be evicted for placement the new key.</p></td>
+<td class="text-left"><p>Insert new keys, and evict keys with minimum score when bucket is full.</p></td>
 <td class="text-left"><p>industry-validated</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>find_or_insert</strong></p></td>
-<td class="text-left"><p>Search for the specified keys. If missing, insert it.</p></td>
+<td class="text-left"><p>Search for the specified keys, and insert them when missed.</p></td>
 <td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>assign</strong></p></td>
-<td class="text-left"><p>Update for each key and ignore the missed one.</p></td>
+<td class="text-left"><p>Update for each key and bypass when missed.</p></td>
 <td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>accum_or_assign</strong></p></td>
-<td class="text-left"><p>Search and update for each key. If found, add value as a delta to the old value. If missing, update it directly.</p></td>
+<td class="text-left"><p>Search and update for each key. If found, add value as a delta to the original value. <br>If missed, update it directly.</p></td>
 <td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-odd"><td class="text-left"><p><strong>find_or_insert*</strong></p></td>
-<td class="text-left"><p>Search for the specified keys and return the pointers of values. If missing, insert it.</p></td>
+<td class="text-left"><p>Search for the specified keys and return the pointers of values. Insert them firstly when missing.</p></td>
 <td class="text-left"><p>well-tested</p></td>
 </tr>
 <tr class="row-even"><td class="text-left"><p><strong>find</strong></p></td>
@@ -204,13 +201,153 @@ The library simplifies the common challenges to building, evaluating, and servin
 </tbody>
 </table>
 </div>
-<div class="section" id="usage-restrictions">
-<h2>Usage restrictions<a class="headerlink" href="#usage-restrictions" title="Permalink to this headline"></a></h2>
+<div class="section" id="evict-strategy">
+<h3>Evict Strategy<a class="headerlink" href="#evict-strategy" title="Permalink to this headline"></a></h3>
+<p>The <code class="docutils literal notranslate"><span class="pre">score</span></code> is introduced to define the importance of each key, the larger, the more important, the less likely they will be evicted. Eviction only happens when a bucket is full.
+The <code class="docutils literal notranslate"><span class="pre">score_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>. For more detail, please refer to <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L52"><code class="docutils literal notranslate"><span class="pre">class</span> <span class="pre">EvictStrategy</span></code></a>.</p>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-left head"><p>Name</p></th>
+<th class="text-left head"><p>Definition of <code class="docutils literal notranslate"><span class="pre">Score</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-left"><p><strong>Lru</strong></p></td>
+<td class="text-left"><p>Device clock in a nanosecond, which could differ slightly from host clock.</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>Lfu</strong></p></td>
+<td class="text-left"><p>Frequency increment provided by caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs as the increment of frequency.</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>EpochLru</strong></p></td>
+<td class="text-left"><p>The high 32bits is the global epoch provided via the input parameter of <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code>, <br>the low 32bits is equal to <code class="docutils literal notranslate"><span class="pre">(device_clock</span> <span class="pre">&gt;&gt;</span> <span class="pre">20)</span> <span class="pre">&amp;</span> <span class="pre">0xffffffff</span></code> with granularity close to 1 ms.</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>EpochLfu</strong></p></td>
+<td class="text-left"><p>The high 32bits is the global epoch provided via the input parameter of <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code>, <br>the low 32bits is the frequency, <br>the frequency will keep constant after reaching the max value of <code class="docutils literal notranslate"><span class="pre">0xffffffff</span></code>.</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>Customized</strong></p></td>
+<td class="text-left"><p>Fully provided by the caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs.</p></td>
+</tr>
+</tbody>
+</table>
 <ul class="simple">
-<li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> or <code class="docutils literal notranslate"><span class="pre">int64_t</span></code>.</p></li>
+<li><p><strong>Note</strong>:</p>
+<ul>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs mean the APIs of <code class="docutils literal notranslate"><span class="pre">insert_or_assign</span></code>, <code class="docutils literal notranslate"><span class="pre">insert_and_evict</span></code>, <code class="docutils literal notranslate"><span class="pre">find_or_insert</span></code>, <code class="docutils literal notranslate"><span class="pre">accum_or_assign</span></code>, and <code class="docutils literal notranslate"><span class="pre">find_or_insert</span></code>.</p></li>
+<li><p>The <code class="docutils literal notranslate"><span class="pre">global_epoch</span></code> should be maintained by the caller and input as the input parameter of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs.</p></li>
+</ul>
+</li>
+</ul>
+</div>
+<div class="section" id="configuration-options">
+<h3>Configuration Options<a class="headerlink" href="#configuration-options" title="Permalink to this headline"></a></h3>
+<p>It’s recommended to keep the default configuration for the options ending with <code class="docutils literal notranslate"><span class="pre">*</span></code>.</p>
+<table class="colwidths-auto docutils align-default">
+<thead>
+<tr class="row-odd"><th class="text-left head"><p>Name</p></th>
+<th class="text-left head"><p>Type</p></th>
+<th class="text-left head"><p>Default</p></th>
+<th class="text-left head"><p>Description</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td class="text-left"><p><strong>init_capacity</strong></p></td>
+<td class="text-left"><p>size_t</p></td>
+<td class="text-left"><p>0</p></td>
+<td class="text-left"><p>The initial capacity of the hash table.</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>max_capacity</strong></p></td>
+<td class="text-left"><p>size_t</p></td>
+<td class="text-left"><p>0</p></td>
+<td class="text-left"><p>The maximum capacity of the hash table.</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>max_hbm_for_vectors</strong></p></td>
+<td class="text-left"><p>size_t</p></td>
+<td class="text-left"><p>0</p></td>
+<td class="text-left"><p>The maximum HBM for vectors, in bytes.</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>dim</strong></p></td>
+<td class="text-left"><p>size_t</p></td>
+<td class="text-left"><p>64</p></td>
+<td class="text-left"><p>The dimension of the value vectors.</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>max_bucket_size*</strong></p></td>
+<td class="text-left"><p>size_t</p></td>
+<td class="text-left"><p>128</p></td>
+<td class="text-left"><p>The length of each bucket.</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>max_load_factor*</strong></p></td>
+<td class="text-left"><p>float</p></td>
+<td class="text-left"><p>0.5f</p></td>
+<td class="text-left"><p>The max load factor before rehashing.</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>block_size*</strong></p></td>
+<td class="text-left"><p>int</p></td>
+<td class="text-left"><p>128</p></td>
+<td class="text-left"><p>The default block size for CUDA kernels.</p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>io_block_size*</strong></p></td>
+<td class="text-left"><p>int</p></td>
+<td class="text-left"><p>1024</p></td>
+<td class="text-left"><p>The block size for IO CUDA kernels.</p></td>
+</tr>
+<tr class="row-even"><td class="text-left"><p><strong>device_id*</strong></p></td>
+<td class="text-left"><p>int</p></td>
+<td class="text-left"><p>-1</p></td>
+<td class="text-left"><p>The ID of device. Managed internally when set to <code class="docutils literal notranslate"><span class="pre">-1</span></code></p></td>
+</tr>
+<tr class="row-odd"><td class="text-left"><p><strong>io_by_cpu*</strong></p></td>
+<td class="text-left"><p>bool</p></td>
+<td class="text-left"><p>false</p></td>
+<td class="text-left"><p>The flag indicating if the CPU handles IO.</p></td>
+</tr>
+</tbody>
+</table>
+<p>For more detail, please refer to <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a>.</p>
+</div>
+<div class="section" id="how-to-use">
+<h3>How to use:<a class="headerlink" href="#how-to-use" title="Permalink to this headline"></a></h3>
+<div class="highlight-cpp notranslate"><div class="highlight"><pre><span></span><span class="cp">#include</span><span class="w"> </span><span class="cpf">&quot;merlin_hashtable.cuh&quot;</span>
+
+
+<span class="k">using</span><span class="w"> </span><span class="n">TableOptions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nv</span><span class="o">::</span><span class="n">merlin</span><span class="o">::</span><span class="n">HashTableOptions</span><span class="p">;</span>
+<span class="k">using</span><span class="w"> </span><span class="n">EvictStrategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nv</span><span class="o">::</span><span class="n">merlin</span><span class="o">::</span><span class="n">EvictStrategy</span><span class="p">;</span>
+
+<span class="kt">int</span><span class="w"> </span><span class="nf">main</span><span class="p">(</span><span class="kt">int</span><span class="w"> </span><span class="n">argc</span><span class="p">,</span><span class="w"> </span><span class="kt">char</span><span class="w"> </span><span class="o">*</span><span class="n">argv</span><span class="p">[])</span>
+<span class="p">{</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">K</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">uint64_t</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">V</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">float</span><span class="p">;</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">S</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kt">uint64_t</span><span class="p">;</span>
+<span class="w">  </span>
+<span class="w">  </span><span class="c1">// 1. Define the table and use LRU eviction strategy.</span>
+<span class="w">  </span><span class="k">using</span><span class="w"> </span><span class="n">HKVTable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nv</span><span class="o">::</span><span class="n">merlin</span><span class="o">::</span><span class="n">HashTable</span><span class="o">&lt;</span><span class="n">K</span><span class="p">,</span><span class="w"> </span><span class="n">V</span><span class="p">,</span><span class="w"> </span><span class="n">S</span><span class="p">,</span><span class="w"> </span><span class="n">EvictStrategy</span><span class="o">::</span><span class="n">kLru</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">HKVTable</span><span class="o">&gt;</span><span class="w"> </span><span class="n">table</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">HKVTable</span><span class="o">&gt;</span><span class="p">();</span>
+<span class="w">  </span>
+<span class="w">  </span><span class="c1">// 2. Define the configuration options.</span>
+<span class="w">  </span><span class="n">TableOptions</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<span class="w">  </span><span class="n">options</span><span class="p">.</span><span class="n">init_capacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">16</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">1024</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">1024</span><span class="p">;</span>
+<span class="w">  </span><span class="n">options</span><span class="p">.</span><span class="n">max_capacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">options</span><span class="p">.</span><span class="n">init_capacity</span><span class="p">;</span>
+<span class="w">  </span><span class="n">options</span><span class="p">.</span><span class="n">dim</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">16</span><span class="p">;</span>
+<span class="w">  </span><span class="n">options</span><span class="p">.</span><span class="n">max_hbm_for_vectors</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">nv</span><span class="o">::</span><span class="n">merlin</span><span class="o">::</span><span class="n">GB</span><span class="p">(</span><span class="mi">16</span><span class="p">);</span>
+<span class="w">  </span>
+<span class="w">  </span>
+<span class="w">  </span><span class="c1">// 3. Initialize the table memory resource.</span>
+<span class="w">  </span><span class="n">table</span><span class="o">-&gt;</span><span class="n">init</span><span class="p">(</span><span class="n">options</span><span class="p">);</span>
+<span class="w">  </span>
+<span class="w">  </span><span class="c1">// 4. Use table to do something.</span>
+<span class="w">  </span>
+<span class="w">  </span><span class="k">return</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span>
+</pre></div>
+</div>
+</div>
+<div class="section" id="usage-restrictions">
+<h3>Usage restrictions<a class="headerlink" href="#usage-restrictions" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">int64_t</span></code> or <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
 <li><p>The <code class="docutils literal notranslate"><span class="pre">score_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
 <li><p>The keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFC</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFD</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> are reserved for internal using.</p></li>
 </ul>
+</div>
 </div>
 <div class="section" id="contributors">
 <h2>Contributors<a class="headerlink" href="#contributors" title="Permalink to this headline"></a></h2>
