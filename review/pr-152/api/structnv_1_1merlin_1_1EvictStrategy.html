@@ -135,44 +135,50 @@
 <p>On <code class="docutils literal notranslate"><span class="pre">kCustomized</span></code>, fully provided by the caller via the input parameter of <code class="docutils literal notranslate"><span class="pre">scores</span></code> of <code class="docutils literal notranslate"><span class="pre">insert-like</span></code> APIs. </p>
 </div>
 <div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp enum">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnumE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy17EvictStrategyEnumE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy17EvictStrategyEnumE"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11"></span><em class="property"><span class="pre">enum</span> </em><code class="sig-name descname"><span class="pre">EvictStrategyEnum</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnumE" title="Permalink to this definition"></a><br /></dt>
+<dd><p><em>Values:</em></p>
+<dl class="cpp enumerator">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLruE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLruE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLruE"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a60b3de4350e634cbecf75a8cdf7a827c"></span><em class="property"><span class="pre">enumerator</span> </em><code class="sig-name descname"><span class="pre">kLru</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLruE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>LRU mode. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLfuE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLfuE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLfuE"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a562721829e94d6ab7fb70743d6c8faa4"></span><em class="property"><span class="pre">enumerator</span> </em><code class="sig-name descname"><span class="pre">kLfu</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum4kLfuE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>LFU mode. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLruE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLruE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLruE"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a415f1154f8b09e1c38ad4f94b4e664d5"></span><em class="property"><span class="pre">enumerator</span> </em><code class="sig-name descname"><span class="pre">kEpochLru</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLruE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Epoch Lru mode. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLfuE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLfuE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLfuE"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11ab2e6dc76bbffe0212eb9b7c0ce830291"></span><em class="property"><span class="pre">enumerator</span> </em><code class="sig-name descname"><span class="pre">kEpochLfu</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum9kEpochLfuE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Epoch Lfu mode. </p>
+</dd></dl>
+
+<dl class="cpp enumerator">
+<dt id="_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum11kCustomizedE">
+<span id="_CPPv3N2nv6merlin13EvictStrategy17EvictStrategyEnum11kCustomizedE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy17EvictStrategyEnum11kCustomizedE"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a3c01fa9b631029bcfbe17e171d4d3978"></span><em class="property"><span class="pre">enumerator</span> </em><code class="sig-name descname"><span class="pre">kCustomized</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy17EvictStrategyEnum11kCustomizedE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Customized mode. </p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
 <p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-functions">Public Static Functions</p>
 <dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t">
 <span id="_CPPv3N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t"></span><span id="_CPPv2N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t"></span><span id="nv::merlin::EvictStrategy::set_global_epoch__uint64_tC"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a5f99db07cd93691ab2e6a6e60a2b84db"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">set_global_epoch</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <span class="pre">uint64_t</span> <em><span class="pre">epoch</span></em><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy16set_global_epochEK8uint64_t" title="Permalink to this definition"></a><br /></dt>
 <dd></dd></dl>
-
-</div>
-<div class="breathe-sectiondef docutils container">
-<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-static-attributes">Public Static Attributes</p>
-<dl class="cpp var">
-<dt id="_CPPv4N2nv6merlin13EvictStrategy4kLruE">
-<span id="_CPPv3N2nv6merlin13EvictStrategy4kLruE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy4kLruE"></span><span id="nv::merlin::EvictStrategy::kLru__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1aa69ca265b26d0574d93f97101a6ec62e"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kLru</span></code> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy4kLruE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>LRU mode. </p>
-</dd></dl>
-
-<dl class="cpp var">
-<dt id="_CPPv4N2nv6merlin13EvictStrategy4kLfuE">
-<span id="_CPPv3N2nv6merlin13EvictStrategy4kLfuE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy4kLfuE"></span><span id="nv::merlin::EvictStrategy::kLfu__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a32df8f909c5ee54e93d4ceced141a476"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kLfu</span></code> <span class="pre">=</span> <span class="pre">1</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy4kLfuE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>LFU mode. </p>
-</dd></dl>
-
-<dl class="cpp var">
-<dt id="_CPPv4N2nv6merlin13EvictStrategy9kEpochLruE">
-<span id="_CPPv3N2nv6merlin13EvictStrategy9kEpochLruE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy9kEpochLruE"></span><span id="nv::merlin::EvictStrategy::kEpochLru__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a642751a4cf5008d31a35d2c4362eb9ad"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kEpochLru</span></code> <span class="pre">=</span> <span class="pre">2</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy9kEpochLruE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Epoch Lru mode. </p>
-</dd></dl>
-
-<dl class="cpp var">
-<dt id="_CPPv4N2nv6merlin13EvictStrategy9kEpochLfuE">
-<span id="_CPPv3N2nv6merlin13EvictStrategy9kEpochLfuE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy9kEpochLfuE"></span><span id="nv::merlin::EvictStrategy::kEpochLfu__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a11179796050916611d7c7c499269c763"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kEpochLfu</span></code> <span class="pre">=</span> <span class="pre">3</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy9kEpochLfuE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Epoch Lfu mode. </p>
-</dd></dl>
-
-<dl class="cpp var">
-<dt id="_CPPv4N2nv6merlin13EvictStrategy11kCustomizedE">
-<span id="_CPPv3N2nv6merlin13EvictStrategy11kCustomizedE"></span><span id="_CPPv2N2nv6merlin13EvictStrategy11kCustomizedE"></span><span id="nv::merlin::EvictStrategy::kCustomized__i"></span><span class="target" id="structnv_1_1merlin_1_1EvictStrategy_1a7e1940821fbc9551001ed773b8d6dfdb"></span><em class="property"><span class="pre">static</span></em> <em class="property"><span class="pre">constexpr</span></em> <span class="pre">int</span> <code class="sig-name descname"><span class="pre">kCustomized</span></code> <span class="pre">=</span> <span class="pre">4</span><a class="headerlink" href="#_CPPv4N2nv6merlin13EvictStrategy11kCustomizedE" title="Permalink to this definition"></a><br /></dt>
-<dd><p>Customized mode. </p>
-</dd></dl>
 
 </div>
 </dd></dl>

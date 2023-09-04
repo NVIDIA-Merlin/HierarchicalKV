@@ -51,11 +51,13 @@ Program Listing for File merlin_hashtable.cuh
    namespace merlin {
    
    struct EvictStrategy {
-     constexpr static int kLru = 0;         
-     constexpr static int kLfu = 1;         
-     constexpr static int kEpochLru = 2;    
-     constexpr static int kEpochLfu = 3;    
-     constexpr static int kCustomized = 4;  
+     enum EvictStrategyEnum {
+       kLru = 0,         
+       kLfu = 1,         
+       kEpochLru = 2,    
+       kEpochLfu = 3,    
+       kCustomized = 4,  
+     };
    
      static void set_global_epoch(const uint64_t epoch) {
        EvictStrategyParam.global_epoch = epoch;
