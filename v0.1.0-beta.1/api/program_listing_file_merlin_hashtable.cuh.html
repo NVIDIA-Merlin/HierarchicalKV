@@ -299,7 +299,7 @@
 <span class="w">      </span><span class="n">check_evict_strategy</span><span class="p">(</span><span class="n">scores</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">writer_shared_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">insert_unique_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_fast_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">using</span><span class="w"> </span><span class="n">Selector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SelectUpsertKernelWithIO</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span>
@@ -397,7 +397,7 @@
 <span class="w">      </span><span class="n">check_evict_strategy</span><span class="p">(</span><span class="n">scores</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">writer_shared_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">insert_unique_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="c1">// TODO: Currently only need eviction when using HashTable as HBM cache.</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="o">!</span><span class="n">is_fast_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
@@ -512,7 +512,7 @@
 <span class="w">      </span><span class="n">check_evict_strategy</span><span class="p">(</span><span class="n">scores</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">writer_shared_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">insert_unique_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">dev_ws_size</span><span class="p">{</span>
 <span class="w">        </span><span class="n">n</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">value_type</span><span class="o">*</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">int</span><span class="p">)</span><span class="w"> </span><span class="o">+</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">bool</span><span class="p">))};</span>
@@ -576,7 +576,7 @@
 <span class="w">      </span><span class="n">check_evict_strategy</span><span class="p">(</span><span class="n">scores</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">writer_shared_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">insert_unique_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_fast_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">using</span><span class="w"> </span><span class="n">Selector</span><span class="w"> </span><span class="o">=</span>
@@ -683,7 +683,7 @@
 <span class="w">      </span><span class="n">check_evict_strategy</span><span class="p">(</span><span class="n">scores</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">writer_shared_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">insert_unique_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">using</span><span class="w"> </span><span class="n">Selector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SelectFindOrInsertPtrKernel</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span>
 <span class="w">                                                 </span><span class="n">score_type</span><span class="p">,</span><span class="w"> </span><span class="n">evict_strategy</span><span class="o">&gt;</span><span class="p">;</span>
@@ -709,7 +709,7 @@
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">writer_shared_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">update_shared_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_fast_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">static</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">step_counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
@@ -807,7 +807,7 @@
 
 <span class="w">    </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaMemsetAsync</span><span class="p">(</span><span class="n">founds</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">bool</span><span class="p">),</span><span class="w"> </span><span class="n">stream</span><span class="p">));</span>
 
-<span class="w">    </span><span class="n">reader_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">read_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">value_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">dim</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">V</span><span class="p">);</span>
 
@@ -890,7 +890,7 @@
 
 <span class="w">    </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaMemsetAsync</span><span class="p">(</span><span class="n">founds</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">bool</span><span class="p">),</span><span class="w"> </span><span class="n">stream</span><span class="p">));</span>
 
-<span class="w">    </span><span class="n">reader_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">read_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">using</span><span class="w"> </span><span class="n">Selector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SelectLookupPtrKernel</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="o">&gt;</span><span class="p">;</span>
 <span class="w">    </span><span class="k">static</span><span class="w"> </span><span class="k">thread_local</span><span class="w"> </span><span class="kt">int</span><span class="w"> </span><span class="n">step_counter</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
@@ -912,7 +912,7 @@
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">write_read_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">update_read_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="p">{</span>
 <span class="w">      </span><span class="k">const</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">block_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">;</span>
@@ -932,7 +932,7 @@
 <span class="w">  </span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">template</span><span class="w"> </span><span class="o">&lt;</span><span class="k">typename</span><span class="p">,</span><span class="w"> </span><span class="k">typename</span><span class="o">&gt;</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">PredFunctor</span><span class="o">&gt;</span>
 <span class="w">  </span><span class="n">size_type</span><span class="w"> </span><span class="n">erase_if</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">key_type</span><span class="o">&amp;</span><span class="w"> </span><span class="n">pattern</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">score_type</span><span class="o">&amp;</span><span class="w"> </span><span class="n">threshold</span><span class="p">,</span>
 <span class="w">                     </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">write_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">update_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">dev_ws</span><span class="p">{</span><span class="n">dev_mem_pool_</span><span class="o">-&gt;</span><span class="n">get_workspace</span><span class="o">&lt;</span><span class="mi">1</span><span class="o">&gt;</span><span class="p">(</span><span class="k">sizeof</span><span class="p">(</span><span class="n">size_type</span><span class="p">),</span><span class="w"> </span><span class="n">stream</span><span class="p">)};</span>
 <span class="w">    </span><span class="k">auto</span><span class="w"> </span><span class="n">d_count</span><span class="p">{</span><span class="n">dev_ws</span><span class="p">.</span><span class="n">get</span><span class="o">&lt;</span><span class="n">size_type</span><span class="o">*&gt;</span><span class="p">(</span><span class="mi">0</span><span class="p">)};</span>
@@ -961,7 +961,7 @@
 <span class="w">  </span><span class="p">}</span>
 
 <span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">clear</span><span class="p">(</span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">write_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">update_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">block_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">;</span>
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">size_t</span><span class="w"> </span><span class="n">N</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">buckets_num</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">bucket_max_size</span><span class="p">;</span>
@@ -980,7 +980,7 @@
 <span class="w">                    </span><span class="n">value_type</span><span class="o">*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w">            </span><span class="c1">// (n, DIM)</span>
 <span class="w">                    </span><span class="n">score_type</span><span class="o">*</span><span class="w"> </span><span class="n">scores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">,</span><span class="w">  </span><span class="c1">// (n)</span>
 <span class="w">                    </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">reader_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">read_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaMemsetAsync</span><span class="p">(</span><span class="n">d_counter</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">size_type</span><span class="p">),</span><span class="w"> </span><span class="n">stream</span><span class="p">));</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">offset</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">capacity</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
@@ -1029,7 +1029,7 @@
 <span class="w">                       </span><span class="n">value_type</span><span class="o">*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w">            </span><span class="c1">// (n, DIM)</span>
 <span class="w">                       </span><span class="n">score_type</span><span class="o">*</span><span class="w"> </span><span class="n">scores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">,</span><span class="w">  </span><span class="c1">// (n)</span>
 <span class="w">                       </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">reader_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">read_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">    </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaMemsetAsync</span><span class="p">(</span><span class="n">d_counter</span><span class="p">,</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">size_type</span><span class="p">),</span><span class="w"> </span><span class="n">stream</span><span class="p">));</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">offset</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">capacity</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
@@ -1060,7 +1060,7 @@
 <span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">empty</span><span class="p">(</span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">size</span><span class="p">(</span><span class="n">stream</span><span class="p">)</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
 
 <span class="w">  </span><span class="n">size_type</span><span class="w"> </span><span class="n">size</span><span class="p">(</span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">reader_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">read_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="n">size_type</span><span class="w"> </span><span class="n">h_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 
@@ -1089,7 +1089,7 @@
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="p">{</span>
-<span class="w">      </span><span class="n">write_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">      </span><span class="n">update_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">      </span><span class="c1">// Once we have exclusive access, make sure that pending GPU calls have</span>
 <span class="w">      </span><span class="c1">// been processed.</span>
@@ -1125,7 +1125,7 @@
 <span class="w">          </span><span class="s">&quot;None power-of-2 new_max_capacity is not supported.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="p">}</span>
 
-<span class="w">    </span><span class="n">write_read_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
+<span class="w">    </span><span class="n">update_read_lock</span><span class="w"> </span><span class="n">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">new_max_capacity</span><span class="w"> </span><span class="o">&lt;</span><span class="w"> </span><span class="n">capacity</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
@@ -1159,7 +1159,7 @@
 <span class="w">        </span><span class="n">dump_kernel_shared_memory_size</span><span class="o">&lt;</span><span class="n">K</span><span class="p">,</span><span class="w"> </span><span class="n">V</span><span class="p">,</span><span class="w"> </span><span class="n">S</span><span class="o">&gt;</span><span class="p">(</span><span class="n">shared_mem_size_</span><span class="p">);</span>
 
 <span class="w">    </span><span class="c1">// Request exclusive access (to make sure capacity won&#39;t change anymore).</span>
-<span class="w">    </span><span class="n">write_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">update_read_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">total_size</span><span class="p">{</span><span class="n">capacity</span><span class="p">()};</span>
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">n</span><span class="p">{</span><span class="n">std</span><span class="o">::</span><span class="n">min</span><span class="p">(</span><span class="n">max_workspace_size</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">tuple_size</span><span class="p">,</span><span class="w"> </span><span class="n">total_size</span><span class="p">)};</span>
@@ -1295,7 +1295,7 @@
 <span class="w">  </span><span class="kr">inline</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">delta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">                                </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">                                </span><span class="k">const</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">need_lock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span>
-<span class="w">    </span><span class="n">reader_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">defer_lock</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="n">read_shared_lock</span><span class="w"> </span><span class="nf">lock</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">defer_lock</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">need_lock</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="n">lock</span><span class="p">.</span><span class="n">lock</span><span class="p">();</span>
 <span class="w">    </span><span class="p">}</span>
