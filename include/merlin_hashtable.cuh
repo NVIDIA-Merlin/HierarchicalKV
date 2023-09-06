@@ -1035,6 +1035,67 @@ class HashTable {
   }
 
   /**
+   * @brief Assign new key-value-score tuples into the hash table.
+   * If the key doesn't exist, the operation on the key will be ignored.
+   *
+   * @param n Number of key-value-score tuples to insert or assign.
+   * @param keys The keys to insert on GPU-accessible memory with shape
+   * (n).
+   * @param values The values to insert on GPU-accessible memory with
+   * shape (n, DIM).
+   * @parblock
+   * The scores should be a `uint64_t` value. You can specify a value that
+   * such as the timestamp of the key insertion, number of the key
+   * occurrences, or another value to perform a custom eviction strategy.
+   *
+   * The @p scores should be `nullptr`, when the LRU eviction strategy is
+   * applied.
+   * @endparblock
+   *
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   * @param unique_key If all keys in the same batch are unique.
+   */
+  void assign(const size_type n,
+              const key_type* keys,                // (n)
+              const score_type* scores = nullptr,  // (n)
+              cudaStream_t stream = 0, bool unique_key = true) {
+    if (n == 0) {
+      return;
+    }
+
+    {
+      update_shared_lock lock(mutex_, stream);
+      static thread_local int step_counter = 0;
+      static thread_local float load_factor = 0.0;
+
+      if (((step_counter++) % kernel_select_interval_) == 0) {
+        load_factor = fast_load_factor(0, stream, false);
+      }
+      using Selector =
+          KernelSelector_UpdateScore<key_type, value_type, score_type,
+                                     evict_strategy, ArchTag>;
+      if (Selector::callable(unique_key,
+                             static_cast<uint32_t>(options_.max_bucket_size))) {
+        typename Selector::Params kernelParams(
+            load_factor, table_->buckets, table_->buckets_num,
+            static_cast<uint32_t>(options_.max_bucket_size), keys, scores, n,
+            EvictStrategyParam.global_epoch);
+        Selector::select_kernel(kernelParams, stream);
+      } else {
+        using Selector = SelectUpdateScoreKernel<key_type, value_type,
+                                                 score_type, evict_strategy>;
+        Selector::execute_kernel(load_factor, options_.block_size,
+                                 options_.max_bucket_size, table_->buckets_num,
+                                 stream, n, d_table_, table_->buckets, keys,
+                                 scores, EvictStrategyParam.global_epoch);
+      }
+    }
+
+    CudaCheckError();
+  }
+
+  /**
    * @brief Searches the hash table for the specified keys.
    *
    * @note When a key is missing, the value in @p values is not changed.

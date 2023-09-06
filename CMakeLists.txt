@@ -135,3 +135,8 @@ add_executable(find_or_insert_ptr_test tests/find_or_insert_ptr_test.cc.cu)
 target_compile_features(find_or_insert_ptr_test PUBLIC cxx_std_14)
 set_target_properties(find_or_insert_ptr_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(find_or_insert_ptr_test gtest_main)
+
+add_executable(assign_score_test tests/assign_score_test.cc.cu)
+target_compile_features(assign_score_test PUBLIC cxx_std_14)
+set_target_properties(assign_score_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(assign_score_test gtest_main)
