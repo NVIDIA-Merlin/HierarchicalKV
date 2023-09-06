@@ -23,6 +23,7 @@
 #include "merlin/core_kernels/lookup.cuh"
 #include "merlin/core_kernels/lookup_ptr.cuh"
 #include "merlin/core_kernels/update.cuh"
+#include "merlin/core_kernels/update_score.cuh"
 #include "merlin/core_kernels/upsert.cuh"
 #include "merlin/core_kernels/upsert_and_evict.cuh"
 
