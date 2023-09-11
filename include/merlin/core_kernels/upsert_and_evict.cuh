@@ -1234,12 +1234,19 @@ struct ValueConfig_UpsertAndEvict<Sm80> {
   static constexpr uint32_t size_pipeline = 128 * sizeof(byte4);
 };
 
-template <typename K, typename V, typename S, int Strategy, typename ArchTag>
-struct KernelSelector_UpsertAndEvict;
+template <>
+struct ValueConfig_UpsertAndEvict<Sm70> {
+  // Value size greater than it will bring poor performance for TLPv1.
+  static constexpr uint32_t size_tlp_v1 = 16 * sizeof(byte4);
+  // Value size greater than it will bring wrong result for TLPv2.
+  static constexpr uint32_t size_tlp_v2 = 32 * sizeof(byte4);
+  // Value size greater than it will reduce the occupancy for Pipeline.
+  // When the value is very high, the kernel will fail to launch.
+  static constexpr uint32_t size_pipeline = 64 * sizeof(byte4);
+};
 
-template <typename K, typename V, typename S, int Strategy>
-struct KernelSelector_UpsertAndEvict<K, V, S, Strategy, Sm80> {
-  using ArchTag = Sm80;
+template <typename K, typename V, typename S, int Strategy, typename ArchTag>
+struct KernelSelector_UpsertAndEvict {
   using ValueConfig = ValueConfig_UpsertAndEvict<ArchTag>;
   using Params = Params_UpsertAndEvict<K, V, S>;
 

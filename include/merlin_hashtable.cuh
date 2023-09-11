@@ -1072,9 +1072,8 @@ class HashTable {
       if (((step_counter++) % kernel_select_interval_) == 0) {
         load_factor = fast_load_factor(0, stream, false);
       }
-      using Selector =
-          KernelSelector_UpdateScore<key_type, value_type, score_type,
-                                     evict_strategy, ArchTag>;
+      using Selector = KernelSelector_UpdateScore<key_type, value_type,
+                                                  score_type, evict_strategy>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size))) {
         typename Selector::Params kernelParams(
