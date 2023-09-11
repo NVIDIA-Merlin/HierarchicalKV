@@ -73,12 +73,6 @@ struct Bucket {
   D* digests_;
   V* vectors;  // Pinned memory or HBM
 
-  /* min_score and min_pos is for or upsert_kernel
-     with user specified score. They record the minimum
-     score and its pos in the bucket. */
-  AtomicScore<S> min_score;
-  AtomicPos<int> min_pos;
-
   __forceinline__ __device__ D* digests(int index) const {
     return digests_ + index;
   }

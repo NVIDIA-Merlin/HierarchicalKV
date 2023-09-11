@@ -232,16 +232,6 @@ __forceinline__ __device__ S make_nano() {
   return (SCORE_BITS_MASK & (device_nano<S>() >> RSHIFT_ON_NANO));
 }
 
-template <typename K, typename V, typename S, typename BUCKET = Bucket<K, V, S>>
-__forceinline__ __device__ void update_score(K* bucket_keys_ptr,
-                                             const uint32_t bucket_capacity,
-                                             const uint32_t key_pos,
-                                             const S& score) {
-  S* dst_score_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
-  // Cache in L2 cache, bypass L1 Cache.
-  __stcg(dst_score_ptr, score);
-}
-
 template <class K, class V, class S>
 struct ScoreFunctor<K, V, S, EvictStrategyInternal::kLru> {
   static constexpr cuda::std::memory_order LOCK_MEM_ORDER =
@@ -537,9 +527,9 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kEpochLfu> {
 template <class K, class V, class S>
 struct ScoreFunctor<K, V, S, EvictStrategyInternal::kCustomized> {
   static constexpr cuda::std::memory_order LOCK_MEM_ORDER =
-      cuda::std::memory_order_relaxed;
+      cuda::std::memory_order_acquire;
   static constexpr cuda::std::memory_order UNLOCK_MEM_ORDER =
-      cuda::std::memory_order_relaxed;
+      cuda::std::memory_order_release;
   using BUCKET = Bucket<K, V, S>;
 
   __forceinline__ __device__ static S desired_when_missed(

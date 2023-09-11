@@ -140,3 +140,8 @@ add_executable(assign_score_test tests/assign_score_test.cc.cu)
 target_compile_features(assign_score_test PUBLIC cxx_std_14)
 set_target_properties(assign_score_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(assign_score_test gtest_main)
+
+add_executable(accum_or_assign_test tests/accum_or_assign_test.cc)
+target_compile_features(accum_or_assign_test PUBLIC cxx_std_14)
+set_target_properties(accum_or_assign_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(accum_or_assign_test gtest_main)

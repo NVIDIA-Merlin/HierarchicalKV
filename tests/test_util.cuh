@@ -165,6 +165,18 @@ void create_random_keys(K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
   }
 }
 
+template <class K>
+void create_random_bools(bool* bools, int KEY_NUM, float true_ratio = 0.6) {
+  std::random_device rd;
+  std::mt19937_64 eng(rd());
+  std::uniform_int_distribution<K> distr;
+
+  for (int i = 0; i < KEY_NUM; i++) {
+    K bound = 1000 * true_ratio;
+    bools[i] = (distr(eng) % 1000 < bound);
+  }
+}
+
 template <class K, class S, class V>
 void create_random_keys(size_t dim, K* h_keys, S* h_scores, V* h_vectors,
                         int KEY_NUM,
@@ -559,6 +571,13 @@ struct KVMSBuffer {
       return scores.d_data;
     }
     return scores.h_data;
+  }
+
+  bool* status_ptr(bool on_device = true) {
+    if (on_device) {
+      return status.d_data;
+    }
+    return status.h_data;
   }
 
   void SyncData(bool h2d, cudaStream_t stream = 0) {

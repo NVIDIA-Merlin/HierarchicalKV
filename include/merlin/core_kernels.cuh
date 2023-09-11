@@ -17,6 +17,7 @@
 #pragma once
 
 #include "merlin/allocator.cuh"
+#include "merlin/core_kernels/accum_or_assign.cuh"
 #include "merlin/core_kernels/find_or_insert.cuh"
 #include "merlin/core_kernels/find_ptr_or_insert.cuh"
 #include "merlin/core_kernels/kernel_utils.cuh"
@@ -72,9 +73,6 @@ __global__ void create_atomic_scores(Bucket<K, V, S>* __restrict buckets,
       new (buckets[start + tid].scores(i))
           AtomicScore<S>{static_cast<S>(EMPTY_SCORE)};
     }
-    new (&(buckets[start + tid].min_score))
-        AtomicScore<S>{static_cast<S>(EMPTY_SCORE)};
-    new (&(buckets[start + tid].min_pos)) AtomicPos<int>{1};
   }
 }
 
@@ -451,32 +449,6 @@ __forceinline__ __device__ void defragmentation_for_rehash(
 }
 
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
-__forceinline__ __device__ void refresh_bucket_score(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S>* bucket,
-    const size_t bucket_max_size) {
-  S min_val = MAX_SCORE;
-  int min_pos = 0;
-
-  for (int i = g.thread_rank(); i < bucket_max_size; i += TILE_SIZE) {
-    const K key = (bucket->keys(i))->load(cuda::std::memory_order_relaxed);
-    if (key == static_cast<K>(EMPTY_KEY) ||
-        key == static_cast<K>(RECLAIM_KEY)) {
-      continue;
-    }
-    const S score = bucket->scores(i)->load(cuda::std::memory_order_relaxed);
-    if (score < min_val) {
-      min_pos = i;
-      min_val = score;
-    }
-  }
-  S global_min_val = cg::reduce(g, min_val, cg::less<S>());
-  if (min_val == global_min_val) {
-    bucket->min_pos.store(min_pos, cuda::std::memory_order_relaxed);
-    bucket->min_score.store(min_val, cuda::std::memory_order_relaxed);
-  }
-}
-
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void move_key_to_new_bucket(
     cg::thread_block_tile<TILE_SIZE> g, int rank, const K& key, const S& score,
     const V* __restrict vector, Bucket<K, V, S>* __restrict new_bucket,
@@ -485,7 +457,6 @@ __forceinline__ __device__ void move_key_to_new_bucket(
     const size_t buckets_num, const size_t dim) {
   uint32_t key_pos;
   unsigned empty_vote;
-  int local_size;
   int src_lane;
 
   for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
@@ -499,18 +470,12 @@ __forceinline__ __device__ void move_key_to_new_bucket(
       src_lane = __ffs(empty_vote) - 1;
       key_pos =
           (new_start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-      local_size = buckets_size[new_bkt_idx];
       if (rank == src_lane) {
         new_bucket->digests(key_pos)[0] = get_digest<K>(key);
         new_bucket->keys(key_pos)->store(key, cuda::std::memory_order_relaxed);
         new_bucket->scores(key_pos)->store(score,
                                            cuda::std::memory_order_relaxed);
         atomicAdd(&(buckets_size[new_bkt_idx]), 1);
-      }
-      local_size = g.shfl(local_size, src_lane);
-      if (local_size >= bucket_max_size) {
-        refresh_bucket_score<K, V, S, TILE_SIZE>(g, new_bucket,
-                                                 bucket_max_size);
       }
       copy_vector<V, TILE_SIZE>(g, vector, new_bucket->vectors + key_pos * dim,
                                 dim);
@@ -581,73 +546,6 @@ __global__ void rehash_kernel_for_fast_mode(
   }
 }
 
-/* Write the values of delta_or_val into the table. If the key[i] is already in
-   the table indicted be @exists[i], a @delta_or_val[i] will be added to the the
-   existing value. if the key not exists, the value @val_or_delta[i] will be
-   assigned to the address @dst[i].
-
-   `delta_or_val`: will be treated as val and accumlating should be executed.
-   `dst`: A pointer of pointer to V which should be on HBM,
-          but each value (a pointer of V) could point to a
-          memory on HBM or HMEM.
-   `existed`: If the keys existed before this kernel is executed.
-   `status`: The existence status for each key when the kernel is being
-   executed.
-
-   `N`: number of vectors needed to be writen.
-*/
-template <class K, class V, class S>
-__global__ void write_with_accum_kernel(const V* __restrict delta_or_val,
-                                        V** __restrict dst,
-                                        const bool* __restrict existed,
-                                        const bool* __restrict status,
-                                        const int* __restrict src_offset,
-                                        const size_t dim, size_t N) {
-  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / dim);
-    int dim_index = t % dim;
-
-    if (dst[vec_index] != nullptr &&
-        existed[src_offset[vec_index]] == status[src_offset[vec_index]]) {
-      if (status[src_offset[vec_index]]) {
-        dst[vec_index][dim_index] +=
-            delta_or_val[src_offset[vec_index] * dim + dim_index];
-      } else {
-        dst[vec_index][dim_index] =
-            delta_or_val[src_offset[vec_index] * dim + dim_index];
-      }
-    }
-  }
-}
-
-/* Add a @delta[i] to the the value saved in the address @dst[i].
-
-   `delta`: a delta value which should be add to.
-   `dst`: A pointer of pointer to V which should be on HBM,
-          but each value (a pointer of V) could point to a
-          memory on HBM or HMEM.
-   `N`: number of vectors needed to be writen.
-*/
-template <class K, class V, class S>
-__global__ void write_with_accum_kernel(const V* __restrict delta,
-                                        V** __restrict dst,
-                                        const int* __restrict src_offset,
-                                        const size_t dim, size_t N) {
-  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / dim);
-    int dim_index = t % dim;
-
-    if (dst[vec_index] != nullptr) {
-      dst[vec_index][dim_index] +=
-          delta[src_offset[vec_index] * dim + dim_index];
-    }
-  }
-}
-
 /* Read the N data from src to each address in *dst,
    usually called by upsert kernel.
 
@@ -709,101 +607,6 @@ __global__ void read_kernel(const V** __restrict src, V* __restrict dst,
     }
   }
 }
-
-/* Accum kernel with customized scores.
- */
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
-__global__ void accum_kernel(
-    const Table<K, V, S>* __restrict table, const K* __restrict keys,
-    V** __restrict vectors, const S* __restrict scores,
-    const bool* __restrict existed, Bucket<K, V, S>* __restrict buckets,
-    int* __restrict buckets_size, const size_t bucket_max_size,
-    const size_t buckets_num, int* __restrict src_offset,
-    bool* __restrict status, const S global_epoch, size_t N) {
-  const size_t dim = table->dim;
-  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
-  int rank = g.thread_rank();
-
-  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
-
-  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int key_pos = -1;
-    int local_size = 0;
-    bool local_found = false;
-    unsigned found_or_empty_vote = 0;
-
-    size_t key_idx = t / TILE_SIZE;
-    K insert_key = *(keys + key_idx);
-
-    if (IS_RESERVED_KEY(insert_key)) continue;
-
-    const K hashed_key = Murmur3HashDevice(insert_key);
-    size_t global_idx = hashed_key % (buckets_num * bucket_max_size);
-    size_t bkt_idx = global_idx / bucket_max_size;
-    size_t start_idx = global_idx % bucket_max_size;
-
-    int src_lane = -1;
-
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
-    lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
-    if (rank == 0 && src_offset != nullptr) {
-      *(src_offset + key_idx) = key_idx;
-    }
-
-    for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
-         tile_offset += TILE_SIZE) {
-      size_t key_offset =
-          (start_idx + tile_offset + rank) & (bucket_max_size - 1);
-      K current_key =
-          bucket->keys(key_offset)->load(cuda::std::memory_order_relaxed);
-      found_or_empty_vote = g.ballot(current_key == static_cast<K>(EMPTY_KEY) ||
-                                     insert_key == current_key);
-      if (found_or_empty_vote) {
-        src_lane = __ffs(found_or_empty_vote) - 1;
-        key_pos = (start_idx + tile_offset + src_lane) & (bucket_max_size - 1);
-        local_size = buckets_size[bkt_idx];
-        if (rank == src_lane) {
-          if (current_key == insert_key) {
-            local_found = true;
-            *(status + key_idx) = local_found;
-          }
-          if (local_found == existed[key_idx]) {
-            bucket->digests(key_pos)[0] = get_digest<K>(insert_key);
-            (bucket->keys(key_pos))
-                ->store(insert_key, cuda::std::memory_order_relaxed);
-            if (!local_found) {
-              buckets_size[bkt_idx]++;
-              local_size++;
-            }
-            *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-            ScoreFunctor::update_without_missed(bucket, key_pos, scores,
-                                                key_idx, global_epoch);
-          }
-        }
-        local_size = g.shfl(local_size, src_lane);
-        if (local_size >= bucket_max_size) {
-          refresh_bucket_score<K, V, S, TILE_SIZE>(g, bucket, bucket_max_size);
-        }
-        break;
-      }
-    }
-    if (!found_or_empty_vote) {
-      if (rank == (bucket->min_pos % TILE_SIZE)) {
-        key_pos = bucket->min_pos;
-        bucket->digests(key_pos)[0] = get_digest<K>(insert_key);
-        (bucket->keys(key_pos))
-            ->store(insert_key, cuda::std::memory_order_relaxed);
-        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-        ScoreFunctor::update_without_missed(bucket, key_pos, scores, key_idx,
-                                            global_epoch);
-      }
-      refresh_bucket_score<K, V, S, TILE_SIZE>(g, bucket, bucket_max_size);
-    }
-    unlock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
-  }
-}
-
 /* Clear all key-value in the table. */
 template <class K, class V, class S>
 __global__ void clear_kernel(Table<K, V, S>* __restrict table,
