@@ -567,12 +567,17 @@ struct ValueConfig_Update<Sm80> {
   static constexpr uint32_t size_pipeline = 128 * sizeof(byte4);
 };
 
-template <typename K, typename V, typename S, int Strategy, typename ArchTag>
-struct KernelSelector_Update;
+template <>
+struct ValueConfig_Update<Sm70> {
+  // Value size greater than it will bring poor performance for TLP.
+  static constexpr uint32_t size_tlp = 8 * sizeof(byte4);
+  // Value size greater than it will reduce the occupancy for Pipeline.
+  // When the value is very high, the kernel will fail to launch.
+  static constexpr uint32_t size_pipeline = 64 * sizeof(byte4);
+};
 
-template <typename K, typename V, typename S, int Strategy>
-struct KernelSelector_Update<K, V, S, Strategy, Sm80> {
-  using ArchTag = Sm80;
+template <typename K, typename V, typename S, int Strategy, typename ArchTag>
+struct KernelSelector_Update {
   using ValueConfig = ValueConfig_Update<ArchTag>;
   using Params = Params_Update<K, V, S>;
 

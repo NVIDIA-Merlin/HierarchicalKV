@@ -480,7 +480,7 @@ void test_main(std::vector<API_Select>& apis, const size_t dim,
   options.dim = dim;
   options.max_hbm_for_vectors = nv::merlin::GB(hbm4values);
   options.io_by_cpu = io_by_cpu;
-  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>;
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru, Sm80>;
 
   std::shared_ptr<Table> table = std::make_shared<Table>();
   table->init(options);

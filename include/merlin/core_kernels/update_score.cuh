@@ -502,13 +502,8 @@ struct Launch_Pipeline_UpdateScore {
   }
 };
 
-/// TODO: support more arch.
-template <typename K, typename V, typename S, int Strategy, typename ArchTag>
-struct KernelSelector_UpdateScore;
-
 template <typename K, typename V, typename S, int Strategy>
-struct KernelSelector_UpdateScore<K, V, S, Strategy, Sm80> {
-  using ArchTag = Sm80;
+struct KernelSelector_UpdateScore {
   using Params = Params_UpdateScore<K, V, S>;
 
   static bool callable(bool unique_key, uint32_t bucket_size) {
