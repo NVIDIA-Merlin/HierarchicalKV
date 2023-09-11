@@ -663,6 +663,12 @@ struct LookupValueBufConfig<Sm80> {
   static constexpr uint32_t size_pipeline_v2 = 128 * sizeof(float);
 };
 
+template <>
+struct LookupValueBufConfig<Sm70> {
+  static constexpr uint32_t size_pipeline_v1 = 112 * sizeof(float);
+  static constexpr uint32_t size_pipeline_v2 = 64 * sizeof(float);
+};
+
 template <typename K, typename V, typename S = uint64_t,
           typename ArchTag = Sm80>
 struct SelectPipelineLookupKernelWithIO {
