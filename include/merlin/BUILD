@@ -21,12 +21,12 @@ cuda_library(
     srcs = [
     ],
     hdrs = [
+        "allocator.cuh",
         "array_kernels.cuh",
         "core_kernels.cuh",
         "debug.hpp",
         "flexible_buffer.cuh",
         "group_lock.cuh",
-        "initializers.cuh",
         "memory_pool.cuh",
         "optimizers.cuh",
     ],
