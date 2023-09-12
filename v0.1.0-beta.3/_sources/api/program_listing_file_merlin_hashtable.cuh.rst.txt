@@ -438,47 +438,64 @@ Program Listing for File merlin_hashtable.cuh
    
        insert_unique_lock lock(mutex_, stream);
    
-       const size_type dev_ws_size{
-           n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
-       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-       auto dst{dev_ws.get<value_type**>(0)};
-       auto src_offset{reinterpret_cast<int*>(dst + n)};
-       auto founds{reinterpret_cast<bool*>(src_offset + n)};
+       if (is_fast_mode()) {
+         using Selector =
+             SelectAccumOrAssignKernelWithIO<key_type, value_type, score_type,
+                                             evict_strategy>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
    
-       CUDA_CHECK(cudaMemsetAsync(dst, 0, dev_ws_size, stream));
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor(0, stream, false);
+         }
+         Selector::execute_kernel(load_factor, options_.block_size,
+                                  options_.max_bucket_size, table_->buckets_num,
+                                  dim(), stream, n, d_table_, keys,
+                                  value_or_deltas, scores, accum_or_assigns,
+                                  EvictStrategyParam.global_epoch);
    
-       {
-         const size_t block_size = options_.block_size;
-         const size_t N = n * TILE_SIZE;
-         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+       } else {
+         const size_type dev_ws_size{
+             n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
+         auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+         auto dst{dev_ws.get<value_type**>(0)};
+         auto src_offset{reinterpret_cast<int*>(dst + n)};
+         auto founds{reinterpret_cast<bool*>(src_offset + n)};
    
-         accum_kernel<key_type, value_type, score_type, evict_strategy>
-             <<<grid_size, block_size, 0, stream>>>(
-                 d_table_, keys, dst, scores, accum_or_assigns, table_->buckets,
-                 table_->buckets_size, table_->bucket_max_size,
-                 table_->buckets_num, src_offset, founds,
-                 EvictStrategyParam.global_epoch, N);
+         CUDA_CHECK(cudaMemsetAsync(dst, 0, dev_ws_size, stream));
+   
+         {
+           const size_t block_size = options_.block_size;
+           const size_t N = n * TILE_SIZE;
+           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+   
+           accum_or_assign_kernel<key_type, value_type, score_type, evict_strategy,
+                                  TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+               d_table_, options_.max_bucket_size, table_->buckets_num, dim(),
+               keys, dst, scores, accum_or_assigns, src_offset, founds,
+               EvictStrategyParam.global_epoch, N);
+         }
+   
+         {
+           thrust::device_ptr<uintptr_t> dst_ptr(
+               reinterpret_cast<uintptr_t*>(dst));
+           thrust::device_ptr<int> src_offset_ptr(src_offset);
+   
+           thrust::sort_by_key(thrust_par.on(stream), dst_ptr, dst_ptr + n,
+                               src_offset_ptr, thrust::less<uintptr_t>());
+         }
+   
+         {
+           const size_t block_size = options_.io_block_size;
+           const size_t N = n * dim();
+           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+   
+           write_with_accum_kernel<key_type, value_type, score_type>
+               <<<grid_size, block_size, 0, stream>>>(value_or_deltas, dst,
+                                                      accum_or_assigns, founds,
+                                                      src_offset, dim(), N);
+         }
        }
-   
-       if (!is_fast_mode()) {
-         thrust::device_ptr<uintptr_t> dst_ptr(reinterpret_cast<uintptr_t*>(dst));
-         thrust::device_ptr<int> src_offset_ptr(src_offset);
-   
-         thrust::sort_by_key(thrust_par.on(stream), dst_ptr, dst_ptr + n,
-                             src_offset_ptr, thrust::less<uintptr_t>());
-       }
-   
-       {
-         const size_t block_size = options_.io_block_size;
-         const size_t N = n * dim();
-         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-         write_with_accum_kernel<key_type, value_type, score_type>
-             <<<grid_size, block_size, 0, stream>>>(value_or_deltas, dst,
-                                                    accum_or_assigns, founds,
-                                                    src_offset, dim(), N);
-       }
-   
        CudaCheckError();
      }
    
@@ -771,7 +788,7 @@ Program Listing for File merlin_hashtable.cuh
    
        read_shared_lock lock(mutex_, stream);
    
-       const uint32_t value_size = options_.dim * sizeof(V);
+       const uint32_t value_size = dim() * sizeof(V);
    
        if (is_fast_mode()) {
          using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
@@ -780,9 +797,8 @@ Program Listing for File merlin_hashtable.cuh
          // Pipeline lookup kernel only supports "bucket_size = 128".
          if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
            LookupKernelParams<key_type, value_type, score_type> lookupParams(
-               table_->buckets, table_->buckets_num,
-               static_cast<uint32_t>(options_.dim), keys, values, scores, founds,
-               n);
+               table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
+               keys, values, scores, founds, n);
            Selector::select_kernel(lookupParams, stream);
          } else {
            using Selector =
@@ -818,16 +834,14 @@ Program Listing for File merlin_hashtable.cuh
                    dst_offset, N);
          }
    
-         {
+         if (values != nullptr) {
            thrust::device_ptr<uintptr_t> src_ptr(
                reinterpret_cast<uintptr_t*>(src));
            thrust::device_ptr<int> dst_offset_ptr(dst_offset);
    
            thrust::sort_by_key(thrust_par.on(stream), src_ptr, src_ptr + n,
                                dst_offset_ptr, thrust::less<uintptr_t>());
-         }
    
-         {
            const size_t block_size = options_.io_block_size;
            const size_t N = n * dim();
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
