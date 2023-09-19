@@ -2407,6 +2407,345 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
+template <typename K, typename V, typename S, typename Table, size_t dim = 64>
+void CheckAssignOnEpochLfu(Table* table,
+                           test_util::KVMSBuffer<K, V, S>* data_buffer,
+                           test_util::KVMSBuffer<K, V, S>* evict_buffer,
+                           test_util::KVMSBuffer<K, V, S>* pre_data_buffer,
+                           size_t len, cudaStream_t stream, TableOptions& opt,
+                           unsigned int global_epoch) {
+  std::map<K, test_util::ValueArray<V, dim>> values_map_before_insert;
+  std::map<K, test_util::ValueArray<V, dim>> values_map_after_insert;
+
+  std::unordered_map<K, S> scores_map_before_insert;
+  std::map<K, S> scores_map_after_insert;
+
+  std::map<K, S> scores_map_current_batch;
+  std::map<K, S> scores_map_current_evict;
+
+  K* keys = data_buffer->keys_ptr();
+  V* values = data_buffer->values_ptr();
+  S* scores = data_buffer->scores_ptr();
+
+  K* evicted_keys = evict_buffer->keys_ptr();
+  V* evicted_values = evict_buffer->values_ptr();
+  S* evicted_scores = evict_buffer->scores_ptr();
+
+  for (size_t i = 0; i < len; i++) {
+    scores_map_current_batch[data_buffer->keys_ptr(false)[i]] =
+        data_buffer->scores_ptr(false)[i];
+  }
+
+  K* h_tmp_keys = nullptr;
+  V* h_tmp_values = nullptr;
+  S* h_tmp_scores = nullptr;
+  bool* h_tmp_founds = nullptr;
+
+  K* d_tmp_keys = nullptr;
+  V* d_tmp_values = nullptr;
+  S* d_tmp_scores = nullptr;
+  bool* d_tmp_founds = nullptr;
+
+  size_t table_size_before = table->size(stream);
+  size_t cap = table_size_before + len;
+
+  CUDA_CHECK(cudaMallocAsync(&d_tmp_keys, cap * sizeof(K), stream));
+  CUDA_CHECK(cudaMemsetAsync(d_tmp_keys, 0, cap * sizeof(K), stream));
+  CUDA_CHECK(cudaMallocAsync(&d_tmp_values, cap * dim * sizeof(V), stream));
+  CUDA_CHECK(cudaMemsetAsync(d_tmp_values, 0, cap * dim * sizeof(V), stream));
+  CUDA_CHECK(cudaMallocAsync(&d_tmp_scores, cap * sizeof(S), stream));
+  CUDA_CHECK(cudaMemsetAsync(d_tmp_scores, 0, cap * sizeof(S), stream));
+  CUDA_CHECK(cudaMallocAsync(&d_tmp_founds, cap * sizeof(bool), stream));
+  CUDA_CHECK(cudaMemsetAsync(d_tmp_founds, 0, cap * sizeof(bool), stream));
+  h_tmp_keys = (K*)malloc(cap * sizeof(K));
+  h_tmp_values = (V*)malloc(cap * dim * sizeof(V));
+  h_tmp_scores = (S*)malloc(cap * sizeof(S));
+  h_tmp_founds = (bool*)malloc(cap * sizeof(bool));
+
+  size_t table_size_verify0 = table->export_batch(
+      table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_scores, stream);
+  ASSERT_EQ(table_size_before, table_size_verify0);
+
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_keys, d_tmp_keys,
+                             table_size_before * sizeof(K),
+                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_values, d_tmp_values,
+                             table_size_before * dim * sizeof(V),
+                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_scores, d_tmp_scores,
+                             table_size_before * sizeof(S),
+                             cudaMemcpyDeviceToHost, stream));
+
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_keys + table_size_before, keys,
+                             len * sizeof(K), cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_values + table_size_before * dim, values,
+                             len * dim * sizeof(V), cudaMemcpyDeviceToHost,
+                             stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_scores + table_size_before, scores,
+                             len * sizeof(S), cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  for (size_t i = 0; i < cap; i++) {
+    test_util::ValueArray<V, dim>* vec =
+        reinterpret_cast<test_util::ValueArray<V, dim>*>(h_tmp_values +
+                                                         i * dim);
+    values_map_before_insert[h_tmp_keys[i]] = *vec;
+  }
+
+  for (size_t i = 0; i < table_size_before; i++) {
+    scores_map_before_insert[h_tmp_keys[i]] = h_tmp_scores[i];
+  }
+
+  EvictStrategy::set_global_epoch(global_epoch);
+  table->assign(len, keys, values, scores, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  {
+    size_t table_size_verify1 = table->export_batch(
+        table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_scores, stream);
+
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_keys, d_tmp_keys,
+                               table_size_before * sizeof(K),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_values, d_tmp_values,
+                               table_size_before * dim * sizeof(V),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_scores, d_tmp_scores,
+                               table_size_before * sizeof(S),
+                               cudaMemcpyDeviceToHost, stream));
+
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    ASSERT_EQ(table_size_verify1, table_size_before);
+
+    size_t score_error_cnt = 0;
+
+    for (int64_t i = table_size_before - 1; i >= 0; i--) {
+      test_util::ValueArray<V, dim>* vec =
+          reinterpret_cast<test_util::ValueArray<V, dim>*>(h_tmp_values +
+                                                           i * dim);
+      values_map_after_insert[h_tmp_keys[i]] = *vec;
+      scores_map_after_insert[h_tmp_keys[i]] = h_tmp_scores[i];
+    }
+
+    for (auto it : scores_map_current_batch) {
+      const K key = it.first;
+      const K score = it.second;
+      S current_score = scores_map_after_insert[key];
+      S score_before_insert = 0;
+      if (scores_map_before_insert.find(key) !=
+          scores_map_before_insert.end()) {
+        score_before_insert = scores_map_before_insert[key];
+        bool valid =
+            ((current_score >> 32) == global_epoch) &&
+            ((current_score & 0xFFFFFFFF) ==
+             ((0xFFFFFFFF & score_before_insert) + (0xFFFFFFFF & score)));
+
+        if (!valid) {
+          score_error_cnt++;
+        }
+      }
+    }
+    std::cout << "Check assign behavior got "
+              << ", score_error_cnt: " << score_error_cnt
+              << ", while len: " << len << std::endl;
+    ASSERT_EQ(score_error_cnt, 0);
+  }
+
+  for (int64_t i = 0; i < table_size_before; i++) {
+    values_map_before_insert[h_tmp_keys[i]] =
+        values_map_after_insert[h_tmp_keys[i]];
+    scores_map_before_insert[h_tmp_keys[i]] =
+        scores_map_after_insert[h_tmp_keys[i]];
+  }
+  values_map_after_insert.clear();
+  scores_map_after_insert.clear();
+
+  auto start = std::chrono::steady_clock::now();
+  size_t filtered_len = table->insert_and_evict(
+      len, keys, values,
+      (Table::evict_strategy == EvictStrategy::kLru ||
+       Table::evict_strategy == EvictStrategy::kEpochLru)
+          ? nullptr
+          : scores,
+      evicted_keys, evicted_values, evicted_scores, stream);
+  evict_buffer->SyncData(false, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  auto end = std::chrono::steady_clock::now();
+  auto diff = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start);
+
+  for (size_t i = 0; i < filtered_len; i++) {
+    scores_map_current_evict[evict_buffer->keys_ptr(false)[i]] =
+        evict_buffer->scores_ptr(false)[i];
+  }
+
+  float dur = diff.count();
+
+  size_t table_size_after = table->size(stream);
+  size_t table_size_verify1 = table->export_batch(
+      table->capacity(), 0, d_tmp_keys, d_tmp_values, d_tmp_scores, stream);
+
+  ASSERT_EQ(table_size_verify1, table_size_after);
+
+  size_t new_cap = table_size_after + filtered_len;
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_keys, d_tmp_keys,
+                             table_size_after * sizeof(K),
+                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_values, d_tmp_values,
+                             table_size_after * dim * sizeof(V),
+                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_scores, d_tmp_scores,
+                             table_size_after * sizeof(S),
+                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_keys + table_size_after, evicted_keys,
+                             filtered_len * sizeof(K), cudaMemcpyDeviceToHost,
+                             stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_values + table_size_after * dim,
+                             evicted_values, filtered_len * dim * sizeof(V),
+                             cudaMemcpyDeviceToHost, stream));
+  CUDA_CHECK(cudaMemcpyAsync(h_tmp_scores + table_size_after, evicted_scores,
+                             filtered_len * sizeof(S), cudaMemcpyDeviceToHost,
+                             stream));
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  size_t key_miss_cnt = 0;
+  size_t value_diff_cnt = 0;
+  size_t score_error_cnt1 = 0;
+  size_t score_error_cnt2 = 0;
+
+  for (int64_t i = new_cap - 1; i >= 0; i--) {
+    test_util::ValueArray<V, dim>* vec =
+        reinterpret_cast<test_util::ValueArray<V, dim>*>(h_tmp_values +
+                                                         i * dim);
+    values_map_after_insert[h_tmp_keys[i]] = *vec;
+    scores_map_after_insert[h_tmp_keys[i]] = h_tmp_scores[i];
+    if (i >= (new_cap - filtered_len)) {
+      bool valid = ((h_tmp_scores[i] >> 32) < (global_epoch - 2));
+      if (!valid) {
+        score_error_cnt1++;
+      }
+    }
+  }
+
+  for (auto it : scores_map_current_batch) {
+    const K key = it.first;
+    const K score = it.second;
+    S current_score = scores_map_after_insert[key];
+    S score_before_insert = 0;
+    if (values_map_after_insert.find(key) != values_map_after_insert.end() &&
+        scores_map_current_evict.find(key) == scores_map_current_evict.end()) {
+      score_before_insert = scores_map_before_insert[key];
+    }
+    bool valid = ((current_score >> 32) == global_epoch) &&
+                 ((current_score & 0xFFFFFFFF) ==
+                  ((0xFFFFFFFF & score_before_insert) + (0xFFFFFFFF & score)));
+
+    if (!valid) {
+      score_error_cnt2++;
+    }
+  }
+
+  for (auto& it : values_map_before_insert) {
+    if (values_map_after_insert.find(it.first) ==
+        values_map_after_insert.end()) {
+      ++key_miss_cnt;
+      continue;
+    }
+    test_util::ValueArray<V, dim>& vec0 = it.second;
+    test_util::ValueArray<V, dim>& vec1 = values_map_after_insert.at(it.first);
+    for (size_t j = 0; j < dim; j++) {
+      if (vec0[j] != vec1[j]) {
+        ++value_diff_cnt;
+        break;
+      }
+    }
+  }
+
+  std::cout << "Check insert_and_evict behavior got "
+            << "key_miss_cnt: " << key_miss_cnt
+            << ", value_diff_cnt: " << value_diff_cnt
+            << ", score_error_cnt1: " << score_error_cnt1
+            << ", score_error_cnt2: " << score_error_cnt2
+            << ", while table_size_before: " << table_size_before
+            << ", while table_size_after: " << table_size_after
+            << ", while len: " << len << std::endl;
+
+  ASSERT_EQ(key_miss_cnt, 0);
+  ASSERT_EQ(value_diff_cnt, 0);
+  ASSERT_EQ(score_error_cnt1, 0);
+  ASSERT_EQ(score_error_cnt2, 0);
+
+  CUDA_CHECK(cudaFreeAsync(d_tmp_keys, stream));
+  CUDA_CHECK(cudaFreeAsync(d_tmp_values, stream));
+  CUDA_CHECK(cudaFreeAsync(d_tmp_scores, stream));
+  CUDA_CHECK(cudaFreeAsync(d_tmp_founds, stream));
+  free(h_tmp_keys);
+  free(h_tmp_values);
+  free(h_tmp_scores);
+  free(h_tmp_founds);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+}
+
+void test_assign_advanced_on_epochlfu(size_t max_hbm_for_vectors) {
+  const size_t U = 1024 * 1024;
+  const size_t B = 100000;
+  constexpr size_t dim = 16;
+
+  TableOptions opt;
+
+  opt.max_capacity = U;
+  opt.init_capacity = U;
+  opt.max_hbm_for_vectors = U * dim * sizeof(V);
+  opt.max_bucket_size = 128;
+  opt.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLfu>;
+  opt.dim = dim;
+
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  std::unique_ptr<Table> table = std::make_unique<Table>();
+  table->init(opt);
+
+  test_util::KVMSBuffer<K, V, S> evict_buffer;
+  evict_buffer.Reserve(B, dim, stream);
+  evict_buffer.ToZeros(stream);
+
+  test_util::KVMSBuffer<K, V, S> data_buffer;
+  test_util::KVMSBuffer<K, V, S> pre_data_buffer;
+  data_buffer.Reserve(B, dim, stream);
+  pre_data_buffer.Reserve(B, dim, stream);
+
+  size_t offset = 0;
+  int freq_range = 100;
+  float repeat_rate = 0.9;
+  for (unsigned int global_epoch = 1; global_epoch <= 20; global_epoch++) {
+    repeat_rate = global_epoch <= 1 ? 0.0 : 0.1;
+    if (global_epoch <= 1) {
+      test_util::create_random_keys_advanced<K, S, V>(
+          dim, data_buffer.keys_ptr(false), data_buffer.scores_ptr(false),
+          data_buffer.values_ptr(false), (int)B, B * 32, freq_range);
+    } else {
+      test_util::create_random_keys_advanced<K, S, V>(
+          dim, data_buffer.keys_ptr(false), pre_data_buffer.keys_ptr(false),
+          data_buffer.scores_ptr(false), data_buffer.values_ptr(false), (int)B,
+          B * 32, freq_range, repeat_rate);
+    }
+    data_buffer.SyncData(true, stream);
+    if (global_epoch <= 1) {
+      pre_data_buffer.CopyFrom(data_buffer, stream);
+    }
+
+    CheckAssignOnEpochLfu<K, V, S, Table, dim>(table.get(), &data_buffer,
+                                               &evict_buffer, &pre_data_buffer,
+                                               B, stream, opt, global_epoch);
+
+    pre_data_buffer.CopyFrom(data_buffer, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    offset += B;
+  }
+}
+
 void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   constexpr uint64_t BATCH_SIZE = 1024 * 1024ul;
   constexpr uint64_t STEPS = 128;
@@ -3311,6 +3650,9 @@ TEST(FindOrInsertTest, test_evict_strategy_customized_basic) {
 TEST(FindOrInsertTest, test_evict_strategy_customized_advanced) {
   test_evict_strategy_customized_advanced(16);
   test_evict_strategy_customized_advanced(0);
+}
+TEST(FindOrInsertTest, test_assign_advanced_on_epochlfu) {
+  test_assign_advanced_on_epochlfu(16);
 }
 TEST(FindOrInsertTest, test_evict_strategy_customized_correct_rate) {
   // TODO(rhdong): after blossom CI issue is resolved, the skip logic.

@@ -362,7 +362,7 @@ __global__ void pipeline_update_score_kernel(
     K* keys_ptr = sm_keys_ptr[key_idx_block];
     int possible_num = sm_counts[key_idx_block];
     sm_position[key_idx_block] = -1;
-    __pipeline_wait_prior(3);
+    __pipeline_wait_prior(1);
     int key_pos;
     bool found_flag = false;
     if (rank < possible_num) {
@@ -406,7 +406,7 @@ __global__ void pipeline_update_score_kernel(
     K target_key = sm_target_keys[key_idx_block];
     K* keys_ptr = sm_keys_ptr[key_idx_block];
     int src_lane = sm_ranks[groupID][same_buf(loop_num)];
-    __pipeline_wait_prior(3);
+    __pipeline_wait_prior(1);
     int succ = 0;
     if (rank == src_lane) {
       bool CAS_res_cur = same_buf(loop_num) == 0 ? CAS_res[0] : CAS_res[1];
@@ -433,7 +433,7 @@ __global__ void pipeline_update_score_kernel(
     K target_key = sm_target_keys[key_idx_block];
     K* keys_ptr = sm_keys_ptr[key_idx_block];
     int src_lane = sm_ranks[groupID][same_buf(loop_num + 1)];
-    __pipeline_wait_prior(3);
+    __pipeline_wait_prior(0);
     int succ = 0;
     if (rank == src_lane) {
       bool CAS_res_cur = same_buf(loop_num + 1) == 0 ? CAS_res[0] : CAS_res[1];
