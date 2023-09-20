@@ -303,7 +303,7 @@ class MemoryPool final {
     inline StaticWorkspace(pool_type* pool, size_t requested_buffer_size,
                            cudaStream_t stream)
         : base_type(pool, stream) {
-      auto& buffers{this->buffers_};
+      auto& buffers = this->buffers_;
       this->buffer_size_ = pool->get_raw(buffers.begin(), buffers.end(),
                                          requested_buffer_size, stream);
     }
@@ -333,7 +333,7 @@ class MemoryPool final {
     inline DynamicWorkspace(pool_type* pool, size_t n,
                             size_t requested_buffer_size, cudaStream_t stream)
         : base_type(pool, stream) {
-      auto& buffers{this->buffers_};
+      auto& buffers = this->buffers_;
       buffers.resize(n);
       this->buffer_size_ = pool->get_raw(buffers.begin(), buffers.end(),
                                          requested_buffer_size, stream);
