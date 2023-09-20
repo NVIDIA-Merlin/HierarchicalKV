@@ -20,8 +20,8 @@
 #include <mutex>
 #include <system_error>
 #include <thread>
-#include "merlin/core_kernels/group_lock_kernels.cuh"
-#include "merlin/utils.cuh"
+#include "core_kernels/group_lock_kernels.cuh"
+#include "utils.cuh"
 
 namespace nv {
 namespace merlin {

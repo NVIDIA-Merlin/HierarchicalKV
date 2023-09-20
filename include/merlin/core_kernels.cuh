@@ -16,17 +16,17 @@
 
 #pragma once
 
-#include "merlin/allocator.cuh"
-#include "merlin/core_kernels/accum_or_assign.cuh"
-#include "merlin/core_kernels/find_or_insert.cuh"
-#include "merlin/core_kernels/find_ptr_or_insert.cuh"
-#include "merlin/core_kernels/kernel_utils.cuh"
-#include "merlin/core_kernels/lookup.cuh"
-#include "merlin/core_kernels/lookup_ptr.cuh"
-#include "merlin/core_kernels/update.cuh"
-#include "merlin/core_kernels/update_score.cuh"
-#include "merlin/core_kernels/upsert.cuh"
-#include "merlin/core_kernels/upsert_and_evict.cuh"
+#include "allocator.cuh"
+#include "core_kernels/accum_or_assign.cuh"
+#include "core_kernels/find_or_insert.cuh"
+#include "core_kernels/find_ptr_or_insert.cuh"
+#include "core_kernels/kernel_utils.cuh"
+#include "core_kernels/lookup.cuh"
+#include "core_kernels/lookup_ptr.cuh"
+#include "core_kernels/update.cuh"
+#include "core_kernels/update_score.cuh"
+#include "core_kernels/upsert.cuh"
+#include "core_kernels/upsert_and_evict.cuh"
 
 namespace nv {
 namespace merlin {
@@ -754,7 +754,7 @@ inline std::tuple<size_t, size_t> dump_kernel_shared_memory_size(
       block_size > 0,
       "[HierarchicalKV] block_size <= 0, the K-V-S size may be too large!");
 
-  return {block_size * sizeof(KVM<K, V, S>), block_size};
+  return std::make_tuple(block_size * sizeof(KVM<K, V, S>), block_size);
 }
 
 template <class K, class V, class S>

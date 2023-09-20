@@ -23,8 +23,8 @@
 #include <mutex>
 #include <thread>
 #include <vector>
-#include "merlin/types.cuh"
-#include "merlin/utils.cuh"
+#include "../types.cuh"
+#include "../utils.cuh"
 
 using namespace cooperative_groups;
 namespace cg = cooperative_groups;
