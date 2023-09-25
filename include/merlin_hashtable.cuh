@@ -1978,7 +1978,7 @@ class HashTable {
       }
 
       EvictStrategy::set_global_epoch(static_cast<S>(IGNORED_GLOBAL_EPOCH));
-      insert_or_assign(count, d_keys, d_values, d_scores, stream, true);
+      insert_or_assign(count, d_keys, d_values, d_scores, stream, true, true);
       total_count += count;
 
       // Read next batch.
