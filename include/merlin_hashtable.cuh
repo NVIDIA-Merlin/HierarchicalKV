@@ -149,8 +149,7 @@ static constexpr auto& thrust_par = thrust::cuda::par;
  *           The currently supported data type is only `uint64_t`.
  *
  */
-template <typename K, typename V, typename S = uint64_t,
-          typename ArchTag = Sm80>
+template <typename K, typename V, typename S = uint64_t>
 class HashTable {
  public:
   using size_type = size_t;
@@ -243,6 +242,7 @@ class HashTable {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
+    compute_capability_ = deviceProp.major * 10 + deviceProp.minor;
     create_table<key_type, value_type, score_type>(
         &table_, allocator_, options_.dim, options_.init_capacity,
         options_.max_capacity, options_.max_hbm_for_vectors,
@@ -1002,16 +1002,17 @@ class HashTable {
     const uint32_t value_size = options_.dim * sizeof(V);
 
     if (is_fast_mode()) {
-      using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
-                                                        score_type, ArchTag>;
-      const uint32_t pipeline_max_size = Selector::max_value_size();
+      using Selector =
+          SelectPipelineLookupKernelWithIO<key_type, value_type, score_type>;
+      const uint32_t pipeline_max_size =
+          Selector::max_value_size(compute_capability_);
       // Pipeline lookup kernel only supports "bucket_size = 128".
       if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
         LookupKernelParams<key_type, value_type, score_type> lookupParams(
             table_->buckets, table_->buckets_num,
             static_cast<uint32_t>(options_.dim), keys, values, scores, founds,
             n);
-        Selector::select_kernel(lookupParams, stream);
+        Selector::select_kernel(lookupParams, stream, compute_capability_);
       } else {
         using Selector =
             SelectLookupKernelWithIO<key_type, value_type, score_type>;
@@ -1762,6 +1763,7 @@ class HashTable {
   TableCore* table_ = nullptr;
   TableCore* d_table_ = nullptr;
   size_t shared_mem_size_ = 0;
+  int compute_capability_;
   std::atomic_bool reach_max_capacity_{false};
   bool initialized_ = false;
   mutable group_shared_mutex mutex_;

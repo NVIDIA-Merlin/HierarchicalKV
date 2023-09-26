@@ -45,11 +45,17 @@ struct LookupKernelParams {
   size_t n;
 };
 
+template <typename T, int GROUP_NUM>
+__device__ __forceinline__ T* value_item_ptr(T* data, const int dim, int buffer,
+                                             int groupID) {
+  return data + (buffer * GROUP_NUM + groupID) * dim;
+}
+
 // Using 32 threads to deal with one key
 template <typename K = uint64_t, typename V = float, typename S = uint64_t,
           typename VecV = float4,
           typename CopyScore = CopyScoreEmpty<S, K, 128>,
-          typename CopyValue = CopyValueTwoGroup<VecV, 32>, int VALUE_BUF = 56>
+          typename CopyValue = CopyValueTwoGroup<VecV, 32>>
 __global__ void lookup_kernel_with_io_pipeline_v1(
     Bucket<K, V, S>* buckets, const size_t buckets_num, const int dim,
     const K* __restrict keys, VecV* __restrict values, S* __restrict scores,
@@ -73,7 +79,9 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
   __shared__ uint32_t sm_probing_digests[2][GROUP_NUM * DIGEST_SPAN];
   __shared__ K sm_possible_keys[2][GROUP_NUM * RESERVE];
   __shared__ int sm_possible_pos[2][GROUP_NUM * RESERVE];
-  __shared__ VecV sm_vector[2][GROUP_NUM][VALUE_BUF];
+
+  extern __shared__ char data[];
+  VecV* sm_vector = reinterpret_cast<VecV*>(data);
 
   // Initialization
   auto g = cg::tiled_partition<GROUP_SIZE>(cg::this_thread_block());
@@ -212,7 +220,8 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
       }
       int found_vote = g.ballot(found_flag);
       if (found_vote) {
-        VecV* v_dst = sm_vector[diff_buf(i)][groupID];
+        VecV* v_dst = value_item_ptr<VecV, GROUP_NUM>(sm_vector, dim,
+                                                      diff_buf(i), groupID);
         sm_founds[key_idx_block] = 1;
         int src_lane = __ffs(found_vote) - 1;
         int target_pos = g.shfl(key_pos, src_lane);
@@ -226,7 +235,8 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
     if (i > 1) {
       key_idx_block -= 1;
       int key_idx_grid = blockIdx.x * blockDim.x + key_idx_block;
-      VecV* v_src = sm_vector[same_buf(i)][groupID];
+      VecV* v_src =
+          value_item_ptr<VecV, GROUP_NUM>(sm_vector, dim, same_buf(i), groupID);
       VecV* v_dst = values + key_idx_grid * dim;
       int found_flag = sm_founds[key_idx_block];
       __pipeline_wait_prior(3);
@@ -266,7 +276,8 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
       int src_lane = __ffs(found_vote) - 1;
       int target_pos = g.shfl(key_pos, src_lane);
       VecV* v_src = value_ptr + target_pos * dim;
-      VecV* v_dst = sm_vector[diff_buf(loop_num)][groupID];
+      VecV* v_dst = value_item_ptr<VecV, GROUP_NUM>(
+          sm_vector, dim, diff_buf(loop_num), groupID);
       CopyValue::ldg_sts(rank, v_dst, v_src, dim);
     }
   }
@@ -276,7 +287,8 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
   if (loop_num > 1) {
     int key_idx_block = groupID * GROUP_SIZE + loop_num - 2;
     int key_idx_grid = blockIdx.x * blockDim.x + key_idx_block;
-    VecV* v_src = sm_vector[same_buf(loop_num)][groupID];
+    VecV* v_src = value_item_ptr<VecV, GROUP_NUM>(sm_vector, dim,
+                                                  same_buf(loop_num), groupID);
     VecV* v_dst = values + key_idx_grid * dim;
     int found_flag = sm_founds[key_idx_block];
     __pipeline_wait_prior(1);
@@ -292,7 +304,8 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
   {
     int key_idx_block = groupID * GROUP_SIZE + loop_num - 1;
     int key_idx_grid = blockIdx.x * blockDim.x + key_idx_block;
-    VecV* v_src = sm_vector[same_buf(loop_num + 1)][groupID];
+    VecV* v_src = value_item_ptr<VecV, GROUP_NUM>(
+        sm_vector, dim, same_buf(loop_num + 1), groupID);
     VecV* v_dst = values + key_idx_grid * dim;
     int found_flag = sm_founds[key_idx_block];
     __pipeline_wait_prior(0);
@@ -309,7 +322,7 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
 template <typename K = uint64_t, typename V = float, typename S = uint64_t,
           typename VecV = float4,
           typename CopyScore = CopyScoreEmpty<S, K, 128>,
-          typename CopyValue = CopyValueTwoGroup<VecV, 16>, int VALUE_BUF = 32>
+          typename CopyValue = CopyValueTwoGroup<VecV, 16>>
 __global__ void lookup_kernel_with_io_pipeline_v2(
     Bucket<K, V, S>* buckets, const size_t buckets_num, const int dim,
     const K* __restrict keys, VecV* __restrict values, S* __restrict scores,
@@ -333,7 +346,9 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
   __shared__ uint32_t sm_probing_digests[2][GROUP_NUM * DIGEST_SPAN];
   __shared__ K sm_possible_keys[2][GROUP_NUM * RESERVE];
   __shared__ int sm_possible_pos[2][GROUP_NUM * RESERVE];
-  __shared__ VecV sm_vector[2][GROUP_NUM][VALUE_BUF];
+
+  extern __shared__ char data[];
+  VecV* sm_vector = reinterpret_cast<VecV*>(data);
 
   // Initialization
   auto g = cg::tiled_partition<GROUP_SIZE>(cg::this_thread_block());
@@ -488,7 +503,8 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
         int src_lane = __ffs(found_vote) - 1;
         int target_pos = g.shfl(key_pos, src_lane);
         VecV* v_src = value_ptr + target_pos * dim;
-        VecV* v_dst = sm_vector[diff_buf(i)][groupID];
+        VecV* v_dst = value_item_ptr<VecV, GROUP_NUM>(sm_vector, dim,
+                                                      diff_buf(i), groupID);
         CopyValue::ldg_sts(rank, v_dst, v_src, dim);
       }
     }
@@ -499,7 +515,8 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
       key_idx_block -= 1;
       int key_idx_grid = blockIdx.x * blockDim.x + key_idx_block;
       int found_flag = sm_founds[key_idx_block];
-      VecV* v_src = sm_vector[same_buf(i)][groupID];
+      VecV* v_src =
+          value_item_ptr<VecV, GROUP_NUM>(sm_vector, dim, same_buf(i), groupID);
       VecV* v_dst = values + key_idx_grid * dim;
       __pipeline_wait_prior(3);
       if (found_flag > 0) {
@@ -538,7 +555,8 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
       int src_lane = __ffs(found_vote) - 1;
       int target_pos = g.shfl(key_pos, src_lane);
       VecV* v_src = value_ptr + target_pos * dim;
-      VecV* v_dst = sm_vector[diff_buf(loop_num)][groupID];
+      VecV* v_dst = value_item_ptr<VecV, GROUP_NUM>(
+          sm_vector, dim, diff_buf(loop_num), groupID);
       CopyValue::ldg_sts(rank, v_dst, v_src, dim);
     }
   }
@@ -549,7 +567,8 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
     int key_idx_block = groupID * GROUP_SIZE + loop_num - 2;
     int key_idx_grid = blockIdx.x * blockDim.x + key_idx_block;
     VecV* v_dst = values + key_idx_grid * dim;
-    VecV* v_src = sm_vector[same_buf(loop_num)][groupID];
+    VecV* v_src = value_item_ptr<VecV, GROUP_NUM>(sm_vector, dim,
+                                                  same_buf(loop_num), groupID);
     int found_flag = sm_founds[key_idx_block];
     __pipeline_wait_prior(1);
     if (found_flag > 0) {
@@ -565,7 +584,8 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
     int key_idx_block = groupID * GROUP_SIZE + loop_num - 1;
     int key_idx_grid = blockIdx.x * blockDim.x + key_idx_block;
     VecV* v_dst = values + key_idx_grid * dim;
-    VecV* v_src = sm_vector[same_buf(loop_num + 1)][groupID];
+    VecV* v_src = value_item_ptr<VecV, GROUP_NUM>(
+        sm_vector, dim, same_buf(loop_num + 1), groupID);
     int found_flag = sm_founds[key_idx_block];
     __pipeline_wait_prior(0);
     if (found_flag > 0) {
@@ -577,37 +597,41 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
   }
 }  // End function
 
-template <typename K, typename V, typename S, typename CopyScore, typename VecV,
-          uint32_t ValueBufSize>
+template <typename K, typename V, typename S, typename CopyScore, typename VecV>
 struct LaunchPipelineLookupV1 {
   static void launch_kernel(LookupKernelParams<K, V, S>& params,
                             cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     // Using 32 threads to deal with one key
     constexpr int GROUP_SIZE = 32;
-    params.dim = params.dim * sizeof(V) / sizeof(VecV);
-    constexpr uint32_t VecSize = ValueBufSize / sizeof(VecV);
+
+    const int value_size = params.dim * sizeof(V);
+
+    params.dim = value_size / sizeof(VecV);
+
+    const int value_buffer_block = 2 * value_size * BLOCK_SIZE / GROUP_SIZE;
+
     if (params.dim > (GROUP_SIZE * 2)) {
       using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue,
-                                        VecSize>
-          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue>
+          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE,
+             value_buffer_block, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
               reinterpret_cast<VecV*>(params.values), params.scores,
               params.founds, params.n);
     } else if (params.dim > GROUP_SIZE) {
       using CopyValue = CopyValueTwoGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue,
-                                        VecSize>
-          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue>
+          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE,
+             value_buffer_block, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
               reinterpret_cast<VecV*>(params.values), params.scores,
               params.founds, params.n);
     } else {
       using CopyValue = CopyValueOneGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue,
-                                        VecSize>
-          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue>
+          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE,
+             value_buffer_block, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
               reinterpret_cast<VecV*>(params.values), params.scores,
               params.founds, params.n);
@@ -615,37 +639,41 @@ struct LaunchPipelineLookupV1 {
   }
 };
 
-template <typename K, typename V, typename S, typename CopyScore, typename VecV,
-          uint32_t ValueBufSize>
+template <typename K, typename V, typename S, typename CopyScore, typename VecV>
 struct LaunchPipelineLookupV2 {
   static void launch_kernel(LookupKernelParams<K, V, S>& params,
                             cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     // Using 16 threads to deal with one key
     constexpr int GROUP_SIZE = 16;
-    params.dim = params.dim * sizeof(V) / sizeof(VecV);
-    constexpr uint32_t VecSize = ValueBufSize / sizeof(VecV);
+
+    const int value_size = params.dim * sizeof(V);
+
+    params.dim = value_size / sizeof(VecV);
+
+    const int value_buffer_block = 2 * value_size * BLOCK_SIZE / GROUP_SIZE;
+
     if (params.dim > (GROUP_SIZE * 2)) {
       using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue,
-                                        VecSize>
-          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue>
+          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE,
+             value_buffer_block, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
               reinterpret_cast<VecV*>(params.values), params.scores,
               params.founds, params.n);
     } else if (params.dim > GROUP_SIZE) {
       using CopyValue = CopyValueTwoGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue,
-                                        VecSize>
-          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue>
+          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE,
+             value_buffer_block, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
               reinterpret_cast<VecV*>(params.values), params.scores,
               params.founds, params.n);
     } else {
       using CopyValue = CopyValueOneGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue,
-                                        VecSize>
-          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue>
+          <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE,
+             value_buffer_block, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
               reinterpret_cast<VecV*>(params.values), params.scores,
               params.founds, params.n);
@@ -656,7 +684,6 @@ struct LaunchPipelineLookupV2 {
 template <typename ArchTag>
 struct LookupValueBufConfig;
 
-/// TODO: support more arch
 template <>
 struct LookupValueBufConfig<Sm80> {
   static constexpr uint32_t size_pipeline_v1 = 224 * sizeof(float);
@@ -669,115 +696,124 @@ struct LookupValueBufConfig<Sm70> {
   static constexpr uint32_t size_pipeline_v2 = 64 * sizeof(float);
 };
 
-template <typename K, typename V, typename S = uint64_t,
-          typename ArchTag = Sm80>
+template <typename K, typename V, typename S = uint64_t>
 struct SelectPipelineLookupKernelWithIO {
-  using ValueBufConfig = LookupValueBufConfig<ArchTag>;
-
-  static inline uint32_t max_value_size() {
-    return ValueBufConfig::size_pipeline_v1;
+  static uint32_t max_value_size(int compute_capability) {
+    if (compute_capability >= Sm80::kComputeCapability &&
+        compute_capability != Sm86::kComputeCapability) {
+      return LookupValueBufConfig<Sm80>::size_pipeline_v1;
+    } else {
+      return LookupValueBufConfig<Sm70>::size_pipeline_v1;
+    }
   }
 
   static void select_kernel(LookupKernelParams<K, V, S>& params,
-                            cudaStream_t& stream) {
+                            cudaStream_t& stream, int compute_capability) {
     constexpr int BUCKET_SIZE = 128;
-    constexpr uint32_t buf_size_v1 = ValueBufConfig::size_pipeline_v1;
-    constexpr uint32_t buf_size_v2 = ValueBufConfig::size_pipeline_v2;
 
     uint32_t total_value_size = static_cast<uint32_t>(params.dim * sizeof(V));
 
+    uint32_t size_pipeline_v2;
+
+    if (compute_capability >= Sm80::kComputeCapability &&
+        compute_capability != Sm86::kComputeCapability) {
+      size_pipeline_v2 = LookupValueBufConfig<Sm80>::size_pipeline_v2;
+    } else {
+      size_pipeline_v2 = LookupValueBufConfig<Sm70>::size_pipeline_v2;
+    }
+
     if (params.scores == nullptr) {
       using CopyScore = CopyScoreEmpty<S, K, BUCKET_SIZE>;
-      if (total_value_size <= buf_size_v1) {
+      if (total_value_size <= size_pipeline_v2) {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         }
       } else {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         }
       }
     } else {
       using CopyScore = CopyScoreByPassCache<S, K, BUCKET_SIZE>;
-      if (total_value_size <= buf_size_v1) {
+      if (total_value_size <= size_pipeline_v2) {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
-                                 buf_size_v1>::launch_kernel(params, stream);
+          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         }
       } else {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
-                                 buf_size_v2>::launch_kernel(params, stream);
+          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV>::launch_kernel(
+              params, stream);
         }
       }
     }
