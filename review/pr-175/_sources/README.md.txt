@@ -163,7 +163,7 @@ Your environment must meet the following requirements:
 - CUDA version >= 11.2
 - NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0
 - GCC supports `C++17' standard or later.
-- Bazel version >= 3.5.0 (Bazel compile only)
+- Bazel version >= 5.0.0 (Bazel compile only)
 
 ### with cmake
 ```shell
