@@ -197,7 +197,7 @@ docker run --gpus all -it --rm nvcr.io/nvidia/tensorflow:22.09-tf2-py3
 Compile in docker container:
 ```shell
 git clone https://github.com/NVIDIA-Merlin/HierarchicalKV.git
-cd HierarchicalKV && bazel build --config=cuda //...
+cd HierarchicalKV && bash bazel_build.sh
 ```
 
 For Benchmark:

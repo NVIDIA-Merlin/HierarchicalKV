@@ -394,7 +394,7 @@ docker<span class="w"> </span>run<span class="w"> </span>--gpus<span class="w"> 
 </div>
 <p>Compile in docker container:</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
-<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>bazel<span class="w"> </span>build<span class="w"> </span>--config<span class="o">=</span>cuda<span class="w"> </span>//...
+<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>bash<span class="w"> </span>bazel_build.sh
 </pre></div>
 </div>
 <p>For Benchmark:</p>
