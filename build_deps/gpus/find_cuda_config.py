@@ -306,9 +306,11 @@ def _find_cublas_config(base_paths, required_version, cuda_version):
     if _at_least_version(cuda_version, "10.1"):
 
         def get_header_version(path):
-            version = (_get_header_version(path, name)
-                       for name in ("CUBLAS_VER_MAJOR", "CUBLAS_VER_MINOR",
-                                    "CUBLAS_VER_PATCH"))
+            version = (v for v in (_get_header_version(path, name)
+                                   for name in ("CUBLAS_VER_MAJOR",
+                                                "CUBLAS_VER_MINOR",
+                                                "CUBLAS_VER_PATCH",
+                                                "CUBLAS_VER_BUILD")) if v != "")
             return ".".join(version)
 
         header_path, header_version = _find_header(base_paths, "cublas_api.h",
@@ -338,9 +340,11 @@ def _find_cusolver_config(base_paths, required_version, cuda_version):
     if _at_least_version(cuda_version, "11.0"):
 
         def get_header_version(path):
-            version = (_get_header_version(path, name)
-                       for name in ("CUSOLVER_VER_MAJOR", "CUSOLVER_VER_MINOR",
-                                    "CUSOLVER_VER_PATCH"))
+            version = (v for v in (_get_header_version(path, name)
+                                   for name in ("CUSOLVER_VER_MAJOR",
+                                                "CUSOLVER_VER_MINOR",
+                                                "CUSOLVER_VER_PATCH",
+                                                "CUSOLVER_VER_BUILD")) if v != "")
             return ".".join(version)
 
         header_path, header_version = _find_header(base_paths,
@@ -369,9 +373,11 @@ def _find_curand_config(base_paths, required_version, cuda_version):
     if _at_least_version(cuda_version, "11.0"):
 
         def get_header_version(path):
-            version = (_get_header_version(path, name)
-                       for name in ("CURAND_VER_MAJOR", "CURAND_VER_MINOR",
-                                    "CURAND_VER_PATCH"))
+            version = (v for v in (_get_header_version(path, name)
+                                   for name in ("CURAND_VER_MAJOR",
+                                                "CURAND_VER_MINOR",
+                                                "CURAND_VER_PATCH",
+                                                "CURAND_VER_BUILD")) if v != "")
             return ".".join(version)
 
         header_path, header_version = _find_header(base_paths, "curand.h",
@@ -398,9 +404,11 @@ def _find_cufft_config(base_paths, required_version, cuda_version):
     if _at_least_version(cuda_version, "11.0"):
 
         def get_header_version(path):
-            version = (_get_header_version(path, name)
-                       for name in ("CUFFT_VER_MAJOR", "CUFFT_VER_MINOR",
-                                    "CUFFT_VER_PATCH"))
+            version = (v for v in (_get_header_version(path, name)
+                                   for name in ("CUFFT_VER_MAJOR",
+                                                "CUFFT_VER_MINOR",
+                                                "CUFFT_VER_PATCH",
+                                                "CUFFT_VER_BUILD")) if v != "")
             return ".".join(version)
 
         header_path, header_version = _find_header(base_paths, "cufft.h",
@@ -451,9 +459,11 @@ def _find_cusparse_config(base_paths, required_version, cuda_version):
     if _at_least_version(cuda_version, "11.0"):
 
         def get_header_version(path):
-            version = (_get_header_version(path, name)
-                       for name in ("CUSPARSE_VER_MAJOR", "CUSPARSE_VER_MINOR",
-                                    "CUSPARSE_VER_PATCH"))
+            version = (v for v in (_get_header_version(path, name)
+                                   for name in ("CUSPARSE_VER_MAJOR",
+                                                "CUSPARSE_VER_MINOR",
+                                                "CUSPARSE_VER_PATCH",
+                                                "CUSPARSE_VER_BUILD")) if v != "")
             return ".".join(version)
 
         header_path, header_version = _find_header(base_paths, "cusparse.h",

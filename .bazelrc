@@ -15,9 +15,9 @@ build --host_cxxopt=-std=c++17
 build:cuda --crosstool_top=@local_config_cuda//crosstool:toolchain
 
 # CUDA options
-build:cuda --action_env GCC_HOST_COMPILER_PATH="/opt/rh/devtoolset-9/root/usr/bin/gcc"
+build:cuda --action_env GCC_HOST_COMPILER_PATH="/usr/bin/gcc"
 build:cuda --action_env CUDA_TOOLKIT_PATH="/usr/local/cuda"
 build:cuda --action_env CUDA_VERSION="11"
 build:cuda --action_env CUDNN_VERSION="8"
-build:cuda --action_env CUDNN_INSTALL_PATH="/usr/local/cuda"
+build:cuda --action_env CUDNN_INSTALL_PATH="/usr/"
 build:cuda --action_env CUDA_COMPUTE_CAPABILITIES="7.5"
