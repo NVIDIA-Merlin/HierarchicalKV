@@ -158,6 +158,13 @@ and also open for public contributions, bug fixes, and documentation. [[Contribu
 
 Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.
 
+Your environment must meet the following requirements:
+
+- CUDA version >= 11.2
+- NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0
+- GCC supports `C++17' standard or later.
+- Bazel version >= 3.7.2 (Bazel compile only)
+
 ### with cmake
 ```shell
 git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
@@ -176,9 +183,21 @@ For Unit Test:
 ```
 
 ### with bazel
+
+- DON'T use the option of `--recursive` for `git clone`.
+- Please modify the environment variables in the `.bazelrc` file in advance if using the customized docker images.
+- The docker images maintained on `nvcr.io/nvidia/tensorflow` are highly recommended.
+
+Pull the docker image:
 ```shell
-git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
-cd HierarchicalKV && bazel build --config=cuda //...
+docker pull nvcr.io/nvidia/tensorflow:22.09-tf2-py3
+docker run --gpus all -it --rm nvcr.io/nvidia/tensorflow:22.09-tf2-py3
+```
+
+Compile in docker container:
+```shell
+git clone https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+cd HierarchicalKV && bash bazel_build.sh
 ```
 
 For Benchmark:
@@ -186,10 +205,6 @@ For Benchmark:
 ./benchmark_util
 ```
 
-Your environment must meet the following requirements:
-
-- CUDA version >= 11.2
-- NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0
 
 ## Benchmark & Performance(W.I.P)
 

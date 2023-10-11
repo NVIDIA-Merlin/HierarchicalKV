@@ -357,6 +357,13 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="section" id="how-to-build">
 <h2>How to build<a class="headerlink" href="#how-to-build" title="Permalink to this headline"></a></h2>
 <p>Basically, HierarchicalKV is a headers only library, the commands below only create binaries for benchmark and unit testing.</p>
+<p>Your environment must meet the following requirements:</p>
+<ul class="simple">
+<li><p>CUDA version &gt;= 11.2</p></li>
+<li><p>NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0</p></li>
+<li><p>GCC supports `C++17’ standard or later.</p></li>
+<li><p>Bazel version &gt;= 3.7.2 (Bazel compile only)</p></li>
+</ul>
 <div class="section" id="with-cmake">
 <h3>with cmake<a class="headerlink" href="#with-cmake" title="Permalink to this headline"></a></h3>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
@@ -375,19 +382,25 @@ cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<s
 </div>
 <div class="section" id="with-bazel">
 <h3>with bazel<a class="headerlink" href="#with-bazel" title="Permalink to this headline"></a></h3>
-<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
-<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>bazel<span class="w"> </span>build<span class="w"> </span>--config<span class="o">=</span>cuda<span class="w"> </span>//...
+<ul class="simple">
+<li><p>DON’T use the option of <code class="docutils literal notranslate"><span class="pre">--recursive</span></code> for <code class="docutils literal notranslate"><span class="pre">git</span> <span class="pre">clone</span></code>.</p></li>
+<li><p>Please modify the environment variables in the <code class="docutils literal notranslate"><span class="pre">.bazelrc</span></code> file in advance if using the customized docker images.</p></li>
+<li><p>The docker images maintained on <code class="docutils literal notranslate"><span class="pre">nvcr.io/nvidia/tensorflow</span></code> are highly recommended.</p></li>
+</ul>
+<p>Pull the docker image:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>docker<span class="w"> </span>pull<span class="w"> </span>nvcr.io/nvidia/tensorflow:22.09-tf2-py3
+docker<span class="w"> </span>run<span class="w"> </span>--gpus<span class="w"> </span>all<span class="w"> </span>-it<span class="w"> </span>--rm<span class="w"> </span>nvcr.io/nvidia/tensorflow:22.09-tf2-py3
+</pre></div>
+</div>
+<p>Compile in docker container:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
+<span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>bash<span class="w"> </span>bazel_build.sh
 </pre></div>
 </div>
 <p>For Benchmark:</p>
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>./benchmark_util
 </pre></div>
 </div>
-<p>Your environment must meet the following requirements:</p>
-<ul class="simple">
-<li><p>CUDA version &gt;= 11.2</p></li>
-<li><p>NVIDIA GPU with compute capability 8.0, 8.6, 8.7 or 9.0</p></li>
-</ul>
 </div>
 </div>
 <div class="section" id="benchmark-performance-w-i-p">
