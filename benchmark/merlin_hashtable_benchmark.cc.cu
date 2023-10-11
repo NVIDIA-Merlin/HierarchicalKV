@@ -253,6 +253,11 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
         CUDA_CHECK(cudaFree(d_dump_counter));
         break;
       }
+      case API_Select::contains: {
+        table->contains(1, d_keys, d_found, stream);
+        CUDA_CHECK(cudaStreamSynchronize(stream));
+        break;
+      }
       default: {
         std::cout << "[Unsupport API]\n";
       }
@@ -377,6 +382,13 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
       CUDA_CHECK(cudaFree(d_dump_counter));
       break;
     }
+    case API_Select::contains: {
+      timer.start();
+      table->contains(key_num_per_op, d_keys, d_found, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      timer.end();
+      break;
+    }
     default: {
       std::cout << "[Unsupport API]\n";
     }
@@ -446,7 +458,8 @@ void print_title_b() {
   cout << endl
        << "|    \u03BB "
        << "| export_batch "
-       << "| export_batch_if ";
+       << "| export_batch_if "
+       << "|  contains ";
   cout << "|\n";
 
   //<< "| load_factor "
@@ -454,7 +467,9 @@ void print_title_b() {
        //<< "| export_batch "
        << "|-------------:"
        //<< "| export_batch_if "
-       << "|----------------:";
+       << "|----------------:"
+       //<< "|  contains "
+       << "|----------:";
   cout << "|\n";
 }
 
@@ -537,6 +552,10 @@ void test_main(std::vector<API_Select>& apis, const size_t dim,
           std::cout << rep(10);
           break;
         }
+        case API_Select::contains: {
+          std::cout << rep(4);
+          break;
+        }
         default: {
           std::cout << "[Unsupport API]";
         }
@@ -592,7 +611,8 @@ int main() {
           API_Select::insert_and_evict};
 
       std::vector<API_Select> apis_b{API_Select::export_batch,
-                                     API_Select::export_batch_if};
+                                     API_Select::export_batch_if,
+                                     API_Select::contains};
       test_mode = Test_Mode::pure_hbm;
 
       cout << "### On pure HBM mode: " << endl;
@@ -627,7 +647,8 @@ int main() {
           API_Select::find_ptr,         API_Select::find_or_insert_ptr};
 
       std::vector<API_Select> apis_b{API_Select::export_batch,
-                                     API_Select::export_batch_if};
+                                     API_Select::export_batch_if,
+                                     API_Select::contains};
 
       cout << "### On HBM+HMEM hybrid mode: " << endl;
       test_mode = Test_Mode::hybrid;

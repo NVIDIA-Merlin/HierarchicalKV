@@ -40,6 +40,7 @@ enum class API_Select {
   find_or_insert_ptr = 6,
   export_batch = 7,
   export_batch_if = 8,
+  contains = 9,
 };
 
 enum class Hit_Mode {

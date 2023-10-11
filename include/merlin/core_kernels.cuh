@@ -18,6 +18,7 @@
 
 #include "allocator.cuh"
 #include "core_kernels/accum_or_assign.cuh"
+#include "core_kernels/contains.cuh"
 #include "core_kernels/find_or_insert.cuh"
 #include "core_kernels/find_ptr_or_insert.cuh"
 #include "core_kernels/kernel_utils.cuh"

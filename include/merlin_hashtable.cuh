@@ -1426,6 +1426,50 @@ class HashTable {
   }
 
   /**
+   * @brief Checks if there are elements with key equivalent to `keys` in the
+   * table.
+   *
+   * @param n The number of `keys` to check.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param founds The result that indicates if the keys are found, and should
+   * be allocated by caller on GPU-accessible memory with shape (n).
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   */
+  void contains(const size_type n, const key_type* keys,  // (n)
+                bool* founds,                             // (n)
+                cudaStream_t stream = 0) const {
+    if (n == 0) {
+      return;
+    }
+
+    read_shared_lock lock(mutex_, stream);
+
+    if (options_.max_bucket_size == 128) {
+      // Pipeline lookup kernel only supports "bucket_size = 128".
+      using Selector = SelectPipelineContainsKernel<key_type, value_type,
+                                                    score_type, ArchTag>;
+      ContainsKernelParams<key_type, value_type, score_type> containsParams(
+          table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
+          keys, founds, n);
+      Selector::select_kernel(containsParams, stream);
+    } else {
+      using Selector = SelectContainsKernel<key_type, value_type, score_type>;
+      static thread_local int step_counter = 0;
+      static thread_local float load_factor = 0.0;
+
+      if (((step_counter++) % kernel_select_interval_) == 0) {
+        load_factor = fast_load_factor(0, stream, false);
+      }
+      Selector::execute_kernel(load_factor, options_.block_size,
+                               options_.max_bucket_size, table_->buckets_num,
+                               options_.dim, stream, n, d_table_,
+                               table_->buckets, keys, founds);
+    }
+    CudaCheckError();
+  }
+
+  /**
    * @brief Removes specified elements from the hash table.
    *
    * @param n The number of keys to remove.
