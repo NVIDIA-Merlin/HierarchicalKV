@@ -220,6 +220,18 @@ void test_basic(size_t max_hbm_for_vectors) {
                   static_cast<float>(h_keys[i] * 0.00001));
       }
     }
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
+
     CUDA_CHECK(cudaMemset(d_new_vectors, 2, KEY_NUM * sizeof(V) * options.dim));
     table->insert_or_assign(KEY_NUM, d_keys,
                             reinterpret_cast<float*>(d_new_vectors), d_scores,
@@ -249,6 +261,17 @@ void test_basic(size_t max_hbm_for_vectors) {
       }
     }
     ASSERT_EQ(found_num, KEY_NUM);
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
 
     table->accum_or_assign(KEY_NUM, d_keys, d_vectors, d_found, d_scores,
                            stream);
@@ -295,6 +318,17 @@ void test_basic(size_t max_hbm_for_vectors) {
       }
     }
     ASSERT_EQ(found_num, KEY_NUM);
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
 
     CUDA_CHECK(cudaMemset(d_keys, 0, KEY_NUM * sizeof(K)));
     CUDA_CHECK(cudaMemset(d_scores, 0, KEY_NUM * sizeof(S)));
@@ -434,6 +468,17 @@ void test_find_using_pipeline(int dim, bool load_scores) {
       }
     }
     ASSERT_EQ(found_num, KEY_NUM);
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
   }
   CUDA_CHECK(cudaStreamDestroy(stream));
 
@@ -679,6 +724,17 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
     }
     ASSERT_EQ(found_num, (BUCKET_MAX_SIZE - erase_num));
 
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
+
     table->clear(stream);
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -809,6 +865,17 @@ void test_rehash(size_t max_hbm_for_vectors) {
       }
     }
     ASSERT_EQ(found_num, BUCKET_MAX_SIZE);
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < BUCKET_MAX_SIZE; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
 
     table->clear(stream);
     total_size = table->size(stream);
@@ -943,6 +1010,17 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
     }
   }
   ASSERT_EQ(found_num, KEY_NUM);
+
+  CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+  table->contains(KEY_NUM, d_keys, d_found, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  int contains_num = 0;
+  CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                        cudaMemcpyDeviceToHost));
+  for (int i = 0; i < KEY_NUM; i++) {
+    if (h_found[i]) contains_num++;
+  }
+  ASSERT_EQ(contains_num, found_num);
 
   table->clear(stream);
   total_size = table->size(stream);
@@ -1121,6 +1199,18 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
         }
       }
       ASSERT_EQ(found_num, KEY_NUM);
+
+      CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+      table->contains(KEY_NUM, d_keys, d_found, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      int contains_num = 0;
+      CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                            cudaMemcpyDeviceToHost));
+      for (int i = 0; i < KEY_NUM; i++) {
+        if (h_found[i]) contains_num++;
+      }
+      ASSERT_EQ(contains_num, found_num);
+
       if (task_n == 0 && current_capacity != table->capacity()) {
         std::cout << "[test_dynamic_rehash_on_multi_threads] The capacity "
                      "changed from "
@@ -1254,6 +1344,17 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
       }
     }
     ASSERT_EQ(found_num, KEY_NUM);
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < BUCKET_MAX_SIZE; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
 
     K pattern = 100;
 
@@ -1421,6 +1522,17 @@ void test_basic_for_cpu_io() {
       if (h_found[i]) found_num++;
     }
     ASSERT_EQ(found_num, KEY_NUM);
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
 
     table->accum_or_assign(KEY_NUM, d_keys, d_vectors, d_found, d_scores,
                            stream);
@@ -2828,6 +2940,17 @@ void test_insert_or_assign_multi_threads(size_t max_hbm_for_vectors,
       }
     }
 
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
+
     bool print_thread_id{false};
     if (batch == 0 || batch == 1) {
       ASSERT_EQ(found_num, KEY_NUM);
@@ -2949,6 +3072,17 @@ void test_insert_or_assign_multi_threads(size_t max_hbm_for_vectors,
         }
       }
     }
+
+    CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+    table->contains(KEY_NUM, d_keys, d_found, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_num = 0;
+    CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                          cudaMemcpyDeviceToHost));
+    for (int i = 0; i < KEY_NUM; i++) {
+      if (h_found[i]) contains_num++;
+    }
+    ASSERT_EQ(contains_num, found_num);
 
     bool print_thread_id{false};
     if (batch == 0 || batch == 1) {
@@ -3274,6 +3408,17 @@ void test_bucket_size(bool load_scores = true) {
         }
       }
       ASSERT_EQ(found_num, KEY_NUM);
+
+      CUDA_CHECK(cudaMemset(d_found, 0, KEY_NUM * sizeof(bool)));
+      table->contains(KEY_NUM, d_keys, d_found, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      int contains_num = 0;
+      CUDA_CHECK(cudaMemcpy(h_found, d_found, KEY_NUM * sizeof(bool),
+                            cudaMemcpyDeviceToHost));
+      for (int i = 0; i < KEY_NUM; i++) {
+        if (h_found[i]) contains_num++;
+      }
+      ASSERT_EQ(contains_num, found_num);
     }
     CUDA_CHECK(cudaStreamDestroy(stream));
   }

@@ -233,6 +233,17 @@ void CheckInsertAndEvict(Table* table, K* keys, V* values, S* scores,
     }
     std::cout << "filtered_len:" << filtered_len
               << ", miss counter:" << len - found_counter << std::endl;
+
+    CUDA_CHECK(cudaMemset(d_tmp_founds, 0, len * sizeof(bool)));
+    table->contains(len, keys, d_tmp_founds, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_counter = 0;
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
+                               cudaMemcpyDeviceToHost, stream));
+    for (int i = 0; i < len; i++) {
+      if (h_tmp_founds[i]) contains_counter++;
+    }
+    ASSERT_EQ(contains_counter, found_counter);
   }
 
   float dur = diff.count();
@@ -464,6 +475,17 @@ void CheckInsertAndEvictOnLfu(Table* table,
     for (int i = 0; i < len; i++) {
       if (h_tmp_founds[i]) found_counter++;
     }
+
+    CUDA_CHECK(cudaMemset(d_tmp_founds, 0, len * sizeof(bool)));
+    table->contains(len, keys, d_tmp_founds, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_counter = 0;
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
+                               cudaMemcpyDeviceToHost, stream));
+    for (int i = 0; i < len; i++) {
+      if (h_tmp_founds[i]) contains_counter++;
+    }
+    ASSERT_EQ(contains_counter, found_counter);
   }
 
   for (size_t i = 0; i < filtered_len; i++) {
@@ -728,6 +750,17 @@ void CheckInsertAndEvictOnEpochLru(Table* table,
     std::cout << "filtered_len:" << filtered_len
               << ", miss counter:" << len - found_counter << std::endl;
     ASSERT_EQ(len, found_counter);
+
+    CUDA_CHECK(cudaMemset(d_tmp_founds, 0, len * sizeof(bool)));
+    table->contains(len, keys, d_tmp_founds, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_counter = 0;
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
+                               cudaMemcpyDeviceToHost, stream));
+    for (int i = 0; i < len; i++) {
+      if (h_tmp_founds[i]) contains_counter++;
+    }
+    ASSERT_EQ(contains_counter, found_counter);
   }
 
   float dur = diff.count();
@@ -998,6 +1031,17 @@ void CheckInsertAndEvictOnEpochLfu(
               << ", pre_data filtered_len:" << filtered_len
               << ", pre_data miss counter:" << len - found_counter << std::endl;
     ASSERT_EQ(len, found_counter);
+
+    CUDA_CHECK(cudaMemset(d_tmp_founds, 0, len * sizeof(bool)));
+    table->contains(len, pre_data_buffer->keys_ptr(), d_tmp_founds, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_counter = 0;
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
+                               cudaMemcpyDeviceToHost, stream));
+    for (int i = 0; i < len; i++) {
+      if (h_tmp_founds[i]) contains_counter++;
+    }
+    ASSERT_EQ(contains_counter, found_counter);
   }
 
   {
@@ -1018,6 +1062,17 @@ void CheckInsertAndEvictOnEpochLfu(
     std::cout << "filtered_len:" << filtered_len
               << ", miss counter:" << len - found_counter << std::endl;
     ASSERT_EQ(len, found_counter);
+
+    CUDA_CHECK(cudaMemset(d_tmp_founds, 0, len * sizeof(bool)));
+    table->contains(len, keys, d_tmp_founds, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    int contains_counter = 0;
+    CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, len * sizeof(bool),
+                               cudaMemcpyDeviceToHost, stream));
+    for (int i = 0; i < len; i++) {
+      if (h_tmp_founds[i]) contains_counter++;
+    }
+    ASSERT_EQ(contains_counter, found_counter);
   }
 
   {
@@ -1555,6 +1610,17 @@ void BatchCheckFind(Table* table, K* keys, V* values, S* scores, size_t len,
         }
       }
       ASSERT_EQ(value_diff_cnt, 0);
+
+      CUDA_CHECK(cudaMemset(d_tmp_founds, 0, cap * sizeof(bool)));
+      table->contains(cap, keys, d_tmp_founds, stream);
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      int contains_num = 0;
+      CUDA_CHECK(cudaMemcpyAsync(h_tmp_founds, d_tmp_founds, cap * sizeof(bool),
+                                 cudaMemcpyDeviceToHost, stream));
+      for (int i = 0; i < cap; i++) {
+        if (h_tmp_founds[i]) contains_num++;
+      }
+      ASSERT_EQ(contains_num, found_num);
     }
     std::cout << std::endl
               << "\nCheck find behavior got step: " << find_step
