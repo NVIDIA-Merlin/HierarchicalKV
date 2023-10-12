@@ -406,6 +406,22 @@
 </dd></dl>
 
 <dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin9HashTable8containsEK9size_typePK8key_typePb12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin9HashTable8containsEK9size_typePK8key_typePb12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin9HashTable8containsEK9size_typePK8key_typePb12cudaStream_t"></span><span id="nv::merlin::HashTable::contains__size_typeC.key_typeCP.bP.cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a0f142e7f523b55111217b44b688a6d6a"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">contains</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">founds</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em><a class="headerlink" href="#_CPPv4NK2nv6merlin9HashTable8containsEK9size_typePK8key_typePb12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Checks if there are elements with key equivalent to <code class="docutils literal notranslate"><span class="pre">keys</span></code> in the table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of <code class="docutils literal notranslate"><span class="pre">keys</span></code> to check. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>founds</strong> – The result that indicates if the keys are found, and should be allocated by caller on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin9HashTable5eraseEK9size_typePK8key_type12cudaStream_t">
 <span id="_CPPv3N2nv6merlin9HashTable5eraseEK9size_typePK8key_type12cudaStream_t"></span><span id="_CPPv2N2nv6merlin9HashTable5eraseEK9size_typePK8key_type12cudaStream_t"></span><span id="nv::merlin::HashTable::erase__size_typeC.key_typeCP.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a25ba21644aea50d55f961234f5973d01"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">erase</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin9HashTable5eraseEK9size_typePK8key_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
 <dd><p>Removes specified elements from the hash table. </p>

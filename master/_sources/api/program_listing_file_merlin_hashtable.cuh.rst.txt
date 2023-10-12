@@ -1044,6 +1044,39 @@ Program Listing for File merlin_hashtable.cuh
        CudaCheckError();
      }
    
+     void contains(const size_type n, const key_type* keys,  // (n)
+                   bool* founds,                             // (n)
+                   cudaStream_t stream = 0) const {
+       if (n == 0) {
+         return;
+       }
+   
+       read_shared_lock lock(mutex_, stream);
+   
+       if (options_.max_bucket_size == 128) {
+         // Pipeline lookup kernel only supports "bucket_size = 128".
+         using Selector = SelectPipelineContainsKernel<key_type, value_type,
+                                                       score_type, ArchTag>;
+         ContainsKernelParams<key_type, value_type, score_type> containsParams(
+             table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
+             keys, founds, n);
+         Selector::select_kernel(containsParams, stream);
+       } else {
+         using Selector = SelectContainsKernel<key_type, value_type, score_type>;
+         static thread_local int step_counter = 0;
+         static thread_local float load_factor = 0.0;
+   
+         if (((step_counter++) % kernel_select_interval_) == 0) {
+           load_factor = fast_load_factor(0, stream, false);
+         }
+         Selector::execute_kernel(load_factor, options_.block_size,
+                                  options_.max_bucket_size, table_->buckets_num,
+                                  options_.dim, stream, n, d_table_,
+                                  table_->buckets, keys, founds);
+       }
+       CudaCheckError();
+     }
+   
      void erase(const size_type n, const key_type* keys, cudaStream_t stream = 0) {
        if (n == 0) {
          return;
