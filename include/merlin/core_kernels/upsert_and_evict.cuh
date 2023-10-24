@@ -1292,6 +1292,7 @@ struct KernelSelector_UpsertAndEvict {
       }
     };
 
+#if defined(CUDART_VERSION) && (CUDART_VERSION >= 11030)
     auto launch_TLPv2 = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
@@ -1315,6 +1316,7 @@ struct KernelSelector_UpsertAndEvict {
             params, stream);
       }
     };
+#endif
 
     auto launch_Pipeline = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {

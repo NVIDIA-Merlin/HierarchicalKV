@@ -255,6 +255,8 @@ class HashTable {
     default_allocator_ = (allocator == nullptr);
     allocator_ = (allocator == nullptr) ? (new DefaultAllocator()) : allocator;
 
+    thrust_allocator_.set_allocator(allocator_);
+
     if (options_.device_id >= 0) {
       CUDA_CHECK(cudaSetDevice(options_.device_id));
     } else {
@@ -295,6 +297,7 @@ class HashTable {
         options_.host_memory_pool, allocator_);
 
     CUDA_CHECK(cudaDeviceSynchronize());
+
     initialized_ = true;
     CudaCheckError();
   }
@@ -426,8 +429,9 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(d_dst));
         thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
 
-        thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + n,
-                            d_src_offset_ptr, thrust::less<uintptr_t>());
+        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), d_dst_ptr,
+                            d_dst_ptr + n, d_src_offset_ptr,
+                            thrust::less<uintptr_t>());
       }
 
       if (filter_condition) {
@@ -780,8 +784,9 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(dst));
         thrust::device_ptr<int> src_offset_ptr(src_offset);
 
-        thrust::sort_by_key(thrust_par.on(stream), dst_ptr, dst_ptr + n,
-                            src_offset_ptr, thrust::less<uintptr_t>());
+        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), dst_ptr,
+                            dst_ptr + n, src_offset_ptr,
+                            thrust::less<uintptr_t>());
       }
 
       {
@@ -913,9 +918,9 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(d_table_value_addrs));
         thrust::device_ptr<int> param_key_index_ptr(param_key_index);
 
-        thrust::sort_by_key(thrust_par.on(stream), table_value_ptr,
-                            table_value_ptr + n, param_key_index_ptr,
-                            thrust::less<uintptr_t>());
+        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream),
+                            table_value_ptr, table_value_ptr + n,
+                            param_key_index_ptr, thrust::less<uintptr_t>());
       }
 
       if (filter_condition) {
@@ -1152,8 +1157,9 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(d_dst));
         thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
 
-        thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + n,
-                            d_src_offset_ptr, thrust::less<uintptr_t>());
+        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), d_dst_ptr,
+                            d_dst_ptr + n, d_src_offset_ptr,
+                            thrust::less<uintptr_t>());
       }
 
       if (filter_condition) {
@@ -1349,8 +1355,9 @@ class HashTable {
             reinterpret_cast<uintptr_t*>(src));
         thrust::device_ptr<int> dst_offset_ptr(dst_offset);
 
-        thrust::sort_by_key(thrust_par.on(stream), src_ptr, src_ptr + n,
-                            dst_offset_ptr, thrust::less<uintptr_t>());
+        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), src_ptr,
+                            src_ptr + n, dst_offset_ptr,
+                            thrust::less<uintptr_t>());
 
         const size_t block_size = options_.io_block_size;
         const size_t N = n * dim();
@@ -1756,8 +1763,9 @@ class HashTable {
 
     for (size_type start_i = 0; start_i < N; start_i += step) {
       size_type end_i = std::min(start_i + step, N);
-      h_size += thrust::reduce(thrust_par.on(stream), size_ptr + start_i,
-                               size_ptr + end_i, 0, thrust::plus<int>());
+      h_size += thrust::reduce(thrust_par(thrust_allocator_).on(stream),
+                               size_ptr + start_i, size_ptr + end_i, 0,
+                               thrust::plus<int>());
     }
 
     CudaCheckError();
@@ -2075,8 +2083,8 @@ class HashTable {
 
     thrust::device_ptr<int> size_ptr(table_->buckets_size);
 
-    int size = thrust::reduce(thrust_par.on(stream), size_ptr, size_ptr + N, 0,
-                              thrust::plus<int>());
+    int size = thrust::reduce(thrust_par(thrust_allocator_).on(stream),
+                              size_ptr, size_ptr + N, 0, thrust::plus<int>());
 
     CudaCheckError();
     return static_cast<float>((delta * 1.0) / (capacity() * 1.0) +
@@ -2139,6 +2147,7 @@ class HashTable {
   std::unique_ptr<DeviceMemoryPool> dev_mem_pool_;
   std::unique_ptr<HostMemoryPool> host_mem_pool_;
   allocator_type* allocator_;
+  ThrustAllocator<uint8_t> thrust_allocator_;
   bool default_allocator_ = true;
 };
 
