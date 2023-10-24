@@ -17,6 +17,7 @@
 #pragma once
 
 #include <stdlib.h>
+#include <thrust/device_malloc_allocator.h>
 #include "debug.hpp"
 #include "utils.cuh"
 
@@ -121,6 +122,36 @@ class DefaultAllocator : public virtual BaseAllocator {
                    "MemoryType::Device!");
     }
   }
+};
+
+template <typename T>
+struct ThrustAllocator : thrust::device_malloc_allocator<T> {
+ public:
+  typedef thrust::device_malloc_allocator<T> super_t;
+  typedef typename super_t::pointer pointer;
+  typedef typename super_t::size_type size_type;
+
+ public:
+  pointer allocate(size_type n) {
+    void* ptr = nullptr;
+    MERLIN_CHECK(
+        allocator_ != nullptr,
+        "[ThrustAllocator] set_allocator should be called in advance!");
+    allocator_->alloc(MemoryType::Device, &ptr, sizeof(T) * n);
+    return pointer(reinterpret_cast<T*>(ptr));
+  }
+
+  void deallocate(pointer p, size_type n) {
+    MERLIN_CHECK(
+        allocator_ != nullptr,
+        "[ThrustAllocator] set_allocator should be called in advance!");
+    allocator_->free(MemoryType::Device, reinterpret_cast<void*>(p.get()));
+  }
+
+  void set_allocator(BaseAllocator* allocator) { allocator_ = allocator; }
+
+ public:
+  BaseAllocator* allocator_ = nullptr;
 };
 
 }  // namespace merlin

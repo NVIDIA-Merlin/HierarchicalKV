@@ -36,7 +36,6 @@ __global__ void tlp_update_kernel_with_io(
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
   K key{static_cast<K>(EMPTY_KEY)};
-  S score{static_cast<S>(EMPTY_SCORE)};
   OccupyResult occupy_result{OccupyResult::INITIAL};
   VecD_Comp target_digests{0};
   VecV* bucket_values_ptr{nullptr};
@@ -44,7 +43,6 @@ __global__ void tlp_update_kernel_with_io(
   uint32_t key_pos = {0};
   if (kv_idx < n) {
     key = keys[kv_idx];
-    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
 
     if (!IS_RESERVED_KEY(key)) {
       const K hashed_key = Murmur3HashDevice(key);
@@ -767,7 +765,6 @@ __global__ void tlp_update_kernel_hybrid(
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
   K key{static_cast<K>(EMPTY_KEY)};
-  S score{static_cast<S>(EMPTY_SCORE)};
   OccupyResult occupy_result{OccupyResult::INITIAL};
   VecD_Comp target_digests{0};
   V* bucket_values_ptr{nullptr};
@@ -775,7 +772,6 @@ __global__ void tlp_update_kernel_hybrid(
   uint32_t key_pos = {0};
   if (kv_idx < n) {
     key = keys[kv_idx];
-    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
     if (src_offset) src_offset[kv_idx] = kv_idx;
     if (!IS_RESERVED_KEY(key)) {
       const K hashed_key = Murmur3HashDevice(key);
