@@ -301,8 +301,9 @@ Program Listing for File merlin_hashtable.cuh
                reinterpret_cast<uintptr_t*>(d_dst));
            thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
    
-           thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + n,
-                               d_src_offset_ptr, thrust::less<uintptr_t>());
+           thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), d_dst_ptr,
+                               d_dst_ptr + n, d_src_offset_ptr,
+                               thrust::less<uintptr_t>());
          }
    
          if (filter_condition) {
@@ -526,8 +527,9 @@ Program Listing for File merlin_hashtable.cuh
                reinterpret_cast<uintptr_t*>(dst));
            thrust::device_ptr<int> src_offset_ptr(src_offset);
    
-           thrust::sort_by_key(thrust_par.on(stream), dst_ptr, dst_ptr + n,
-                               src_offset_ptr, thrust::less<uintptr_t>());
+           thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), dst_ptr,
+                               dst_ptr + n, src_offset_ptr,
+                               thrust::less<uintptr_t>());
          }
    
          {
@@ -642,9 +644,9 @@ Program Listing for File merlin_hashtable.cuh
                reinterpret_cast<uintptr_t*>(d_table_value_addrs));
            thrust::device_ptr<int> param_key_index_ptr(param_key_index);
    
-           thrust::sort_by_key(thrust_par.on(stream), table_value_ptr,
-                               table_value_ptr + n, param_key_index_ptr,
-                               thrust::less<uintptr_t>());
+           thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream),
+                               table_value_ptr, table_value_ptr + n,
+                               param_key_index_ptr, thrust::less<uintptr_t>());
          }
    
          if (filter_condition) {
@@ -836,8 +838,9 @@ Program Listing for File merlin_hashtable.cuh
                reinterpret_cast<uintptr_t*>(d_dst));
            thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
    
-           thrust::sort_by_key(thrust_par.on(stream), d_dst_ptr, d_dst_ptr + n,
-                               d_src_offset_ptr, thrust::less<uintptr_t>());
+           thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), d_dst_ptr,
+                               d_dst_ptr + n, d_src_offset_ptr,
+                               thrust::less<uintptr_t>());
          }
    
          if (filter_condition) {
