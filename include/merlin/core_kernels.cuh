@@ -26,6 +26,7 @@
 #include "core_kernels/lookup_ptr.cuh"
 #include "core_kernels/update.cuh"
 #include "core_kernels/update_score.cuh"
+#include "core_kernels/update_values.cuh"
 #include "core_kernels/upsert.cuh"
 #include "core_kernels/upsert_and_evict.cuh"
 
