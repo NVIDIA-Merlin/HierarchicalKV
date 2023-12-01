@@ -19,6 +19,7 @@
 #include <stddef.h>
 #include <cstdint>
 #include <cuda/std/semaphore>
+#include <vector>
 
 namespace nv {
 namespace merlin {
@@ -161,6 +162,7 @@ struct Table {
   int slots_number = 0;                  // unused
   int device_id = 0;                     // Device id
   int tile_size;
+  std::vector<uint8_t*> buckets_address;
 };
 
 template <class K, class S>
