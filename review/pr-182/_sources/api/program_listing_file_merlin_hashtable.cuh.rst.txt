@@ -429,8 +429,9 @@ Program Listing for File merlin_hashtable.cuh
    
          void* d_temp_storage = nullptr;
          size_t temp_storage_bytes = 0;
-         cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes,
-                                       d_offsets, d_offsets, n_offsets, stream);
+         CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_storage,
+                                                  temp_storage_bytes, d_offsets,
+                                                  d_offsets, n_offsets, stream));
          auto helper_ws{
              dev_mem_pool_->get_workspace<1>(temp_storage_bytes, stream)};
          int64_t* d_temp_storage_i64 = helper_ws.get<int64_t*>(0);
