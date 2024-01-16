@@ -588,7 +588,7 @@ __global__ void read_kernel(const V* const* __restrict src, V* __restrict dst,
  *  `N`: Number of vectors needed to be read.
  */
 template <class K, class V, class S>
-__global__ void read_kernel(const V** __restrict src, V* __restrict dst,
+__global__ void read_kernel(const V* const* __restrict src, V* __restrict dst,
                             const int* __restrict dst_offset, const size_t dim,
                             const size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -599,10 +599,11 @@ __global__ void read_kernel(const V** __restrict src, V* __restrict dst,
         dst_offset != nullptr ? dst_offset[vec_index] : vec_index;
     int dim_index = t % dim;
     if (src[vec_index] != nullptr) {
-      dst[real_dst_offset * dim + dim_index] = src[vec_index * dim + dim_index];
+      dst[real_dst_offset * dim + dim_index] = src[vec_index][dim_index];
     }
   }
 }
+
 /* Clear all key-value in the table. */
 template <class K, class V, class S>
 __global__ void clear_kernel(Table<K, V, S>* __restrict table,
