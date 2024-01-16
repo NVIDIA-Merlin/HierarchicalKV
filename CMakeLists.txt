@@ -150,3 +150,8 @@ add_executable(assign_values_test tests/assign_values_test.cc.cu)
 target_compile_features(assign_values_test PUBLIC cxx_std_14)
 set_target_properties(assign_values_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(assign_values_test gtest_main)
+
+add_executable(find_with_missed_keys_test tests/find_with_missed_keys_test.cc.cu)
+target_compile_features(find_with_missed_keys_test PUBLIC cxx_std_14)
+set_target_properties(find_with_missed_keys_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(find_with_missed_keys_test gtest_main)

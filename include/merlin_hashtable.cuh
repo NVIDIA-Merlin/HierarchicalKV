@@ -1519,6 +1519,125 @@ class HashTable {
   }
 
   /**
+   * @brief Searches the hash table for the specified keys.
+   *
+   * @note When the searched keys are not hit, missed keys/indices/size can be
+   * obtained.
+   *
+   * @param n The number of key-value-score tuples to search.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param values The values to search on GPU-accessible memory with
+   * shape (n, DIM).
+   * @param missed_keys The missed keys to search on GPU-accessible memory with
+   * shape (n).
+   * @param missed_indices The missed indices to search on GPU-accessible memory
+   * with shape (n).
+   * @param missed_size The size of `missed_keys` and `missed_indices`.
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p scores is `nullptr`, the score for each key will not be returned.
+   * @endparblock
+   * @param stream The CUDA stream that is used to execute the operation.
+   */
+  void find(const size_type n, const key_type* keys,  // (n)
+            value_type* values,                       // (n, DIM)
+            key_type* missed_keys,                    // (n)
+            int* missed_indices,                      // (n)
+            int* missed_size,                         // scalar
+            score_type* scores = nullptr,             // (n)
+            cudaStream_t stream = 0) const {
+    if (n == 0) {
+      return;
+    }
+
+    CUDA_CHECK(cudaMemsetAsync(missed_size, 0, sizeof(*missed_size), stream));
+
+    read_shared_lock lock(mutex_, stream);
+
+    const uint32_t value_size = options_.dim * sizeof(V);
+
+    if (is_fast_mode()) {
+      using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
+                                                        score_type, ArchTag>;
+      const uint32_t pipeline_max_size = Selector::max_value_size();
+      // Pipeline lookup kernel only supports "bucket_size = 128".
+      if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
+        LookupKernelParamsV2<key_type, value_type, score_type> lookupParams(
+            table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
+            keys, values, scores, missed_keys, missed_indices, missed_size, n);
+        Selector::select_kernel(lookupParams, stream);
+      } else {
+        using Selector =
+            SelectLookupKernelWithIOV2<key_type, value_type, score_type>;
+        static thread_local int step_counter = 0;
+        static thread_local float load_factor = 0.0;
+
+        if (((step_counter++) % kernel_select_interval_) == 0) {
+          load_factor = fast_load_factor(0, stream, false);
+        }
+        Selector::execute_kernel(load_factor, options_.block_size,
+                                 options_.max_bucket_size, table_->buckets_num,
+                                 options_.dim, stream, n, d_table_,
+                                 table_->buckets, keys, values, scores,
+                                 missed_keys, missed_indices, missed_size);
+      }
+    } else {
+      const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
+      auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+      auto src{dev_ws.get<value_type**>(0)};
+      auto dst_offset{reinterpret_cast<int*>(src + n)};
+
+      CUDA_CHECK(cudaMemsetAsync(src, 0, dev_ws_size, stream));
+
+      constexpr uint32_t MinBucketCapacityFilter =
+          sizeof(VecD_Load) / sizeof(D);
+
+      bool filter_condition =
+          options_.max_bucket_size >= MinBucketCapacityFilter;
+
+      if (filter_condition) {
+        constexpr uint32_t BLOCK_SIZE = 128U;
+
+        tlp_lookup_kernel_hybrid<key_type, value_type, score_type>
+            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+                table_->buckets, table_->buckets_num, options_.max_bucket_size,
+                options_.dim, keys, src, scores, dst_offset, missed_keys,
+                missed_indices, missed_size, n);
+      } else {
+        const size_t block_size = options_.block_size;
+        const size_t N = n * TILE_SIZE;
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+
+        lookup_kernel<key_type, value_type, score_type, TILE_SIZE>
+            <<<grid_size, block_size, 0, stream>>>(
+                d_table_, table_->buckets, options_.max_bucket_size,
+                table_->buckets_num, options_.dim, keys, src, scores,
+                missed_keys, missed_indices, missed_size, dst_offset, N);
+      }
+
+      if (values != nullptr) {
+        thrust::device_ptr<uintptr_t> src_ptr(
+            reinterpret_cast<uintptr_t*>(src));
+        thrust::device_ptr<int> dst_offset_ptr(dst_offset);
+
+        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), src_ptr,
+                            src_ptr + n, dst_offset_ptr,
+                            thrust::less<uintptr_t>());
+
+        const size_t block_size = options_.io_block_size;
+        const size_t N = n * dim();
+        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+
+        read_kernel<key_type, value_type, score_type>
+            <<<grid_size, block_size, 0, stream>>>(src, values, dst_offset,
+                                                   dim(), N);
+      }
+    }
+
+    CudaCheckError();
+  }
+
+  /**
    * @brief Searches the hash table for the specified keys and returns address
    * of the values.
    *
