@@ -413,8 +413,8 @@
 <li><p><strong>n</strong> – The number of key-value-score tuples to search. </p></li>
 <li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>values</strong> – The values to search on GPU-accessible memory with shape (n, DIM). </p></li>
-<li><p><strong>missed_keys</strong> – The missed keys to search on GPU-accessible memory with shape (missed_size). </p></li>
-<li><p><strong>missed_indices</strong> – The missed indices to search on GPU-accessible memory with shape (missed_size). </p></li>
+<li><p><strong>missed_keys</strong> – The missed keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>missed_indices</strong> – The missed indices to search on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>missed_size</strong> – The size of <code class="docutils literal notranslate"><span class="pre">missed_keys</span></code> and <code class="docutils literal notranslate"><span class="pre">missed_indices</span></code>. </p></li>
 <li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
 </p></li>

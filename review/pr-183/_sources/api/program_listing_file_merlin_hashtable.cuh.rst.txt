@@ -1146,8 +1146,8 @@ Program Listing for File merlin_hashtable.cuh
    
      void find(const size_type n, const key_type* keys,  // (n)
                value_type* values,                       // (n, DIM)
-               key_type* missed_keys,                    // (missed_size)
-               int* missed_indices,                      // (missed_size)
+               key_type* missed_keys,                    // (n)
+               int* missed_indices,                      // (n)
                int* missed_size,                         // scalar
                score_type* scores = nullptr,             // (n)
                cudaStream_t stream = 0) const {
