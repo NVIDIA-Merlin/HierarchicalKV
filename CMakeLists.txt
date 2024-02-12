@@ -95,6 +95,10 @@ add_executable(merlin_hashtable_benchmark benchmark/merlin_hashtable_benchmark.c
 target_compile_features(merlin_hashtable_benchmark PUBLIC cxx_std_14)
 set_target_properties(merlin_hashtable_benchmark PROPERTIES  CUDA_ARCHITECTURES OFF)
 
+add_executable(find_with_missed_keys_benchmark benchmark/find_with_missed_keys_benchmark.cc.cu)
+target_compile_features(find_with_missed_keys_benchmark PUBLIC cxx_std_14)
+set_target_properties(find_with_missed_keys_benchmark PROPERTIES  CUDA_ARCHITECTURES OFF)
+
 add_executable(merlin_hashtable_test tests/merlin_hashtable_test.cc.cu)
 target_compile_features(merlin_hashtable_test PUBLIC cxx_std_14)
 set_target_properties(merlin_hashtable_test PROPERTIES  CUDA_ARCHITECTURES OFF)
