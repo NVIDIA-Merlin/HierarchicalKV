@@ -473,7 +473,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
                             cudaMemcpyHostToDevice));
       S start_ts =
           (test_util::host_nano<S>(stream) >> RSHIFT_ON_NANO) & 0xFFFFFFFF;
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->find_or_insert(BASE_KEY_NUM, d_keys_temp, d_vectors_temp, nullptr,
                             stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -521,7 +521,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
                             cudaMemcpyHostToDevice));
       S start_ts =
           (test_util::host_nano<S>(stream) >> RSHIFT_ON_NANO) & 0xFFFFFFFF;
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->assign(TEST_KEY_NUM, d_keys_temp, nullptr, stream);
       table->find_or_insert(TEST_KEY_NUM, d_keys_temp, d_vectors_temp, nullptr,
                             stream);
@@ -670,7 +670,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_base.data(),
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->find_or_insert(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                             d_scores_temp, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -717,7 +717,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_test.data(),
                             TEST_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->assign(TEST_KEY_NUM, d_keys_temp, d_scores_temp, stream);
       table->find_or_insert(TEST_KEY_NUM, d_keys_temp, d_vectors_temp,
                             d_scores_temp, stream);
@@ -1250,7 +1250,7 @@ void CheckAssignOnEpochLfu(Table* table,
     scores_map_before_insert[h_tmp_keys[i]] = h_tmp_scores[i];
   }
 
-  EvictStrategy::set_global_epoch(global_epoch);
+  table->set_global_epoch(global_epoch);
   table->assign(len, keys, scores, stream);
   CUDA_CHECK(cudaStreamSynchronize(stream));
 

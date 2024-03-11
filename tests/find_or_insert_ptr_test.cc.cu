@@ -1963,7 +1963,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
                              BASE_KEY_NUM, stream);
         start_ts =
             (test_util::host_nano<S>(stream) >> RSHIFT_ON_NANO) & 0xFFFFFFFF;
-        EvictStrategy::set_global_epoch(global_epoch);
+        table->set_global_epoch(global_epoch);
         table->find_or_insert(BASE_KEY_NUM, d_keys_temp, d_vectors_ptr, d_found,
                               nullptr, stream);
         test_util::read_or_write_ptr(d_vectors_ptr, d_vectors_temp, d_found,
@@ -2018,7 +2018,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
                             cudaMemcpyHostToDevice));
       start_ts =
           (test_util::host_nano<S>(stream) >> RSHIFT_ON_NANO) & 0xFFFFFFFF;
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp, nullptr, stream);
       {
         V** d_vectors_ptr = nullptr;
@@ -2189,7 +2189,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
         CUDA_CHECK(cudaMalloc(&d_vectors_ptr, BASE_KEY_NUM * sizeof(V*)));
         test_util::array2ptr(d_vectors_ptr, d_vectors_temp, options.dim,
                              BASE_KEY_NUM, stream);
-        EvictStrategy::set_global_epoch(global_epoch);
+        table->set_global_epoch(global_epoch);
         table->find_or_insert(BASE_KEY_NUM, d_keys_temp, d_vectors_ptr, d_found,
                               d_scores_temp, stream);
         test_util::read_or_write_ptr(d_vectors_ptr, d_vectors_temp, d_found,
@@ -2243,7 +2243,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_test.data(),
                             TEST_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp, d_scores_temp,
                     stream);
       {

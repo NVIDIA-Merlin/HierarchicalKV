@@ -15,7 +15,6 @@
  */
 
 #include <assert.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -29,7 +28,6 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
-
 #include "benchmark_util.cuh"
 #include "merlin_hashtable.cuh"
 

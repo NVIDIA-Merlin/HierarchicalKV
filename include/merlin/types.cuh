@@ -275,12 +275,5 @@ struct EvictStrategyInternal {
   constexpr static int kCustomized = 4;  ///< Customized mode.
 };
 
-union EvictStrategyParamUnion {  ///< Parameter for specialized strategy.
-  uint64_t global_epoch;
-};
-
-thread_local static EvictStrategyParamUnion EvictStrategyParam = {
-    static_cast<uint64_t>(IGNORED_GLOBAL_EPOCH)};
-
 }  // namespace merlin
 }  // namespace nv

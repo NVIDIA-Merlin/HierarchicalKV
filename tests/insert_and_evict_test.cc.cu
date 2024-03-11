@@ -453,7 +453,7 @@ void CheckInsertAndEvictOnLfu(Table* table,
   }
 
   auto start = std::chrono::steady_clock::now();
-  EvictStrategy::set_global_epoch(global_epoch);
+  table->set_global_epoch(global_epoch);
   size_t filtered_len = table->insert_and_evict(
       len, keys, values,
       (Table::evict_strategy == EvictStrategy::kLru ||
@@ -724,7 +724,7 @@ void CheckInsertAndEvictOnEpochLru(Table* table,
   S nano_before_insert = test_util::host_nano<S>();
 
   auto start = std::chrono::steady_clock::now();
-  EvictStrategy::set_global_epoch(global_epoch);
+  table->set_global_epoch(global_epoch);
   size_t filtered_len = table->insert_and_evict(
       len, keys, values,
       (Table::evict_strategy == EvictStrategy::kLru ||
@@ -995,7 +995,7 @@ void CheckInsertAndEvictOnEpochLfu(
   }
 
   auto start = std::chrono::steady_clock::now();
-  EvictStrategy::set_global_epoch(global_epoch);
+  table->set_global_epoch(global_epoch);
   size_t filtered_len = table->insert_and_evict(
       len, keys, values,
       (Table::evict_strategy == EvictStrategy::kLru ||
