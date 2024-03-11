@@ -124,7 +124,7 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
   S threshold = benchmark::host_nano<S>();
   int global_epoch = 0;
   for (; global_epoch < loop_num_init; global_epoch++) {
-    EvictStrategy::set_global_epoch(global_epoch);
+    table->set_global_epoch(global_epoch);
     uint64_t key_num_cur_insert =
         global_epoch == loop_num_init - 1 ? key_num_remain : key_num_per_op;
     create_continuous_keys<K, S>(h_keys, h_scores, key_num_cur_insert, start);
@@ -165,7 +165,7 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
   // For trigger the kernel selection in advance.
   int key_num_per_op_warmup = 1;
   for (int i = 0; i < 9; i++, global_epoch++) {
-    EvictStrategy::set_global_epoch(global_epoch);
+    table->set_global_epoch(global_epoch);
     switch (api) {
       case API_Select::find: {
         table->find(key_num_per_op_warmup, d_keys, d_vectors, d_found, d_scores,
@@ -271,7 +271,7 @@ float test_one_api(std::shared_ptr<Table>& table, const API_Select api,
                         cudaMemcpyHostToDevice));
   auto timer = benchmark::Timer<double>();
   global_epoch++;
-  EvictStrategy::set_global_epoch(global_epoch);
+  table->set_global_epoch(global_epoch);
   switch (api) {
     case API_Select::find: {
       timer.start();

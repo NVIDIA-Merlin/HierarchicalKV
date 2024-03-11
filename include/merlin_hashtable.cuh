@@ -81,10 +81,6 @@ struct EvictStrategy {
     kEpochLfu = 3,    ///< Epoch Lfu mode.
     kCustomized = 4,  ///< Customized mode.
   };
-
-  static void set_global_epoch(const uint64_t epoch) {
-    EvictStrategyParam.global_epoch = epoch;
-  }
 };
 
 /**
@@ -374,7 +370,7 @@ class HashTable {
             table_->buckets_num,
             static_cast<uint32_t>(options_.max_bucket_size),
             static_cast<uint32_t>(options_.dim), keys, values, scores, n,
-            EvictStrategyParam.global_epoch);
+            global_epoch_);
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpsertKernelWithIO<key_type, value_type,
@@ -383,7 +379,7 @@ class HashTable {
             load_factor, options_.block_size, options_.max_bucket_size,
             table_->buckets_num, options_.dim, stream, n, d_table_,
             table_->buckets, keys, reinterpret_cast<const value_type*>(values),
-            scores, EvictStrategyParam.global_epoch);
+            scores, global_epoch_);
       }
     } else {
       const size_type dev_ws_size{
@@ -410,7 +406,7 @@ class HashTable {
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_size, table_->buckets_num,
                 options_.max_bucket_size, options_.dim, keys, d_dst, scores,
-                keys_ptr, d_src_offset, n, EvictStrategyParam.global_epoch);
+                keys_ptr, d_src_offset, n, global_epoch_);
 
       } else {
         const size_t block_size = options_.block_size;
@@ -421,7 +417,7 @@ class HashTable {
                       TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_dst, scores,
-            d_src_offset, EvictStrategyParam.global_epoch, N);
+            d_src_offset, global_epoch_, N);
       }
 
       {
@@ -565,7 +561,7 @@ class HashTable {
           table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
           static_cast<uint32_t>(options_.dim), keys, values, scores,
           evicted_keys, evicted_values, evicted_scores, n, d_evicted_counter,
-          EvictStrategyParam.global_epoch);
+          global_epoch_);
       Selector::select_kernel(kernelParams, stream);
     } else {
       // always use max tile to avoid data-deps as possible.
@@ -594,7 +590,7 @@ class HashTable {
           load_factor, options_.block_size, options_.max_bucket_size,
           table_->buckets_num, options_.dim, stream, n, d_table_,
           table_->buckets, keys, values, scores, evicted_keys, evicted_values,
-          evicted_scores, EvictStrategyParam.global_epoch);
+          evicted_scores, global_epoch_);
 
       keys_not_empty<K>
           <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
@@ -751,11 +747,10 @@ class HashTable {
       if (((step_counter++) % kernel_select_interval_) == 0) {
         load_factor = fast_load_factor(0, stream, false);
       }
-      Selector::execute_kernel(load_factor, options_.block_size,
-                               options_.max_bucket_size, table_->buckets_num,
-                               dim(), stream, n, d_table_, keys,
-                               value_or_deltas, scores, accum_or_assigns,
-                               EvictStrategyParam.global_epoch);
+      Selector::execute_kernel(
+          load_factor, options_.block_size, options_.max_bucket_size,
+          table_->buckets_num, dim(), stream, n, d_table_, keys,
+          value_or_deltas, scores, accum_or_assigns, global_epoch_);
 
     } else {
       const size_type dev_ws_size{
@@ -776,7 +771,7 @@ class HashTable {
                                TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, options_.max_bucket_size, table_->buckets_num, dim(),
             keys, dst, scores, accum_or_assigns, src_offset, founds,
-            EvictStrategyParam.global_epoch, N);
+            global_epoch_, N);
       }
 
       {
@@ -859,17 +854,16 @@ class HashTable {
             table_->buckets_num,
             static_cast<uint32_t>(options_.max_bucket_size),
             static_cast<uint32_t>(options_.dim), keys, values, scores, n,
-            EvictStrategyParam.global_epoch);
+            global_epoch_);
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector =
             SelectFindOrInsertKernelWithIO<key_type, value_type, score_type,
                                            evict_strategy>;
-        Selector::execute_kernel(load_factor, options_.block_size,
-                                 options_.max_bucket_size, table_->buckets_num,
-                                 options_.dim, stream, n, d_table_,
-                                 table_->buckets, keys, values, scores,
-                                 EvictStrategyParam.global_epoch);
+        Selector::execute_kernel(
+            load_factor, options_.block_size, options_.max_bucket_size,
+            table_->buckets_num, options_.dim, stream, n, d_table_,
+            table_->buckets, keys, values, scores, global_epoch_);
       }
     } else {
       const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int) +
@@ -898,7 +892,7 @@ class HashTable {
                 table_->buckets, table_->buckets_size, table_->buckets_num,
                 options_.max_bucket_size, options_.dim, keys,
                 d_table_value_addrs, scores, keys_ptr, param_key_index, founds,
-                n, EvictStrategyParam.global_epoch);
+                n, global_epoch_);
 
       } else {
         const size_t block_size = options_.block_size;
@@ -909,8 +903,7 @@ class HashTable {
                               TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_table_value_addrs,
-            scores, founds, param_key_index, EvictStrategyParam.global_epoch,
-            N);
+            scores, founds, param_key_index, global_epoch_, N);
       }
 
       {
@@ -1028,7 +1021,7 @@ class HashTable {
           <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               table_->buckets, table_->buckets_size, table_->buckets_num,
               options_.max_bucket_size, options_.dim, keys, values, scores,
-              keys_ptr, n, founds, EvictStrategyParam.global_epoch);
+              keys_ptr, n, founds, global_epoch_);
 
       find_or_insert_ptr_kernel_unlock_key<key_type>
           <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
@@ -1042,11 +1035,10 @@ class HashTable {
       if (((step_counter++) % kernel_select_interval_) == 0) {
         load_factor = fast_load_factor(0, stream, false);
       }
-      Selector::execute_kernel(load_factor, options_.block_size,
-                               options_.max_bucket_size, table_->buckets_num,
-                               options_.dim, stream, n, d_table_,
-                               table_->buckets, keys, values, scores, founds,
-                               EvictStrategyParam.global_epoch);
+      Selector::execute_kernel(
+          load_factor, options_.block_size, options_.max_bucket_size,
+          table_->buckets_num, options_.dim, stream, n, d_table_,
+          table_->buckets, keys, values, scores, founds, global_epoch_);
     }
 
     CudaCheckError();
@@ -1104,16 +1096,15 @@ class HashTable {
             load_factor, table_->buckets, table_->buckets_num,
             static_cast<uint32_t>(options_.max_bucket_size),
             static_cast<uint32_t>(options_.dim), keys, values, scores, n,
-            EvictStrategyParam.global_epoch);
+            global_epoch_);
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpdateKernelWithIO<key_type, value_type,
                                                   score_type, evict_strategy>;
-        Selector::execute_kernel(load_factor, options_.block_size,
-                                 options_.max_bucket_size, table_->buckets_num,
-                                 options_.dim, stream, n, d_table_,
-                                 table_->buckets, keys, values, scores,
-                                 EvictStrategyParam.global_epoch);
+        Selector::execute_kernel(
+            load_factor, options_.block_size, options_.max_bucket_size,
+            table_->buckets_num, options_.dim, stream, n, d_table_,
+            table_->buckets, keys, values, scores, global_epoch_);
       }
     } else {
       const size_type dev_ws_size{
@@ -1140,7 +1131,7 @@ class HashTable {
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_num, options_.max_bucket_size,
                 options_.dim, keys, d_dst, scores, keys_ptr, d_src_offset,
-                EvictStrategyParam.global_epoch, n);
+                global_epoch_, n);
 
       } else {
         const size_t block_size = options_.block_size;
@@ -1151,7 +1142,7 @@ class HashTable {
                       TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_dst, scores,
-            d_src_offset, EvictStrategyParam.global_epoch, N);
+            d_src_offset, global_epoch_, N);
       }
 
       {
@@ -1247,7 +1238,7 @@ class HashTable {
         typename Selector::Params kernelParams(
             load_factor, table_->buckets, table_->buckets_num,
             static_cast<uint32_t>(options_.max_bucket_size), keys, scores, n,
-            EvictStrategyParam.global_epoch);
+            global_epoch_);
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpdateScoreKernel<key_type, value_type,
@@ -1255,7 +1246,7 @@ class HashTable {
         Selector::execute_kernel(load_factor, options_.block_size,
                                  options_.max_bucket_size, table_->buckets_num,
                                  stream, n, d_table_, table_->buckets, keys,
-                                 scores, EvictStrategyParam.global_epoch);
+                                 scores, global_epoch_);
       }
     }
 
@@ -2294,7 +2285,7 @@ class HashTable {
                                    cudaMemcpyHostToDevice, stream));
       }
 
-      EvictStrategy::set_global_epoch(static_cast<S>(IGNORED_GLOBAL_EPOCH));
+      set_global_epoch(static_cast<S>(IGNORED_GLOBAL_EPOCH));
       insert_or_assign(count, d_keys, d_values, d_scores, stream, true, true);
       total_count += count;
 
@@ -2305,6 +2296,8 @@ class HashTable {
 
     return total_count;
   }
+
+  void set_global_epoch(const uint64_t epoch) { global_epoch_ = epoch; }
 
  private:
   bool is_power(size_t base, size_t n) {
@@ -2381,10 +2374,9 @@ class HashTable {
     if ((evict_strategy == EvictStrategy::kEpochLru ||
          evict_strategy == EvictStrategy::kEpochLfu)) {
       MERLIN_CHECK(
-          EvictStrategyParam.global_epoch !=
-              static_cast<S>(IGNORED_GLOBAL_EPOCH),
+          global_epoch_ != static_cast<S>(IGNORED_GLOBAL_EPOCH),
           "the global_epoch is invalid and should be assigned by calling "
-          "`EvictStrategy::set_global_epoch` when running on "
+          "`set_global_epoch` when running on "
           "Epoch LRU or Epoch LFU mode.");
     }
   }
@@ -2414,6 +2406,7 @@ class HashTable {
   allocator_type* allocator_;
   ThrustAllocator<uint8_t> thrust_allocator_;
   bool default_allocator_ = true;
+  std::atomic<uint64_t> global_epoch_{static_cast<uint64_t>(IGNORED_GLOBAL_EPOCH)};
 };
 
 }  // namespace merlin

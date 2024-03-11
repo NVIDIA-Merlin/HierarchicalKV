@@ -1247,7 +1247,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
                      BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
 
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, d_scores_temp, stream);
 
@@ -1296,7 +1296,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_test.data(),
                      TEST_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
 
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->accum_or_assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, d_scores_temp, stream);
 
@@ -1464,7 +1464,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
                      BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
       S start_ts =
           (test_util::host_nano<S>(stream) >> RSHIFT_ON_NANO) & 0xFFFFFFFF;
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, nullptr, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -1515,7 +1515,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
                      TEST_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
       S start_ts =
           (test_util::host_nano<S>(stream) >> RSHIFT_ON_NANO) & 0xFFFFFFFF;
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->accum_or_assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, nullptr, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -1704,7 +1704,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
                      BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
 
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, d_scores_temp, stream);
 
@@ -1761,7 +1761,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_test.data(),
                      TEST_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
 
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->accum_or_assign(TEST_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, d_scores_temp, stream);
 

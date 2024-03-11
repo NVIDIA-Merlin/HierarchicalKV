@@ -79,7 +79,7 @@ void test_save_to_file() {
                    Table::evict_strategy == EvictStrategy::kEpochLru)
                       ? nullptr
                       : d_scores;
-  EvictStrategy::set_global_epoch(global_epoch);
+  table_0->set_global_epoch(global_epoch);
   table_0->insert_or_assign(keynum, d_keys, d_vectors, temp_score, stream);
   printf("Fill table_0.\n");
   nv::merlin::LocalKVFile<K, V, S> file;

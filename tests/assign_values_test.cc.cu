@@ -295,7 +295,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
       CUDA_CHECK(cudaMemcpy(d_vectors_temp, h_vectors_base.data(),
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyHostToDevice));
-      EvictStrategy::set_global_epoch(global_epoch);
+      table->set_global_epoch(global_epoch);
       table->find_or_insert(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                             d_scores_temp, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -547,7 +547,7 @@ void CheckAssignOnEpochLfu(Table* table,
   values_map_after_insert.clear();
   scores_map_after_insert.clear();
 
-  EvictStrategy::set_global_epoch(global_epoch);
+  table->set_global_epoch(global_epoch);
   auto start = std::chrono::steady_clock::now();
   size_t filtered_len = table->insert_and_evict(
       len, keys, values,
