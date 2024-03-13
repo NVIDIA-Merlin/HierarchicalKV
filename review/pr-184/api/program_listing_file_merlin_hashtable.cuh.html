@@ -1839,7 +1839,7 @@
 <span class="w">  </span><span class="n">allocator_type</span><span class="o">*</span><span class="w"> </span><span class="n">allocator_</span><span class="p">;</span>
 <span class="w">  </span><span class="n">ThrustAllocator</span><span class="o">&lt;</span><span class="kt">uint8_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">thrust_allocator_</span><span class="p">;</span>
 <span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">default_allocator_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
-<span class="w">  </span><span class="kt">uint64_t</span><span class="w"> </span><span class="n">global_epoch_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">IGNORED_GLOBAL_EPOCH</span><span class="p">);</span>
+<span class="w">  </span><span class="n">std</span><span class="o">::</span><span class="n">atomic</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="w"> </span><span class="n">global_epoch_</span><span class="p">{</span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">uint64_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">IGNORED_GLOBAL_EPOCH</span><span class="p">)};</span>
 <span class="p">};</span>
 
 <span class="p">}</span><span class="w">  </span><span class="c1">// namespace merlin</span>
