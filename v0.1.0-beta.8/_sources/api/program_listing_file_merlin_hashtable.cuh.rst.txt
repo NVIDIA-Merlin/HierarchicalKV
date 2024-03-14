@@ -92,9 +92,168 @@ Program Listing for File merlin_hashtable.cuh
    static constexpr auto& thrust_par = thrust::cuda::par;
    #endif
    
+   template <typename K, typename V, typename S = uint64_t>
+   class HashTableBase {
+    public:
+     using size_type = size_t;
+     using key_type = K;
+     using value_type = V;
+     using score_type = S;
+     using allocator_type = BaseAllocator;
+   
+    public:
+     virtual ~HashTableBase() {}
+   
+     virtual void init(const HashTableOptions& options,
+                       allocator_type* allocator = nullptr) = 0;
+   
+     virtual void insert_or_assign(const size_type n,
+                                   const key_type* keys,                // (n)
+                                   const value_type* values,            // (n, DIM)
+                                   const score_type* scores = nullptr,  // (n)
+                                   cudaStream_t stream = 0, bool unique_key = true,
+                                   bool ignore_evict_strategy = false) = 0;
+   
+     virtual void insert_and_evict(const size_type n,
+                                   const key_type* keys,          // (n)
+                                   const value_type* values,      // (n, DIM)
+                                   const score_type* scores,      // (n)
+                                   key_type* evicted_keys,        // (n)
+                                   value_type* evicted_values,    // (n, DIM)
+                                   score_type* evicted_scores,    // (n)
+                                   size_type* d_evicted_counter,  // (1)
+                                   cudaStream_t stream = 0, bool unique_key = true,
+                                   bool ignore_evict_strategy = false) = 0;
+   
+     virtual size_type insert_and_evict(const size_type n,
+                                        const key_type* keys,        // (n)
+                                        const value_type* values,    // (n, DIM)
+                                        const score_type* scores,    // (n)
+                                        key_type* evicted_keys,      // (n)
+                                        value_type* evicted_values,  // (n, DIM)
+                                        score_type* evicted_scores,  // (n)
+                                        cudaStream_t stream = 0,
+                                        bool unique_key = true,
+                                        bool ignore_evict_strategy = false) = 0;
+   
+     virtual void accum_or_assign(const size_type n,
+                                  const key_type* keys,                // (n)
+                                  const value_type* value_or_deltas,   // (n, DIM)
+                                  const bool* accum_or_assigns,        // (n)
+                                  const score_type* scores = nullptr,  // (n)
+                                  cudaStream_t stream = 0,
+                                  bool ignore_evict_strategy = false) = 0;
+   
+     virtual void find_or_insert(const size_type n, const key_type* keys,  // (n)
+                                 value_type* values,            // (n * DIM)
+                                 score_type* scores = nullptr,  // (n)
+                                 cudaStream_t stream = 0, bool unique_key = true,
+                                 bool ignore_evict_strategy = false) = 0;
+   
+     virtual void find_or_insert(const size_type n, const key_type* keys,  // (n)
+                                 value_type** values,                      // (n)
+                                 bool* founds,                             // (n)
+                                 score_type* scores = nullptr,             // (n)
+                                 cudaStream_t stream = 0, bool unique_key = true,
+                                 bool ignore_evict_strategy = false) = 0;
+   
+     virtual void assign(const size_type n,
+                         const key_type* keys,                // (n)
+                         const value_type* values,            // (n, DIM)
+                         const score_type* scores = nullptr,  // (n)
+                         cudaStream_t stream = 0, bool unique_key = true) = 0;
+   
+     virtual void assign_scores(const size_type n,
+                                const key_type* keys,                // (n)
+                                const score_type* scores = nullptr,  // (n)
+                                cudaStream_t stream = 0,
+                                bool unique_key = true) = 0;
+   
+     virtual void assign(const size_type n,
+                         const key_type* keys,                // (n)
+                         const score_type* scores = nullptr,  // (n)
+                         cudaStream_t stream = 0, bool unique_key = true) = 0;
+   
+     virtual void assign_values(const size_type n,
+                                const key_type* keys,      // (n)
+                                const value_type* values,  // (n, DIM)
+                                cudaStream_t stream = 0,
+                                bool unique_key = true) = 0;
+     virtual void find(const size_type n, const key_type* keys,  // (n)
+                       value_type* values,                       // (n, DIM)
+                       bool* founds,                             // (n)
+                       score_type* scores = nullptr,             // (n)
+                       cudaStream_t stream = 0) const = 0;
+   
+     virtual void find(const size_type n, const key_type* keys,  // (n)
+                       value_type* values,                       // (n, DIM)
+                       key_type* missed_keys,                    // (n)
+                       int* missed_indices,                      // (n)
+                       int* missed_size,                         // scalar
+                       score_type* scores = nullptr,             // (n)
+                       cudaStream_t stream = 0) const = 0;
+   
+     virtual void find(const size_type n, const key_type* keys,  // (n)
+                       value_type** values,                      // (n)
+                       bool* founds,                             // (n)
+                       score_type* scores = nullptr,             // (n)
+                       cudaStream_t stream = 0, bool unique_key = true) const = 0;
+   
+     virtual void contains(const size_type n, const key_type* keys,  // (n)
+                           bool* founds,                             // (n)
+                           cudaStream_t stream = 0) const = 0;
+   
+     virtual void erase(const size_type n, const key_type* keys,
+                        cudaStream_t stream = 0) = 0;
+   
+     virtual void clear(cudaStream_t stream = 0) = 0;
+   
+     virtual void export_batch(size_type n, const size_type offset,
+                               size_type* d_counter,          // (1)
+                               key_type* keys,                // (n)
+                               value_type* values,            // (n, DIM)
+                               score_type* scores = nullptr,  // (n)
+                               cudaStream_t stream = 0) const = 0;
+   
+     virtual size_type export_batch(const size_type n, const size_type offset,
+                                    key_type* keys,                // (n)
+                                    value_type* values,            // (n, DIM)
+                                    score_type* scores = nullptr,  // (n)
+                                    cudaStream_t stream = 0) const = 0;
+   
+     virtual bool empty(cudaStream_t stream = 0) const = 0;
+   
+     virtual size_type size(cudaStream_t stream = 0) const = 0;
+   
+     virtual size_type capacity() const = 0;
+   
+     virtual void reserve(const size_type new_capacity,
+                          cudaStream_t stream = 0) = 0;
+   
+     virtual float load_factor(cudaStream_t stream = 0) const = 0;
+   
+     virtual void set_max_capacity(size_type new_max_capacity) = 0;
+   
+     virtual size_type dim() const noexcept = 0;
+   
+     virtual size_type max_bucket_size() const noexcept = 0;
+   
+     virtual size_type bucket_count() const noexcept = 0;
+   
+     virtual size_type save(BaseKVFile<K, V, S>* file,
+                            const size_t max_workspace_size = 1L * 1024 * 1024,
+                            cudaStream_t stream = 0) const = 0;
+   
+     virtual size_type load(BaseKVFile<K, V, S>* file,
+                            const size_t max_workspace_size = 1L * 1024 * 1024,
+                            cudaStream_t stream = 0) = 0;
+   
+     virtual void set_global_epoch(const uint64_t epoch) = 0;
+   };
+   
    template <typename K, typename V, typename S = uint64_t,
              int Strategy = EvictStrategy::kLru, typename ArchTag = Sm80>
-   class HashTable {
+   class HashTable : public HashTableBase<K, V, S> {
     public:
      using size_type = size_t;
      using key_type = K;
@@ -1763,7 +1922,8 @@ Program Listing for File merlin_hashtable.cuh
      allocator_type* allocator_;
      ThrustAllocator<uint8_t> thrust_allocator_;
      bool default_allocator_ = true;
-     std::atomic<uint64_t> global_epoch_{static_cast<uint64_t>(IGNORED_GLOBAL_EPOCH)};
+     std::atomic<uint64_t> global_epoch_{
+         static_cast<uint64_t>(IGNORED_GLOBAL_EPOCH)};
    };
    
    }  // namespace merlin
