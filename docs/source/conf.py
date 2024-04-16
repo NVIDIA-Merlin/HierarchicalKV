@@ -30,6 +30,7 @@ import os
 import subprocess
 import sys
 
+from datetime import datetime
 from natsort import natsorted
 
 sys.path.insert(0, os.path.abspath("../.."))
@@ -39,8 +40,13 @@ gitdir = os.path.join(repodir, r".git")
 
 # -- Project information -----------------------------------------------------
 
+year_range = "2022"
+year_now = str(datetime.now().year)
+if year_range != year_now:
+    year_range = year_range + chr(8211) + year_now
+
 project = 'Merlin Key-Value Storage'
-copyright = '2022, NVIDIA'
+copyright = year_range + ", NVIDIA"
 author = 'NVIDIA'
 
 # -- General configuration ---------------------------------------------------
@@ -102,6 +108,7 @@ html_theme_options = {
     "analytics_id": "G-NVJ1Y1YJHK",
 }
 html_show_sourcelink = False
+html_show_sphinx = False
 
 # Whitelist pattern for tags (set to None to ignore all tags)
 # Determine if Sphinx is reading conf.py from the checked out
