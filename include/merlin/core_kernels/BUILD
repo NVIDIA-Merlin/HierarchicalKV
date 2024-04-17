@@ -1,6 +1,6 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_cc_library")
 
-cuda_library(
+cuda_cc_library(
     name = "core_kernels",
     srcs = [],
     hdrs = glob([

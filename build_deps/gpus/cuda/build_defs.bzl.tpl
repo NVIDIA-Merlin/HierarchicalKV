@@ -41,12 +41,12 @@ def cuda_header_library(name,
                       **kwargs)
 
 
-def cuda_library(copts=[], **kwargs):
+def cuda_cc_library(copts=[], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
     native.cc_library(copts=cuda_default_copts() + copts, **kwargs)
 
 
-def cuda_binary(copts=[], **kwargs):
+def cuda_cc_binary(copts=[], **kwargs):
     """Wrapper over cc_library which adds default CUDA options."""
     native.cc_binary(copts=cuda_default_copts() + copts, **kwargs)
 
