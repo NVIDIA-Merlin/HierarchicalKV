@@ -1,4 +1,4 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_cc_library")
 
 cc_binary(
     name = "benchmark_util",
@@ -7,7 +7,7 @@ cc_binary(
     ],
 )
 
-cuda_library(
+cuda_cc_library(
     name = "benchmark_lib",
     srcs = [
         "merlin_hashtable_benchmark.cc.cu",

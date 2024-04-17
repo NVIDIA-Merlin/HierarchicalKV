@@ -1,6 +1,6 @@
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_cc_library")
 
-cuda_library(
+cuda_cc_library(
     name = "types_and_utils",
     srcs = [
     ],
@@ -16,7 +16,7 @@ cuda_library(
     ],
 )
 
-cuda_library(
+cuda_cc_library(
     name = "merlin",
     srcs = [
     ],
