@@ -6,3 +6,14 @@ dl > dt > em > span.pre { padding-right: 0px; padding-left: 2px; }
 
 dl > dt > code.sig-name > span.pre { padding-left: 2px; }
 
+footer div p {
+  font-size: 80%;
+}
+
+footer div p a {
+  color: var(--small-font-color);
+}
+
+footer div p a:hover {
+  color: var(--small-font-color);
+}
