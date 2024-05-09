@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <cuda/std/semaphore>
 #include <vector>
+#include "debug.hpp"
 
 namespace nv {
 namespace merlin {
@@ -43,18 +44,70 @@ using byte = uint8_t;
 
 // Digest.
 using D = byte;
+constexpr uint64_t DEFAULT_EMPTY_KEY = UINT64_C(0xFFFFFFFFFFFFFFFF);
+constexpr uint64_t DEFAULT_RECLAIM_KEY = UINT64_C(0xFFFFFFFFFFFFFFFE);
+constexpr uint64_t DEFAULT_LOCKED_KEY = UINT64_C(0xFFFFFFFFFFFFFFFD);
 
-constexpr uint64_t EMPTY_KEY = UINT64_C(0xFFFFFFFFFFFFFFFF);
-constexpr uint64_t RECLAIM_KEY = UINT64_C(0xFFFFFFFFFFFFFFFE);
-constexpr uint64_t VACANT_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFE);
-constexpr uint64_t LOCKED_KEY = UINT64_C(0xFFFFFFFFFFFFFFFD);
-constexpr uint64_t RESERVED_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFC);
+constexpr uint64_t DEFAULT_RESERVED_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFC);
+constexpr uint64_t DEFAULT_VACANT_KEY_MASK = UINT64_C(0xFFFFFFFFFFFFFFFE);
+
 constexpr uint64_t MAX_SCORE = UINT64_C(0xFFFFFFFFFFFFFFFF);
 constexpr uint64_t EMPTY_SCORE = UINT64_C(0);
 constexpr uint64_t IGNORED_GLOBAL_EPOCH = UINT64_C(0xFFFFFFFFFFFFFFFF);
 
-#define IS_RESERVED_KEY(key) ((RESERVED_KEY_MASK & (key)) == RESERVED_KEY_MASK)
-#define IS_VACANT_KEY(key) ((VACANT_KEY_MASK & (key)) == VACANT_KEY_MASK)
+uint64_t EMPTY_KEY_CPU = DEFAULT_EMPTY_KEY;
+__constant__ uint64_t EMPTY_KEY = DEFAULT_EMPTY_KEY;
+__constant__ uint64_t RECLAIM_KEY = DEFAULT_RECLAIM_KEY;
+__constant__ uint64_t LOCKED_KEY = DEFAULT_LOCKED_KEY;
+
+__constant__ uint64_t RESERVED_KEY_MASK_1 = DEFAULT_RESERVED_KEY_MASK;
+__constant__ uint64_t RESERVED_KEY_MASK_2 = DEFAULT_RESERVED_KEY_MASK;
+__constant__ uint64_t VACANT_KEY_MASK_1 = DEFAULT_VACANT_KEY_MASK;
+__constant__ uint64_t VACANT_KEY_MASK_2 = DEFAULT_VACANT_KEY_MASK;
+
+constexpr int MAX_RESERVED_KEY_BIT = 62;
+
+template <class K>
+__forceinline__ __device__ bool IS_RESERVED_KEY(K key) {
+  return (RESERVED_KEY_MASK_1 & key) == RESERVED_KEY_MASK_2;
+}
+
+template <class K>
+__forceinline__ __device__ bool IS_VACANT_KEY(K key) {
+  return (VACANT_KEY_MASK_1 & key) == VACANT_KEY_MASK_2;
+}
+
+cudaError_t init_reserved_keys(int index) {
+  if (index < 1 || index > MAX_RESERVED_KEY_BIT) {
+    // index = 0 is the default,
+    // index = 62 is the maximum index can be set for reserved keys.
+    return cudaSuccess;
+  }
+  uint64_t reservedKeyMask1 = ~(UINT64_C(3) << index);
+  uint64_t reservedKeyMask2 = reservedKeyMask1 & ~UINT64_C(1);
+  uint64_t vacantKeyMask1 = ~(UINT64_C(1) << index);
+  uint64_t vacantKeyMask2 = vacantKeyMask1 & ~UINT64_C(1);
+  
+  uint64_t emptyKey = reservedKeyMask2 | (UINT64_C(3) << index);
+  uint64_t reclaimKey = vacantKeyMask2;
+  uint64_t lockedKey = emptyKey & ~(UINT64_C(2) << index);
+  EMPTY_KEY_CPU = emptyKey;
+
+//  printf("reserved keys are emptyKey, reclaimKey, lockedKey and reservedKeyMask2\n");
+//  printf("emptyKey: %lx, reclaimKey: %lx\n", emptyKey, reclaimKey);
+//  printf("lockedKey: %lx, reservedKeyMask1: %lx\n", lockedKey, reservedKeyMask1);
+//  printf("reservedKeyMask2: %lx, vacantKeyMask1: %lx\n", reservedKeyMask2, vacantKeyMask1);
+
+  CUDA_CHECK(cudaMemcpyToSymbol(EMPTY_KEY, &emptyKey, sizeof(uint64_t)));
+  CUDA_CHECK(cudaMemcpyToSymbol(RECLAIM_KEY, &reclaimKey, sizeof(uint64_t)));
+  CUDA_CHECK(cudaMemcpyToSymbol(LOCKED_KEY, &lockedKey, sizeof(uint64_t)));
+
+  CUDA_CHECK(cudaMemcpyToSymbol(RESERVED_KEY_MASK_1, &reservedKeyMask1, sizeof(uint64_t)));
+  CUDA_CHECK(cudaMemcpyToSymbol(RESERVED_KEY_MASK_2, &reservedKeyMask2, sizeof(uint64_t)));
+  CUDA_CHECK(cudaMemcpyToSymbol(VACANT_KEY_MASK_1, &vacantKeyMask1, sizeof(uint64_t)));
+  CUDA_CHECK(cudaMemcpyToSymbol(VACANT_KEY_MASK_2, &vacantKeyMask2, sizeof(uint64_t)));
+  return cudaGetLastError();
+}
 
 template <class K>
 using AtomicKey = cuda::atomic<K, cuda::thread_scope_device>;

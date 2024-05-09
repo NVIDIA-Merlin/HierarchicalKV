@@ -640,7 +640,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
        t += blockDim.x * gridDim.x) {
     int key_idx = t / TILE_SIZE;
     K find_key = keys[key_idx];
-    if (IS_RESERVED_KEY(find_key)) continue;
+    if (IS_RESERVED_KEY<K>(find_key)) continue;
 
     int key_pos = -1;
 
@@ -719,7 +719,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
           bucket->keys(key_offset)->load(cuda::std::memory_order_relaxed);
       current_score =
           bucket->scores(key_offset)->load(cuda::std::memory_order_relaxed);
-      if (!IS_RESERVED_KEY(current_key)) {
+      if (!IS_RESERVED_KEY<K>(current_key)) {
         if (pred(current_key, current_score, pattern, threshold)) {
           atomicAdd(count, 1);
           key_pos = key_offset;
@@ -782,7 +782,7 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
     const int key_idx{static_cast<int>((tid + offset) % bucket_max_size)};
     const K key{(bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed)};
 
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       size_t local_index{atomicAdd(&block_acc, 1)};
       block_tuples[local_index] = {
           key, &bucket->vectors[key_idx * dim],
@@ -846,7 +846,7 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
         (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
     S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
 
-    if (!IS_RESERVED_KEY(key) && pred(key, score, pattern, threshold)) {
+    if (!IS_RESERVED_KEY<K>(key) && pred(key, score, pattern, threshold)) {
       size_t local_index = atomicAdd(&block_acc, 1);
       block_result_key[local_index] = key;
       for (int i = 0; i < dim; i++) {

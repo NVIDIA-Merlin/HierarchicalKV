@@ -253,7 +253,7 @@ __global__ void contains_kernel(const Table<K, V, S>* __restrict table,
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
-    if (IS_RESERVED_KEY(find_key)) continue;
+    if (IS_RESERVED_KEY<K>(find_key)) continue;
 
     int key_pos = -1;
     int src_lane = -1;

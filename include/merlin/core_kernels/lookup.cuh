@@ -885,7 +885,7 @@ __global__ void lookup_kernel_with_io(
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
-    if (IS_RESERVED_KEY(find_key)) continue;
+    if (IS_RESERVED_KEY<K>(find_key)) continue;
 
     V* find_value = values + key_idx * dim;
 
@@ -1015,7 +1015,7 @@ __device__ void tlp_lookup_kernel_hybrid_impl(
   if (kv_idx < n) {
     key = keys[kv_idx];
     if (dst_offset) dst_offset[kv_idx] = kv_idx;
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -1140,7 +1140,7 @@ __device__ void lookup_kernel_impl(
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
-    if (IS_RESERVED_KEY(find_key)) continue;
+    if (IS_RESERVED_KEY<K>(find_key)) continue;
 
     int key_pos = -1;
     int src_lane = -1;

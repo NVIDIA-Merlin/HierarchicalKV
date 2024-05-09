@@ -145,6 +145,8 @@ void test_basic(size_t max_hbm_for_vectors) {
   options.dim = DIM;
   options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
+  options.reserved_key_start_bit = 2;
+
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));
@@ -512,6 +514,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 3;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
@@ -641,6 +644,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 4;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
@@ -775,6 +779,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 5;
   options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
@@ -916,6 +921,7 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 6;
   options.max_bucket_size = 128;
   options.max_load_factor = 0.6;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
@@ -1059,6 +1065,7 @@ void test_rehash_on_big_batch_specific(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 7;
   options.max_bucket_size = 128;
   options.max_load_factor = 0.6;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
@@ -1129,6 +1136,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 8;
   options.max_load_factor = 0.50f;
   options.max_bucket_size = BUCKET_MAX_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
@@ -1264,6 +1272,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 9;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>;
 
@@ -1447,6 +1456,7 @@ void test_basic_for_cpu_io() {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 10;
   options.max_hbm_for_vectors = nv::merlin::GB(0);
   options.io_by_cpu = true;
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
@@ -1595,6 +1605,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 11;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>;
 
@@ -1771,6 +1782,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 12;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLfu>;
 
@@ -1948,6 +1960,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 13;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLru>;
 
@@ -2133,6 +2146,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 14;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLfu>;
 
@@ -2344,6 +2358,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 15;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
@@ -2513,6 +2528,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 16;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
@@ -2712,6 +2728,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
+  options.reserved_key_start_bit = 17;
   options.max_bucket_size = MAX_BUCKET_SIZE;
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
@@ -3327,6 +3344,7 @@ void test_bucket_size(bool load_scores = true) {
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
   options.max_hbm_for_vectors = nv::merlin::GB(16);
+  options.reserved_key_start_bit = 1;
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
   CUDA_CHECK(cudaMallocHost(&h_keys, KEY_NUM * sizeof(K)));

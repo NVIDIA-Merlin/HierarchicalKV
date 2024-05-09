@@ -41,7 +41,7 @@ __global__ void tlp_lookup_ptr_kernel_with_filter(
   uint32_t key_pos = {0};
   if (kv_idx < n) {
     key = keys[kv_idx];
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -140,7 +140,7 @@ __global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
-    if (IS_RESERVED_KEY(find_key)) continue;
+    if (IS_RESERVED_KEY<K>(find_key)) continue;
 
     int key_pos = -1;
     int src_lane = -1;

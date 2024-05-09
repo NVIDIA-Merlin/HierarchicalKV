@@ -56,7 +56,7 @@ struct ExportIfPredFunctor {
   }
 };
 
-void test_basic(size_t max_hbm_for_vectors) {
+void test_basic(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -69,6 +69,7 @@ void test_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -331,7 +332,7 @@ void test_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_basic_when_full(size_t max_hbm_for_vectors) {
+void test_basic_when_full(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t INIT_CAPACITY = 1 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -344,6 +345,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -463,7 +465,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_erase_if_pred(size_t max_hbm_for_vectors) {
+void test_erase_if_pred(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 128UL;
@@ -476,7 +478,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
   bool* h_found;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -614,7 +616,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_rehash(size_t max_hbm_for_vectors) {
+void test_rehash(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = BUCKET_MAX_SIZE;
   constexpr uint64_t MAX_CAPACITY = 4 * INIT_CAPACITY;
@@ -626,7 +628,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
   bool* h_found;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -771,7 +773,7 @@ void test_rehash(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
+void test_rehash_on_big_batch(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t INIT_CAPACITY = 1024;
   constexpr uint64_t MAX_CAPACITY = 16 * 1024;
   constexpr uint64_t INIT_KEY_NUM = 1024;
@@ -782,7 +784,6 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   bool* h_found;
 
   TableOptions options;
-
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -945,7 +946,7 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
+void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = 4 * 1024;
   constexpr uint64_t MAX_CAPACITY = 16 * 1024 * INIT_CAPACITY;
@@ -955,7 +956,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
   std::vector<std::thread> threads;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -1089,7 +1090,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors) {
   ASSERT_EQ(table->capacity(), MAX_CAPACITY);
 }
 
-void test_export_batch_if(size_t max_hbm_for_vectors) {
+void test_export_batch_if(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 128UL;
@@ -1102,7 +1103,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   size_t h_dump_counter = 0;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -1286,7 +1287,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_basic_for_cpu_io() {
+void test_basic_for_cpu_io(int key_start=0) {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -1298,7 +1299,7 @@ void test_basic_for_cpu_io() {
   bool* h_found;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -1464,7 +1465,7 @@ void test_basic_for_cpu_io() {
   CudaCheckError();
 }
 
-void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -1475,7 +1476,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 128;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -1673,7 +1674,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -1684,7 +1685,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 128;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -1872,7 +1873,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr int RSHIFT_ON_NANO = 20;
 
   constexpr uint64_t BUCKET_NUM = 8UL;
@@ -1885,7 +1886,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 128;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -2092,7 +2093,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -2103,7 +2104,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 128;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -2333,7 +2334,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -2344,7 +2345,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 128;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -2532,7 +2533,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
+void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -2543,7 +2544,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   constexpr uint64_t TEST_TIMES = 256;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -2760,7 +2761,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
+void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors, int key_start=0) {
   constexpr uint64_t BATCH_SIZE = 1024 * 1024ul;
   constexpr uint64_t STEPS = 128;
   constexpr uint64_t MAX_BUCKET_SIZE = 128;
@@ -2771,7 +2772,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
   const int rounds = 12;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -3443,7 +3444,7 @@ void test_find_or_insert_values_check(size_t max_hbm_for_vectors) {
   }
 }
 
-void test_duplicated_keys(size_t max_hbm_for_vectors) {
+void test_duplicated_keys(size_t max_hbm_for_vectors, size_t key_start = 0) {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1024UL;
@@ -3455,7 +3456,7 @@ void test_duplicated_keys(size_t max_hbm_for_vectors) {
   bool* h_found;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -3542,7 +3543,7 @@ void test_duplicated_keys(size_t max_hbm_for_vectors) {
 
 TEST(FindOrInsertPtrTest, test_export_batch_if) {
   test_export_batch_if(16);
-  test_export_batch_if(0);
+  test_export_batch_if(0, 33);
 }
 TEST(FindOrInsertPtrTest, test_find_or_insert_multi_threads) {
   test_find_or_insert_multi_threads(16, 0.25f, 0.125f);
@@ -3551,58 +3552,61 @@ TEST(FindOrInsertPtrTest, test_find_or_insert_multi_threads) {
   test_find_or_insert_multi_threads(0, 0.375f, 0.125f);
 }
 TEST(FindOrInsertPtrTest, test_basic) {
-  test_basic(16);
+  test_basic(16, 3);
   test_basic(0);
 }
 TEST(FindOrInsertPtrTest, test_basic_when_full) {
-  test_basic_when_full(16);
+  test_basic_when_full(16, 4);
   test_basic_when_full(0);
 }
 TEST(FindOrInsertPtrTest, test_erase_if_pred) {
   test_erase_if_pred(16);
-  test_erase_if_pred(0);
+  test_erase_if_pred(0, 18);
 }
 TEST(FindOrInsertPtrTest, test_rehash) {
   test_rehash(16);
-  test_rehash(0);
+  test_rehash(0, 44);
 }
 TEST(FindOrInsertPtrTest, test_rehash_on_big_batch) {
-  test_rehash_on_big_batch(16);
+  test_rehash_on_big_batch(16,23);
   test_rehash_on_big_batch(0);
 }
 TEST(FindOrInsertPtrTest, test_dynamic_rehash_on_multi_threads) {
   test_dynamic_rehash_on_multi_threads(16);
-  test_dynamic_rehash_on_multi_threads(0);
+  test_dynamic_rehash_on_multi_threads(0, 19);
 }
-TEST(FindOrInsertPtrTest, test_basic_for_cpu_io) { test_basic_for_cpu_io(); }
+TEST(FindOrInsertPtrTest, test_basic_for_cpu_io) {
+  test_basic_for_cpu_io();
+  test_basic_for_cpu_io(52);
+}
 TEST(FindOrInsertPtrTest, test_evict_strategy_lru_basic) {
   test_evict_strategy_lru_basic(16);
-  test_evict_strategy_lru_basic(0);
+  test_evict_strategy_lru_basic(0, 18);
 }
 TEST(FindOrInsertPtrTest, test_evict_strategy_lfu_basic) {
-  test_evict_strategy_lfu_basic(16);
+  test_evict_strategy_lfu_basic(16, 29);
   test_evict_strategy_lfu_basic(0);
 }
 TEST(FindOrInsertPtrTest, test_evict_strategy_epochlru_basic) {
-  test_evict_strategy_epochlru_basic(16);
+  test_evict_strategy_epochlru_basic(16, 45);
   test_evict_strategy_epochlru_basic(0);
 }
 TEST(FindOrInsertPtrTest, test_evict_strategy_epochlfu_basic) {
   test_evict_strategy_epochlfu_basic(16);
-  test_evict_strategy_epochlfu_basic(0);
+  test_evict_strategy_epochlfu_basic(0, 59);
 }
 TEST(FindOrInsertPtrTest, test_evict_strategy_customized_basic) {
-  test_evict_strategy_customized_basic(16);
+  test_evict_strategy_customized_basic(16, 38);
   test_evict_strategy_customized_basic(0);
 }
 TEST(FindOrInsertPtrTest, test_evict_strategy_customized_advanced) {
   test_evict_strategy_customized_advanced(16);
-  test_evict_strategy_customized_advanced(0);
+  test_evict_strategy_customized_advanced(0, 25);
 }
 TEST(FindOrInsertPtrTest, test_evict_strategy_customized_correct_rate) {
   // TODO(rhdong): after blossom CI issue is resolved, the skip logic.
   const bool skip_hmem_check = (nullptr != std::getenv("IS_BLOSSOM_CI"));
-  test_evict_strategy_customized_correct_rate(16);
+  test_evict_strategy_customized_correct_rate(16, 16);
   if (!skip_hmem_check) {
     test_evict_strategy_customized_correct_rate(0);
   } else {
@@ -3615,6 +3619,6 @@ TEST(FindOrInsertPtrTest, test_find_or_insert_values_check) {
   test_find_or_insert_values_check(0);
 }
 TEST(FindOrInsertPtrTest, test_duplicated_keys) {
-  test_duplicated_keys(16);
+  test_duplicated_keys(16, 39);
   test_duplicated_keys(0);
 }

@@ -30,7 +30,7 @@ using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
 
 void test_find(size_t max_hbm_for_vectors, size_t max_bucket_size,
-               double load_factor, bool pipeline_lookup) {
+               double load_factor, bool pipeline_lookup, int key_start = 0) {
   MERLIN_CHECK(load_factor >= 0.0 && load_factor <= 1.0,
                "Invalid `load_factor`");
 
@@ -46,7 +46,7 @@ void test_find(size_t max_hbm_for_vectors, size_t max_bucket_size,
   int* h_missed_indices;
 
   TableOptions options;
-
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -157,14 +157,14 @@ void test_find(size_t max_hbm_for_vectors, size_t max_bucket_size,
 
 TEST(FindTest, test_find_when_empty) {
   // pure HMEM
-  test_find(0, 128, 0.0, true);
+  test_find(0, 128, 0.0, true, 12);
   test_find(0, 256, 0.0, false);
   // hybrid
-  test_find(32, 128, 0.0, true);
+  test_find(32, 128, 0.0, true, 58);
   test_find(32, 256, 0.0, false);
   // pure HBM
   test_find(1024, 128, 0.0, true);
-  test_find(1024, 256, 0.0, false);
+  test_find(1024, 256, 0.0, false, 12);
 }
 
 TEST(FindTest, test_find_when_full) {
@@ -173,7 +173,7 @@ TEST(FindTest, test_find_when_full) {
   test_find(0, 256, 1.0, false);
   // hybrid
   test_find(32, 128, 1.0, true);
-  test_find(32, 256, 1.0, false);
+  test_find(32, 256, 1.0, false, 60);
   // pure HBM
   test_find(1024, 128, 1.0, true);
   test_find(1024, 256, 1.0, false);
@@ -181,32 +181,33 @@ TEST(FindTest, test_find_when_full) {
 
 TEST(FindTest, test_find_load_factor) {
   // pure HMEM
-  test_find(0, 128, 0.2, true);
-  test_find(0, 256, 0.2, false);
+  test_find(0, 128, 0.2, true, 45);
+  test_find(0, 256, 0.2, false, 12);
   // hybrid
-  test_find(32, 128, 0.2, true);
-  test_find(32, 256, 0.2, false);
+  test_find(32, 128, 0.2, true, 27);
+  test_find(32, 256, 0.2, false, 53);
   // pure HBM
-  test_find(1024, 128, 0.2, true);
-  test_find(1024, 256, 0.2, false);
+  test_find(1024, 128, 0.2, true, 9);
+  test_find(1024, 256, 0.2, false, 38);
 
   // pure HMEM
-  test_find(0, 128, 0.5, true);
-  test_find(0, 256, 0.5, false);
+  test_find(0, 128, 0.5, true, 21);
+  test_find(0, 256, 0.5, false, 46);
   // hybrid
-  test_find(32, 128, 0.5, true);
-  test_find(32, 256, 0.5, false);
+  test_find(32, 128, 0.5, true, 31);
+  test_find(32, 256, 0.5, false, 59);
   // pure HBM
-  test_find(1024, 128, 0.5, true);
-  test_find(1024, 256, 0.5, false);
+  test_find(1024, 128, 0.5, true, 4);
+  test_find(1024, 256, 0.5, false, 22);
 
   // pure HMEM
-  test_find(0, 128, 0.75, true);
-  test_find(0, 256, 0.75, false);
+  test_find(0, 128, 0.75, true, 11);
+  test_find(0, 256, 0.75, false, 34);
   // hybrid
-  test_find(32, 128, 0.75, true);
-  test_find(32, 256, 0.75, false);
+  test_find(32, 128, 0.75, true, 18);
+  test_find(32, 256, 0.75, false, 47);
   // pure HBM
-  test_find(1024, 128, 0.75, true);
-  test_find(1024, 256, 0.75, false);
+  test_find(1024, 128, 0.75, true, 7);
+  test_find(1024, 256, 0.75, false, 29);
+
 }

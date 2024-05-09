@@ -43,7 +43,7 @@ __global__ void tlp_update_score_kernel(Bucket<K, V, S>* __restrict__ buckets,
   if (kv_idx < n) {
     key = keys[kv_idx];
 
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -549,7 +549,7 @@ __global__ void update_score_kernel(const Table<K, V, S>* __restrict table,
 
     const K update_key = keys[key_idx];
 
-    if (IS_RESERVED_KEY(update_key)) continue;
+    if (IS_RESERVED_KEY<K>(update_key)) continue;
 
     size_t bkt_idx = 0;
     size_t start_idx = 0;
