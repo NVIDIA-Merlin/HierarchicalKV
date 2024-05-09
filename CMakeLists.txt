@@ -159,3 +159,13 @@ add_executable(find_with_missed_keys_test tests/find_with_missed_keys_test.cc.cu
 target_compile_features(find_with_missed_keys_test PUBLIC cxx_std_14)
 set_target_properties(find_with_missed_keys_test PROPERTIES  CUDA_ARCHITECTURES OFF)
 TARGET_LINK_LIBRARIES(find_with_missed_keys_test gtest_main)
+
+add_executable(reserved_bucket_test tests/reserved_bucket_test.cc.cu)
+target_compile_features(reserved_bucket_test PUBLIC cxx_std_14)
+set_target_properties(reserved_bucket_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(reserved_bucket_test gtest_main)
+
+add_executable(key_option_test tests/key_option_test.cc.cu)
+target_compile_features(key_option_test PUBLIC cxx_std_14)
+set_target_properties(key_option_test PROPERTIES  CUDA_ARCHITECTURES OFF)
+TARGET_LINK_LIBRARIES(key_option_test gtest_main)

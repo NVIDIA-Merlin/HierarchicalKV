@@ -186,18 +186,24 @@ void test_basic(size_t max_hbm_for_vectors) {
   for (int i = 0; i < TEST_TIMES; i++) {
     std::unique_ptr<Table> table = std::make_unique<Table>();
     table->init(options);
-
+    std::cout << "before count" << std::endl;
+    size_t count = table->bucket_count();
+    std::cout << "count " << count << std::endl;
     ASSERT_EQ(table->bucket_count(),
               524287);  // 1 + (INIT_CAPACITY / options.bucket_max_size)
+
+    std::cout << "before size" << std::endl;
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    std::cout << "size " << total_size << std::endl;
     ASSERT_EQ(total_size, 0);
 
+    std::cout << "before assign" << std::endl;
     table->insert_or_assign(KEY_NUM, d_keys, d_vectors, d_scores, stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
-
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
+    std::cout << "total_size " << total_size << " " << KEY_NUM <<std::endl;
     ASSERT_EQ(total_size, KEY_NUM);
 
     CUDA_CHECK(cudaMemset(d_vectors, 0, KEY_NUM * sizeof(V) * options.dim));
@@ -3437,6 +3443,10 @@ void test_bucket_size(bool load_scores = true) {
   CudaCheckError();
 }
 
+TEST(MerlinHashTableTest, test_basic) {
+  test_basic(16);
+  test_basic(0);
+}
 TEST(MerlinHashTableTest, test_export_batch_if) {
   test_export_batch_if(16);
   test_export_batch_if(0);
@@ -3446,10 +3456,6 @@ TEST(MerlinHashTableTest, test_insert_or_assign_multi_threads) {
   test_insert_or_assign_multi_threads(16, 0.375f, 0.125f);
   test_insert_or_assign_multi_threads(0, 0.25f, 0.125f);
   test_insert_or_assign_multi_threads(0, 0.375f, 0.125f);
-}
-TEST(MerlinHashTableTest, test_basic) {
-  test_basic(16);
-  test_basic(0);
 }
 TEST(MerlinHashTableTest, test_bucket_size) { test_bucket_size(); }
 TEST(MerlinHashTableTest, test_find_using_pipeline) {

@@ -360,7 +360,7 @@ class HashTableBase {
    *
    * @param ignore_evict_strategy A boolean option indicating whether if
    * the accum_or_assign ignores the evict strategy of table with current
-   * scores anyway. If true, it does not check whether the scores confroms to
+   * scores anyway. If true, it does not check whether the scores confront to
    * the evict strategy. If false, it requires the scores follow the evict
    * strategy of table.
    */
@@ -2641,7 +2641,7 @@ class HashTable : public HashTableBase<K, V, S> {
                                size_ptr + start_i, size_ptr + end_i, 0,
                                thrust::plus<int>());
     }
-
+    h_size += table_->reserved_bucket->size_host();
     CudaCheckError();
     return h_size;
   }

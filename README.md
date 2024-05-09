@@ -172,6 +172,11 @@ cd HierarchicalKV && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -Dsm=80 .. && make -j
 ```
 
+For Debug:
+```shell
+cmake -DCMAKE_BUILD_TYPE=Debug -Dsm=80 .. && make -j
+```
+
 For Benchmark:
 ```shell
 ./merlin_hashtable_benchmark
