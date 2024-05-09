@@ -53,7 +53,7 @@ __global__ void find_or_insert_ptr_kernel_lock_key(
     key = keys[kv_idx];
     score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
 
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -283,7 +283,7 @@ __global__ void find_ptr_or_insert_kernel(
 
     const K find_or_insert_key = keys[key_idx];
 
-    if (IS_RESERVED_KEY(find_or_insert_key)) continue;
+    if (IS_RESERVED_KEY<K>(find_or_insert_key)) continue;
 
     const S find_or_insert_score =
         ScoreFunctor::desired_when_missed(scores, key_idx, global_epoch);

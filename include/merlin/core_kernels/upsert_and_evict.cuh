@@ -56,7 +56,7 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
   if (kv_idx < n) {
     key = keys[kv_idx];
     score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -285,7 +285,7 @@ __global__ void tlp_v2_upsert_and_evict_kernel_unique(
   if (kv_idx < n) {
     key = keys[kv_idx];
     score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -639,7 +639,7 @@ __global__ void pipeline_upsert_and_evict_kernel_unique(
       S* sm_param_scores = SMM::param_scores(smem);
       __pipeline_memcpy_async(sm_param_scores + tx, scores + kv_idx, sizeof(S));
     }
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -1397,7 +1397,7 @@ __global__ void upsert_and_evict_kernel_with_io_core(
 
     const K insert_key = keys[key_idx];
 
-    if (IS_RESERVED_KEY(insert_key)) continue;
+    if (IS_RESERVED_KEY<K>(insert_key)) continue;
 
     const S insert_score =
         ScoreFunctor::desired_when_missed(scores, key_idx, global_epoch);

@@ -44,7 +44,7 @@ __global__ void tlp_update_kernel_with_io(
   if (kv_idx < n) {
     key = keys[kv_idx];
 
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -680,7 +680,7 @@ __global__ void update_kernel_with_io(
 
     const K update_key = keys[key_idx];
 
-    if (IS_RESERVED_KEY(update_key)) continue;
+    if (IS_RESERVED_KEY<K>(update_key)) continue;
 
     const V* update_value = values + key_idx * dim;
 
@@ -773,7 +773,7 @@ __global__ void tlp_update_kernel_hybrid(
   if (kv_idx < n) {
     key = keys[kv_idx];
     if (src_offset) src_offset[kv_idx] = kv_idx;
-    if (!IS_RESERVED_KEY(key)) {
+    if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
       uint64_t global_idx =
@@ -878,7 +878,7 @@ __global__ void update_kernel(const Table<K, V, S>* __restrict table,
 
     const K update_key = keys[key_idx];
 
-    if (IS_RESERVED_KEY(update_key)) continue;
+    if (IS_RESERVED_KEY<K>(update_key)) continue;
 
     size_t bkt_idx = 0;
     size_t start_idx = 0;

@@ -98,7 +98,7 @@ __global__ void accum_or_assign_kernel_with_io(
 
     const K insert_key = keys[key_idx];
 
-    if (IS_RESERVED_KEY(insert_key)) continue;
+    if (IS_RESERVED_KEY<K>(insert_key)) continue;
 
     const S insert_score =
         ScoreFunctor::desired_when_missed(scores, key_idx, global_epoch);
@@ -222,7 +222,7 @@ __global__ void accum_or_assign_kernel(
 
     const K insert_key = keys[key_idx];
 
-    if (IS_RESERVED_KEY(insert_key)) continue;
+    if (IS_RESERVED_KEY<K>(insert_key)) continue;
 
     const S insert_score =
         ScoreFunctor::desired_when_missed(scores, key_idx, global_epoch);

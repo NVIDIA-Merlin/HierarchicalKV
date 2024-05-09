@@ -38,7 +38,7 @@ using S = uint64_t;
 using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
 
-void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -50,6 +50,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -217,7 +218,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -229,6 +230,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -392,7 +394,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr int RSHIFT_ON_NANO = 20;
 
   constexpr uint64_t BUCKET_NUM = 8UL;
@@ -406,6 +408,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -580,7 +583,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -592,6 +595,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -792,7 +796,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -804,6 +808,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -962,7 +967,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
+void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -974,6 +979,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -1500,7 +1506,7 @@ void test_assign_advanced_on_epochlfu(size_t max_hbm_for_vectors) {
   }
 }
 
-void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
+void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BATCH_SIZE = 1024 * 1024ul;
   constexpr uint64_t STEPS = 128;
   constexpr uint64_t MAX_BUCKET_SIZE = 128;
@@ -1512,6 +1518,7 @@ void test_evict_strategy_customized_correct_rate(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -1776,26 +1783,26 @@ void test_find_or_insert_values_check(size_t max_hbm_for_vectors) {
 
 TEST(AssignScoreTest, test_evict_strategy_lru_basic) {
   test_evict_strategy_lru_basic(16);
-  test_evict_strategy_lru_basic(0);
+  test_evict_strategy_lru_basic(0, 34);
 }
 TEST(AssignScoreTest, test_evict_strategy_lfu_basic) {
   test_evict_strategy_lfu_basic(16);
-  test_evict_strategy_lfu_basic(0);
+  test_evict_strategy_lfu_basic(0, 2);
 }
 TEST(AssignScoreTest, test_evict_strategy_epochlru_basic) {
-  test_evict_strategy_epochlru_basic(16);
+  test_evict_strategy_epochlru_basic(16, 51);
   test_evict_strategy_epochlru_basic(0);
 }
 TEST(AssignScoreTest, test_evict_strategy_epochlfu_basic) {
-  test_evict_strategy_epochlfu_basic(16);
+  test_evict_strategy_epochlfu_basic(16, 4);
   test_evict_strategy_epochlfu_basic(0);
 }
 TEST(AssignScoreTest, test_evict_strategy_customized_basic) {
   test_evict_strategy_customized_basic(16);
-  test_evict_strategy_customized_basic(0);
+  test_evict_strategy_customized_basic(0, 11);
 }
 TEST(AssignScoreTest, test_evict_strategy_customized_advanced) {
-  test_evict_strategy_customized_advanced(16);
+  test_evict_strategy_customized_advanced(16, 33);
   test_evict_strategy_customized_advanced(0);
 }
 TEST(AssignScoreTest, test_assign_advanced_on_epochlfu) {
@@ -1804,7 +1811,7 @@ TEST(AssignScoreTest, test_assign_advanced_on_epochlfu) {
 TEST(AssignScoreTest, test_evict_strategy_customized_correct_rate) {
   // TODO(rhdong): after blossom CI issue is resolved, the skip logic.
   const bool skip_hmem_check = (nullptr != std::getenv("IS_BLOSSOM_CI"));
-  test_evict_strategy_customized_correct_rate(16);
+  test_evict_strategy_customized_correct_rate(16, 44);
   if (!skip_hmem_check) {
     test_evict_strategy_customized_correct_rate(0);
   } else {

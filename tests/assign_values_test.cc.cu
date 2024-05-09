@@ -37,7 +37,7 @@ using S = uint64_t;
 using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
 
-void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -49,6 +49,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -202,7 +203,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
+void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -214,6 +215,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors) {
 
   TableOptions options;
 
+  options.reserved_key_start_bit = key_start;
   options.init_capacity = INIT_CAPACITY;
   options.max_capacity = MAX_CAPACITY;
   options.dim = DIM;
@@ -735,12 +737,12 @@ void test_assign_advanced_on_epochlfu(size_t max_hbm_for_vectors) {
 }
 
 TEST(AssignValuesTest, test_evict_strategy_lru_basic) {
-  test_evict_strategy_lru_basic(16);
+  test_evict_strategy_lru_basic(16, 21);
   test_evict_strategy_lru_basic(0);
 }
 TEST(AssignValuesTest, test_evict_strategy_epochlfu_basic) {
   test_evict_strategy_epochlfu_basic(16);
-  test_evict_strategy_epochlfu_basic(0);
+  test_evict_strategy_epochlfu_basic(0, 8);
 }
 TEST(AssignValuesTest, test_assign_advanced_on_epochlfu) {
   test_assign_advanced_on_epochlfu(16);
