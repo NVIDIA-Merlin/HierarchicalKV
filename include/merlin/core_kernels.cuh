@@ -24,6 +24,7 @@
 #include "core_kernels/kernel_utils.cuh"
 #include "core_kernels/lookup.cuh"
 #include "core_kernels/lookup_ptr.cuh"
+#include "core_kernels/reserved_bucket.cuh"
 #include "core_kernels/update.cuh"
 #include "core_kernels/update_score.cuh"
 #include "core_kernels/update_values.cuh"
@@ -341,6 +342,10 @@ void create_table(Table<K, V, S>** table, BaseAllocator* allocator,
                         (*table)->buckets_num * sizeof(Bucket<K, V, S>)));
 
   initialize_buckets<K, V, S>(table, allocator, 0, (*table)->buckets_num);
+
+  ReservedBucket<K, V>::initialize(
+      &(*table)->reserved_bucket, allocator, (*table)->dim);
+
   CudaCheckError();
 }
 
@@ -632,7 +637,8 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
                               Bucket<K, V, S>* __restrict buckets,
                               int* __restrict buckets_size,
                               const size_t bucket_max_size,
-                              const size_t buckets_num, size_t N) {
+                              const size_t buckets_num,
+                              size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
 
@@ -640,7 +646,10 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
        t += blockDim.x * gridDim.x) {
     int key_idx = t / TILE_SIZE;
     K find_key = keys[key_idx];
-    if (IS_RESERVED_KEY(find_key)) continue;
+    if (IS_RESERVED_KEY(find_key)) {
+      table->reserved_bucket->erase(find_key, table->dim);
+      continue;
+    }
 
     int key_pos = -1;
 
@@ -700,7 +709,8 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
                               Bucket<K, V, S>* __restrict buckets,
                               int* __restrict buckets_size,
                               const size_t bucket_max_size,
-                              const size_t buckets_num, size_t N) {
+                              const size_t buckets_num,
+                              size_t N) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   PredFunctor<K, S> pred;
 
@@ -719,8 +729,8 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
           bucket->keys(key_offset)->load(cuda::std::memory_order_relaxed);
       current_score =
           bucket->scores(key_offset)->load(cuda::std::memory_order_relaxed);
-      if (!IS_RESERVED_KEY(current_key)) {
-        if (pred(current_key, current_score, pattern, threshold)) {
+      if (pred(current_key, current_score, pattern, threshold)) {
+        if (!IS_RESERVED_KEY(current_key)) {
           atomicAdd(count, 1);
           key_pos = key_offset;
           bucket->digests(key_pos)[0] = empty_digest<K>();
@@ -732,6 +742,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
                       cuda::std::memory_order_relaxed);
           atomicSub(&buckets_size[bkt_idx], 1);
         } else {
+          table->reserved_bucket->erase(current_key, table->dim);
           key_offset++;
         }
       } else {

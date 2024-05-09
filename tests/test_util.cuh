@@ -27,6 +27,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include "merlin/types.cuh"
 #include "merlin/utils.cuh"
 #include "merlin_hashtable.cuh"
 
@@ -41,6 +42,8 @@
     fprintf(stderr, "[ERROR] %s at %s : %d\n", msg, __FILE__, __LINE__); \
     exit(-1);                                                            \
   }
+
+using namespace nv::merlin;
 
 namespace test_util {
 
@@ -128,6 +131,10 @@ void create_random_keys(K* h_keys, S* h_scores, int KEY_NUM,
   std::mt19937_64 eng(rd());
   std::uniform_int_distribution<K> distr;
   int i = 0;
+  numbers.insert(EMPTY_KEY);
+  numbers.insert(RECLAIM_KEY);
+  numbers.insert(LOCKED_KEY);
+  numbers.insert(RESERVED_KEY_MASK);
 
   while (numbers.size() < KEY_NUM) {
     numbers.insert(distr(eng));
@@ -147,6 +154,11 @@ void create_random_keys(K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
   std::mt19937_64 eng(rd());
   std::uniform_int_distribution<K> distr;
   int i = 0;
+
+  numbers.insert(EMPTY_KEY);
+  numbers.insert(RECLAIM_KEY);
+  numbers.insert(LOCKED_KEY);
+  numbers.insert(RESERVED_KEY_MASK);
 
   while (numbers.size() < KEY_NUM) {
     numbers.insert(distr(eng) % range);

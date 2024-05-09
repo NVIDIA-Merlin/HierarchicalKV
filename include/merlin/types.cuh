@@ -140,6 +140,9 @@ class Lock {
 
 using Mutex = Lock<cuda::thread_scope_device>;
 
+template <class K, class V>
+struct ReservedBucket;
+
 template <class K, class V, class S>
 struct Table {
   Bucket<K, V, S>* buckets;
@@ -163,6 +166,7 @@ struct Table {
   int device_id = 0;                     // Device id
   int tile_size;
   std::vector<uint8_t*> buckets_address;
+  ReservedBucket<K, V>* reserved_bucket;
 };
 
 template <class K, class S>
