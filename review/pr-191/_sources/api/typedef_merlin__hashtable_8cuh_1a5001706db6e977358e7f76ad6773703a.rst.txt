@@ -1,0 +1,14 @@
+.. _exhale_typedef_merlin__hashtable_8cuh_1a5001706db6e977358e7f76ad6773703a:
+
+Typedef nv::merlin::EraseIfPredict
+==================================
+
+- Defined in :ref:`file_merlin_hashtable.cuh`
+
+
+Typedef Documentation
+---------------------
+
+
+.. doxygentypedef:: nv::merlin::EraseIfPredict
+   :project: HierarchicalKV
