@@ -72,9 +72,7 @@ Program Listing for File merlin_hashtable.cuh
      int device_id = -1;              
      bool io_by_cpu = false;  
      bool use_constant_memory = false;  
-     uint64_t emptyKey = UINT64_C(0xFFFFFFFFFFFFFFFF);
-     uint64_t reclaimKey = UINT64_C(0xFFFFFFFFFFFFFFFE);
-     uint64_t lockedKey = UINT64_C(0xFFFFFFFFFFFFFFFD);
+     int reserved_key_index = 0; 
      MemoryPoolOptions
          device_memory_pool;  
      MemoryPoolOptions
@@ -314,6 +312,7 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
        options_ = options;
+       CUDA_CHECK(init_reserved_keys(options.reserved_key_index));
    
        default_allocator_ = (allocator == nullptr);
        allocator_ = (allocator == nullptr) ? (new DefaultAllocator()) : allocator;
@@ -352,8 +351,6 @@ Program Listing for File merlin_hashtable.cuh
                          sizeof(TableCore));
    
        sync_table_configuration();
-   
-       CUDA_CHECK(init_reserved_keys(options.emptyKey, options.reclaimKey, options.lockedKey));
    
        // Create memory pools.
        dev_mem_pool_ = std::make_unique<MemoryPool<DeviceAllocator<char>>>(
@@ -571,8 +568,7 @@ Program Listing for File merlin_hashtable.cuh
    
          size_type block_size = options_.block_size;
          size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
-         CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY_CPU),
-                                    n * sizeof(K), stream));
+         CUDA_CHECK(memset64Async(evicted_keys, EMPTY_KEY_CPU, n, stream));
          using Selector =
              SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
                                               evict_strategy>;

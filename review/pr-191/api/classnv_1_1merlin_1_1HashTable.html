@@ -232,7 +232,6 @@
 <li><p><strong>n</strong> – Number of key-value-score tuples to insert or assign. </p></li>
 <li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>values</strong> – The values to insert on GPU-accessible memory with shape (n, DIM). </p></li>
-<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). &#64;params evicted_keys The output of keys replaced with minimum score. &#64;params evicted_values The output of values replaced with minimum score on keys. &#64;params evicted_scores The output of scores replaced with minimum score on keys. <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value. You can specify a value that such as the timestamp of the key insertion, number of the key occurrences, or another value to perform a custom eviction strategy.</p>
 <p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
 </p></li>
