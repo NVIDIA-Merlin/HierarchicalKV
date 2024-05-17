@@ -322,6 +322,9 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
        options_ = options;
+       MERLIN_CHECK(options.reserved_key_start_bit >= 0 &&
+                        options.reserved_key_start_bit <= MAX_RESERVED_KEY_BIT,
+                    "options.reserved_key_start_bit should >= 0 and <= 61.");
        CUDA_CHECK(init_reserved_keys(options.reserved_key_start_bit));
    
        default_allocator_ = (allocator == nullptr);
