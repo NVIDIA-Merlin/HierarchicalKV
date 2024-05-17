@@ -76,7 +76,7 @@ Program Listing for File merlin_hashtable.cuh
       * reserved_key_start_bit = 0, is the default behavior, HKV reserves `0xFFFFFFFFFFFFFFFD`,
       * `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF`  for internal using.
       * if the default one conflicted with your keys, change the reserved_key_start_bit
-      * value to a numbers between 1 and 61, reserved_key_start_bit = 1 means using the
+      * value to a numbers between 1 and 62, reserved_key_start_bit = 1 means using the
       * insignificant bits index 1 and 2 as the keys as the reserved keys and
       * the index 0 bit is 0 and all the other bits are 1, the new reserved keys are
       * `FFFFFFFFFFFFFFFE`, `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFF8`, and `0xFFFFFFFFFFFFFFFA`
@@ -324,7 +324,7 @@ Program Listing for File merlin_hashtable.cuh
        options_ = options;
        MERLIN_CHECK(options.reserved_key_start_bit >= 0 &&
                         options.reserved_key_start_bit <= MAX_RESERVED_KEY_BIT,
-                    "options.reserved_key_start_bit should >= 0 and <= 61.");
+                    "options.reserved_key_start_bit should >= 0 and <= 62.");
        CUDA_CHECK(init_reserved_keys(options.reserved_key_start_bit));
    
        default_allocator_ = (allocator == nullptr);

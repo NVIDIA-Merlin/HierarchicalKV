@@ -108,11 +108,12 @@ It's recommended to keep the default configuration for the options ending with `
 #### Reserved Keys
 - The keys of `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
 - Call set options.reserved_key_start_bit to change the reserved keys if the default one conflicted with your keys.
-  The valid range of reserved_key_start_bit is [0, 61] and the default value is 0, meaning the default reserved keys.
+  The valid range of reserved_key_start_bit is [0, 62] and the default value is 0, meaning the default reserved keys.
   reserved_key_start_bit = 1 means using the insignificant bits 1 and 2 as the keys as the reserved keys, 
   in binary format, it looks like 111~11xx0, and the index 0 bit is 0 and all the other bits are positive, in this case the new reserved keys are
   `FFFFFFFFFFFFFFFE`, `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFF8`, and `0xFFFFFFFFFFFFFFFA`
   reserved_key_start_bit = 2, in binary format, it looks like 111~11xx10, bit offset 0 are always 0 for any reserved_key_start_bit != 0,
+- if you change the reserved_key_start_bit, you should use same value for save/load
   For more detail, please refer to [`init_reserved_keys`](https://github.com/search?q=repo%3ANVIDIA-Merlin%2FHierarchicalKV%20init_reserved_keys&type=code).
 For more detail, please refer to [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60).
 

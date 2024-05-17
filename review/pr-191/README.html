@@ -305,11 +305,12 @@ The <code class="docutils literal notranslate"><span class="pre">score_type</spa
 <ul class="simple">
 <li><p>The keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFD</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> are reserved for internal using.</p></li>
 <li><p>Call set options.reserved_key_start_bit to change the reserved keys if the default one conflicted with your keys.
-The valid range of reserved_key_start_bit is [0, 61] and the default value is 0, meaning the default reserved keys.
+The valid range of reserved_key_start_bit is [0, 62] and the default value is 0, meaning the default reserved keys.
 reserved_key_start_bit = 1 means using the insignificant bits 1 and 2 as the keys as the reserved keys,
 in binary format, it looks like 111~11xx0, and the index 0 bit is 0 and all the other bits are positive, in this case the new reserved keys are
 <code class="docutils literal notranslate"><span class="pre">FFFFFFFFFFFFFFFE</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFC</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFF8</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFA</span></code>
-reserved_key_start_bit = 2, in binary format, it looks like 111~11xx10, bit offset 0 are always 0 for any reserved_key_start_bit != 0,
+reserved_key_start_bit = 2, in binary format, it looks like 111~11xx10, bit offset 0 are always 0 for any reserved_key_start_bit != 0,</p></li>
+<li><p>if you change the reserved_key_start_bit, you should use same value for save/load
 For more detail, please refer to <a class="reference external" href="https://github.com/search?q=repo%3ANVIDIA-Merlin%2FHierarchicalKV%20init_reserved_keys&amp;type=code"><code class="docutils literal notranslate"><span class="pre">init_reserved_keys</span></code></a>.
 For more detail, please refer to <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a>.</p></li>
 </ul>
