@@ -339,9 +339,9 @@ The <code class="docutils literal notranslate"><span class="pre">score_type</spa
 <li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">int64_t</span></code> or <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
 <li><p>The <code class="docutils literal notranslate"><span class="pre">score_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
 <li><p>The keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFD</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> are reserved for internal using.</p></li>
-<li><p>Call set options.reserved_key_index to change the reserved keys if the default one conflicted with your keys.
-The valid range of reserved_key_index is [0, 61] and the default value is 0, meaning the default reserved keys.
-reserved_key_index = 1 means using the insignificant bits index 1 and 2 as the keys as the reserved keys
+<li><p>Call set options.reserved_key_start_index to change the reserved keys if the default one conflicted with your keys.
+The valid range of reserved_key_start_index is [0, 61] and the default value is 0, meaning the default reserved keys.
+reserved_key_start_index = 1 means using the insignificant bits index 1 and 2 as the keys as the reserved keys
 and the index 0 bit is 0 and all the other bits are positive, in this case the new reserved keys are
 <code class="docutils literal notranslate"><span class="pre">FFFFFFFFFFFFFFFE</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFC</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFF8</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFA</span></code>
 the console log prints the reserved keys.</p></li>

@@ -147,9 +147,9 @@ int main(int argc, char *argv[])
 - The `key_type` must be `int64_t` or `uint64_t`.
 - The `score_type` must be `uint64_t`.
 - The keys of `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
-- Call set options.reserved_key_index to change the reserved keys if the default one conflicted with your keys. 
-The valid range of reserved_key_index is [0, 61] and the default value is 0, meaning the default reserved keys.
-  reserved_key_index = 1 means using the insignificant bits index 1 and 2 as the keys as the reserved keys 
+- Call set options.reserved_key_start_index to change the reserved keys if the default one conflicted with your keys. 
+The valid range of reserved_key_start_index is [0, 61] and the default value is 0, meaning the default reserved keys.
+  reserved_key_start_index = 1 means using the insignificant bits index 1 and 2 as the keys as the reserved keys 
 and the index 0 bit is 0 and all the other bits are positive, in this case the new reserved keys are
 `FFFFFFFFFFFFFFFE`, `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFF8`, and `0xFFFFFFFFFFFFFFFA`
 the console log prints the reserved keys.
