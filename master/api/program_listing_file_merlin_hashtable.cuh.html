@@ -141,6 +141,17 @@
 <span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">device_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">-1</span><span class="p">;</span>
 <span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">io_by_cpu</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
 <span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">use_constant_memory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">;</span>
+<span class="w">  </span><span class="cm">/*</span>
+<span class="cm">   * reserved_key_start_bit = 0, is the default behavior, HKV reserves `0xFFFFFFFFFFFFFFFD`,</span>
+<span class="cm">   * `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF`  for internal using.</span>
+<span class="cm">   * if the default one conflicted with your keys, change the reserved_key_start_bit</span>
+<span class="cm">   * value to a numbers between 1 and 62, reserved_key_start_bit = 1 means using the</span>
+<span class="cm">   * insignificant bits index 1 and 2 as the keys as the reserved keys and</span>
+<span class="cm">   * the index 0 bit is 0 and all the other bits are 1, the new reserved keys are</span>
+<span class="cm">   * `FFFFFFFFFFFFFFFE`, `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFF8`, and `0xFFFFFFFFFFFFFFFA`</span>
+<span class="cm">   * the console log prints the reserved keys during the table initialization.</span>
+<span class="cm">   */</span>
+<span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">reserved_key_start_bit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 <span class="w">  </span><span class="n">MemoryPoolOptions</span>
 <span class="w">      </span><span class="n">device_memory_pool</span><span class="p">;</span>
 <span class="w">  </span><span class="n">MemoryPoolOptions</span>
@@ -380,6 +391,10 @@
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">    </span><span class="n">options_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span><span class="n">options</span><span class="p">.</span><span class="n">reserved_key_start_bit</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span>
+<span class="w">                     </span><span class="n">options</span><span class="p">.</span><span class="n">reserved_key_start_bit</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">MAX_RESERVED_KEY_BIT</span><span class="p">,</span>
+<span class="w">                 </span><span class="s">&quot;options.reserved_key_start_bit should &gt;= 0 and &lt;= 62.&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">init_reserved_keys</span><span class="p">(</span><span class="n">options</span><span class="p">.</span><span class="n">reserved_key_start_bit</span><span class="p">));</span>
 
 <span class="w">    </span><span class="n">default_allocator_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">allocator</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="k">nullptr</span><span class="p">);</span>
 <span class="w">    </span><span class="n">allocator_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">allocator</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="k">nullptr</span><span class="p">)</span><span class="w"> </span><span class="o">?</span><span class="w"> </span><span class="p">(</span><span class="k">new</span><span class="w"> </span><span class="n">DefaultAllocator</span><span class="p">())</span><span class="w"> </span><span class="o">:</span><span class="w"> </span><span class="n">allocator</span><span class="p">;</span>
@@ -635,8 +650,7 @@
 
 <span class="w">      </span><span class="n">size_type</span><span class="w"> </span><span class="n">block_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">;</span>
 <span class="w">      </span><span class="n">size_type</span><span class="w"> </span><span class="n">grid_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SAFE_GET_GRID_SIZE</span><span class="p">(</span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">block_size</span><span class="p">);</span>
-<span class="w">      </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">cudaMemsetAsync</span><span class="p">(</span><span class="n">evicted_keys</span><span class="p">,</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">int</span><span class="o">&gt;</span><span class="p">(</span><span class="n">EMPTY_KEY</span><span class="p">),</span>
-<span class="w">                                 </span><span class="n">n</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">K</span><span class="p">),</span><span class="w"> </span><span class="n">stream</span><span class="p">));</span>
+<span class="w">      </span><span class="n">CUDA_CHECK</span><span class="p">(</span><span class="n">memset64Async</span><span class="p">(</span><span class="n">evicted_keys</span><span class="p">,</span><span class="w"> </span><span class="n">EMPTY_KEY_CPU</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">));</span>
 <span class="w">      </span><span class="k">using</span><span class="w"> </span><span class="n">Selector</span><span class="w"> </span><span class="o">=</span>
 <span class="w">          </span><span class="n">SelectUpsertAndEvictKernelWithIO</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="p">,</span>
 <span class="w">                                           </span><span class="n">evict_strategy</span><span class="o">&gt;</span><span class="p">;</span>
