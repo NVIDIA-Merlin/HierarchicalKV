@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Struct HashTableOptions &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/banner.css" type="text/css" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/structnv_1_1merlin_1_1HashTableOptions.html" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="../_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Template Class HashTable" href="classnv_1_1merlin_1_1HashTable.html" />
+    <link rel="prev" title="Struct EvictStrategy" href="structnv_1_1merlin_1_1EvictStrategy.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Documentation</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#class-hierarchy">Class Hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#file-hierarchy">File Hierarchy</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#complete-hierarchicalkv-api">Complete HierarchicalKV API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">HierarchicalKV C++ API Documentation</a></li>
+      <li class="breadcrumb-item active">Struct HashTableOptions</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="struct-hashtableoptions">
+<span id="exhale-struct-structnv-1-1merlin-1-1hashtableoptions"></span><h1>Struct HashTableOptions<a class="headerlink" href="#struct-hashtableoptions" title="Permalink to this headline"></a></h1>
+<ul class="simple">
+<li><p>Defined in <a class="reference internal" href="file_merlin_hashtable.cuh.html#file-merlin-hashtable-cuh"><span class="std std-ref">File merlin_hashtable.cuh</span></a></p></li>
+</ul>
+<div class="section" id="struct-documentation">
+<h2>Struct Documentation<a class="headerlink" href="#struct-documentation" title="Permalink to this headline"></a></h2>
+<dl class="cpp struct">
+<dt id="_CPPv4N2nv6merlin16HashTableOptionsE">
+<span id="_CPPv3N2nv6merlin16HashTableOptionsE"></span><span id="_CPPv2N2nv6merlin16HashTableOptionsE"></span><span id="nv::merlin::HashTableOptions"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions"></span><em class="property"><span class="pre">struct</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">HashTableOptions</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptionsE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The options struct of HierarchicalKV. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-members">Public Members</p>
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions13init_capacityE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions13init_capacityE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions13init_capacityE"></span><span id="nv::merlin::HashTableOptions::init_capacity__s"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a0e804c89ea603a39c49f98ff083a8ff1"></span><span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">init_capacity</span></code> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions13init_capacityE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The initial capacity of the hash table. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions12max_capacityE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions12max_capacityE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions12max_capacityE"></span><span id="nv::merlin::HashTableOptions::max_capacity__s"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1ac35975a386b5ce1d08fd014a8ced7d5a"></span><span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">max_capacity</span></code> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions12max_capacityE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The maximum capacity of the hash table. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions19max_hbm_for_vectorsE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions19max_hbm_for_vectorsE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions19max_hbm_for_vectorsE"></span><span id="nv::merlin::HashTableOptions::max_hbm_for_vectors__s"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1ae6c51271780b274dae0ccd17fc271bf2"></span><span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">max_hbm_for_vectors</span></code> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions19max_hbm_for_vectorsE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The maximum HBM for vectors, in bytes. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions15max_bucket_sizeE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions15max_bucket_sizeE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions15max_bucket_sizeE"></span><span id="nv::merlin::HashTableOptions::max_bucket_size__s"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a2ea33b2a919546d8d6cd3958edbd4a81"></span><span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">max_bucket_size</span></code> <span class="pre">=</span> <span class="pre">128</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions15max_bucket_sizeE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The length of each bucket. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions3dimE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions3dimE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions3dimE"></span><span id="nv::merlin::HashTableOptions::dim__s"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a9092f3dc0ad449323d8ce0ce2211c6e9"></span><span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">dim</span></code> <span class="pre">=</span> <span class="pre">64</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions3dimE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The dimension of the vectors. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions15max_load_factorE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions15max_load_factorE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions15max_load_factorE"></span><span id="nv::merlin::HashTableOptions::max_load_factor__float"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a58a48546a804863435511f407f69018a"></span><span class="pre">float</span> <code class="sig-name descname"><span class="pre">max_load_factor</span></code> <span class="pre">=</span> <span class="pre">0.5f</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions15max_load_factorE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The max load factor before rehashing. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions10block_sizeE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions10block_sizeE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions10block_sizeE"></span><span id="nv::merlin::HashTableOptions::block_size__i"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1ac512d355eaaea7d9b3e4d66d6dc47f4d"></span><span class="pre">int</span> <code class="sig-name descname"><span class="pre">block_size</span></code> <span class="pre">=</span> <span class="pre">128</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions10block_sizeE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The default block size for CUDA kernels. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions13io_block_sizeE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions13io_block_sizeE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions13io_block_sizeE"></span><span id="nv::merlin::HashTableOptions::io_block_size__i"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a72197fe39f21366386932792c3dc9799"></span><span class="pre">int</span> <code class="sig-name descname"><span class="pre">io_block_size</span></code> <span class="pre">=</span> <span class="pre">1024</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions13io_block_sizeE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The block size for IO CUDA kernels. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions9device_idE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions9device_idE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions9device_idE"></span><span id="nv::merlin::HashTableOptions::device_id__i"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a28828edc8481678a87ca4763c4b65ea6"></span><span class="pre">int</span> <code class="sig-name descname"><span class="pre">device_id</span></code> <span class="pre">=</span> <span class="pre">-</span><span class="pre">1</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions9device_idE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The ID of device. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions9io_by_cpuE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions9io_by_cpuE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions9io_by_cpuE"></span><span id="nv::merlin::HashTableOptions::io_by_cpu__b"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a0f72cd273d871a3e254ad988ab6dced3"></span><span class="pre">bool</span> <code class="sig-name descname"><span class="pre">io_by_cpu</span></code> <span class="pre">=</span> <span class="pre">false</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions9io_by_cpuE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The flag indicating if the CPU handles IO. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions19use_constant_memoryE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions19use_constant_memoryE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions19use_constant_memoryE"></span><span id="nv::merlin::HashTableOptions::use_constant_memory__b"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a539e6e1a8133ec9559049a6dbb1ee9fb"></span><span class="pre">bool</span> <code class="sig-name descname"><span class="pre">use_constant_memory</span></code> <span class="pre">=</span> <span class="pre">false</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions19use_constant_memoryE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>reserved </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions22reserved_key_start_bitE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions22reserved_key_start_bitE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions22reserved_key_start_bitE"></span><span id="nv::merlin::HashTableOptions::reserved_key_start_bit__i"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a5067d344068d5a179a3e20438876061e"></span><span class="pre">int</span> <code class="sig-name descname"><span class="pre">reserved_key_start_bit</span></code> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions22reserved_key_start_bitE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>The binary index of reserved key. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions18device_memory_poolE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions18device_memory_poolE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions18device_memory_poolE"></span><span id="nv::merlin::HashTableOptions::device_memory_pool__MemoryPoolOptions"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a108213815e5204db881efc8b021a6756"></span><span class="pre">MemoryPoolOptions</span> <code class="sig-name descname"><span class="pre">device_memory_pool</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions18device_memory_poolE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Configuration options for device memory pool. </p>
+</dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin16HashTableOptions16host_memory_poolE">
+<span id="_CPPv3N2nv6merlin16HashTableOptions16host_memory_poolE"></span><span id="_CPPv2N2nv6merlin16HashTableOptions16host_memory_poolE"></span><span id="nv::merlin::HashTableOptions::host_memory_pool__MemoryPoolOptions"></span><span class="target" id="structnv_1_1merlin_1_1HashTableOptions_1a38f4e16cddddce28634fefc2ba8943f0"></span><span class="pre">MemoryPoolOptions</span> <code class="sig-name descname"><span class="pre">host_memory_pool</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin16HashTableOptions16host_memory_poolE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Configuration options for host memory pool. </p>
+</dd></dl>
+
+</div>
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="structnv_1_1merlin_1_1EvictStrategy.html" class="btn btn-neutral float-left" title="Struct EvictStrategy" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="classnv_1_1merlin_1_1HashTable.html" class="btn btn-neutral float-right" title="Template Class HashTable" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+
+    <p>&#169; Copyright 2022–2024, NVIDIA.</p>
+<p>
+<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/" target="_blank">Privacy Policy</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/" target="_blank">Manage My Privacy</a> |
+<a href="https://www.nvidia.com/en-us/preferences/start/" target="_blank">Do Not Sell or Share My Data</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/" target="_blank">Terms of Service</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/accessibility/" target="_blank">Accessibility</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/company-policies/" target="_blank">Corporate Policies</a> |
+<a href="https://www.nvidia.com/en-us/product-security/" target="_blank">Product Security</a> |
+<a href="https://www.nvidia.com/en-us/contact/" target="_blank">Contact</a>
+</p>
+
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  
+<div class="rst-versions" data-toggle="rst-versions" role="note" aria-label="versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    <span class="fa fa-book"> Other Versions</span>
+    v: v0.1.0-beta.11
+    <span class="fa fa-caret-down"></span>
+  </span>
+  <div class="rst-other-versions">
+    <dl>
+      <dt>Tags</dt>
+      <dd><a href="../../v0.1.0-beta.10/index.html">v0.1.0-beta.10</a></dd>
+      <dd><a href="structnv_1_1merlin_1_1HashTableOptions.html">v0.1.0-beta.11</a></dd>
+      <dd><a href="../../v0.1.0-beta.6/index.html">v0.1.0-beta.6</a></dd>
+      <dd><a href="../../v0.1.0-beta.7/index.html">v0.1.0-beta.7</a></dd>
+      <dd><a href="../../v0.1.0-beta.8/index.html">v0.1.0-beta.8</a></dd>
+      <dd><a href="../../v0.1.0-beta.9/index.html">v0.1.0-beta.9</a></dd>
+    </dl>
+  </div>
+</div><script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+    <!-- Theme Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-NVJ1Y1YJHK"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-NVJ1Y1YJHK', {
+          'anonymize_ip': false,
+      });
+    </script> 
+
+</body>
+</html>
