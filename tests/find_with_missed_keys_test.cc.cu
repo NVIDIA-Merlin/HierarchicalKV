@@ -209,5 +209,4 @@ TEST(FindTest, test_find_load_factor) {
   // pure HBM
   test_find(1024, 128, 0.75, true, 7);
   test_find(1024, 256, 0.75, false, 29);
-
 }
