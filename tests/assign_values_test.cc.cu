@@ -37,7 +37,8 @@ using S = uint64_t;
 using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
 
-void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors, int key_start = 0) {
+void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
+                                   int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -203,7 +204,8 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors, int key_start = 0
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors, int key_start = 0) {
+void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
+                                        int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;

@@ -86,25 +86,24 @@ cudaError_t init_reserved_keys(int index) {
   uint64_t reservedKeyMask2 = reservedKeyMask1 & ~UINT64_C(1);
   uint64_t vacantKeyMask1 = ~(UINT64_C(1) << index);
   uint64_t vacantKeyMask2 = vacantKeyMask1 & ~UINT64_C(1);
-  
+
   uint64_t emptyKey = reservedKeyMask2 | (UINT64_C(3) << index);
   uint64_t reclaimKey = vacantKeyMask2;
   uint64_t lockedKey = emptyKey & ~(UINT64_C(2) << index);
   EMPTY_KEY_CPU = emptyKey;
 
-//  printf("reserved keys are emptyKey, reclaimKey, lockedKey and reservedKeyMask2\n");
-//  printf("emptyKey: %lx, reclaimKey: %lx\n", emptyKey, reclaimKey);
-//  printf("lockedKey: %lx, reservedKeyMask1: %lx\n", lockedKey, reservedKeyMask1);
-//  printf("reservedKeyMask2: %lx, vacantKeyMask1: %lx\n", reservedKeyMask2, vacantKeyMask1);
-
   CUDA_CHECK(cudaMemcpyToSymbol(EMPTY_KEY, &emptyKey, sizeof(uint64_t)));
   CUDA_CHECK(cudaMemcpyToSymbol(RECLAIM_KEY, &reclaimKey, sizeof(uint64_t)));
   CUDA_CHECK(cudaMemcpyToSymbol(LOCKED_KEY, &lockedKey, sizeof(uint64_t)));
 
-  CUDA_CHECK(cudaMemcpyToSymbol(RESERVED_KEY_MASK_1, &reservedKeyMask1, sizeof(uint64_t)));
-  CUDA_CHECK(cudaMemcpyToSymbol(RESERVED_KEY_MASK_2, &reservedKeyMask2, sizeof(uint64_t)));
-  CUDA_CHECK(cudaMemcpyToSymbol(VACANT_KEY_MASK_1, &vacantKeyMask1, sizeof(uint64_t)));
-  CUDA_CHECK(cudaMemcpyToSymbol(VACANT_KEY_MASK_2, &vacantKeyMask2, sizeof(uint64_t)));
+  CUDA_CHECK(cudaMemcpyToSymbol(RESERVED_KEY_MASK_1, &reservedKeyMask1,
+                                sizeof(uint64_t)));
+  CUDA_CHECK(cudaMemcpyToSymbol(RESERVED_KEY_MASK_2, &reservedKeyMask2,
+                                sizeof(uint64_t)));
+  CUDA_CHECK(
+      cudaMemcpyToSymbol(VACANT_KEY_MASK_1, &vacantKeyMask1, sizeof(uint64_t)));
+  CUDA_CHECK(
+      cudaMemcpyToSymbol(VACANT_KEY_MASK_2, &vacantKeyMask2, sizeof(uint64_t)));
   return cudaGetLastError();
 }
 

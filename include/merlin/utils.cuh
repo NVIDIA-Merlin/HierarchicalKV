@@ -321,7 +321,9 @@ __global__ void memset64bitKernel(void* devPtr, uint64_t value, size_t count) {
   }
 }
 
-__forceinline__ __host__ cudaError_t memset64Async(void* devPtr, uint64_t value, size_t count, cudaStream_t stream = 0) {
+__forceinline__ __host__ cudaError_t memset64Async(void* devPtr, uint64_t value,
+                                                   size_t count,
+                                                   cudaStream_t stream = 0) {
   int blockSize = 256;
   int numBlocks = (count + blockSize - 1) / blockSize;
   memset64bitKernel<<<numBlocks, blockSize, 0, stream>>>(devPtr, value, count);

@@ -56,7 +56,7 @@ struct ExportIfPredFunctor {
   }
 };
 
-void test_basic(size_t max_hbm_for_vectors, int key_start=0) {
+void test_basic(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -300,7 +300,7 @@ void test_basic(size_t max_hbm_for_vectors, int key_start=0) {
   CudaCheckError();
 }
 
-void test_basic_when_full(size_t max_hbm_for_vectors, int key_start=0) {
+void test_basic_when_full(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t INIT_CAPACITY = 1 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = INIT_CAPACITY;
@@ -423,7 +423,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors, int key_start=0) {
   CudaCheckError();
 }
 
-void test_erase_if_pred(size_t max_hbm_for_vectors, int key_start=0) {
+void test_erase_if_pred(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 128UL;
@@ -559,7 +559,7 @@ void test_erase_if_pred(size_t max_hbm_for_vectors, int key_start=0) {
   CudaCheckError();
 }
 
-void test_rehash(size_t max_hbm_for_vectors, int key_start=0) {
+void test_rehash(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = BUCKET_MAX_SIZE;
   constexpr uint64_t MAX_CAPACITY = 4 * INIT_CAPACITY;
@@ -701,7 +701,7 @@ void test_rehash(size_t max_hbm_for_vectors, int key_start=0) {
   CudaCheckError();
 }
 
-void test_rehash_on_big_batch(size_t max_hbm_for_vectors, int key_start=0) {
+void test_rehash_on_big_batch(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t INIT_CAPACITY = 1024;
   constexpr uint64_t MAX_CAPACITY = 16 * 1024;
   constexpr uint64_t INIT_KEY_NUM = 1024;
@@ -845,7 +845,8 @@ void test_rehash_on_big_batch(size_t max_hbm_for_vectors, int key_start=0) {
   CudaCheckError();
 }
 
-void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors, int key_start=0) {
+void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors,
+                                          int key_start = 0) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = 4 * 1024;
   constexpr uint64_t MAX_CAPACITY = 16 * 1024 * INIT_CAPACITY;
@@ -974,7 +975,7 @@ void test_dynamic_rehash_on_multi_threads(size_t max_hbm_for_vectors, int key_st
   ASSERT_EQ(table->capacity(), MAX_CAPACITY);
 }
 
-void test_export_batch_if(size_t max_hbm_for_vectors, int key_start=0) {
+void test_export_batch_if(size_t max_hbm_for_vectors, int key_start = 0) {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 128UL;
@@ -1156,7 +1157,7 @@ void test_export_batch_if(size_t max_hbm_for_vectors, int key_start=0) {
   CudaCheckError();
 }
 
-void test_basic_for_cpu_io(int key_start=0) {
+void test_basic_for_cpu_io(int key_start = 0) {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t KEY_NUM = 1 * 1024 * 1024UL;
@@ -1305,7 +1306,8 @@ void test_basic_for_cpu_io(int key_start=0) {
   CudaCheckError();
 }
 
-void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors, int key_start=0) {
+void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
+                                   int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -1482,7 +1484,8 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors, int key_start=0) 
   CudaCheckError();
 }
 
-void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start=0) {
+void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors,
+                                   int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -1655,7 +1658,8 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start=0) 
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors, int key_start=0) {
+void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors,
+                                        int key_start = 0) {
   constexpr int RSHIFT_ON_NANO = 20;
 
   constexpr uint64_t BUCKET_NUM = 8UL;
@@ -1843,7 +1847,8 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors, int key_star
   CudaCheckError();
 }
 
-void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors, int key_start=0) {
+void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
+                                        int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -2056,7 +2061,8 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors, int key_star
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors, int key_start=0) {
+void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
+                                          int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
@@ -2227,7 +2233,8 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors, int key_st
   CudaCheckError();
 }
 
-void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors, int key_start=0) {
+void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
+                                             int key_start = 0) {
   constexpr uint64_t BUCKET_NUM = 8UL;
   constexpr uint64_t BUCKET_MAX_SIZE = 128UL;
   constexpr uint64_t INIT_CAPACITY = BUCKET_NUM * BUCKET_MAX_SIZE;  // 1024UL;
