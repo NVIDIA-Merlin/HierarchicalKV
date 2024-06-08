@@ -60,6 +60,8 @@ void test_insert_and_evict_basic() {
   opt.max_capacity = U;
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = U * dim * sizeof(f32);
+  opt.num_of_buckets_per_alloc = 8;
+
   using Table =
       nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kCustomized>;
   opt.dim = dim;
@@ -330,6 +332,7 @@ void test_insert_and_evict_advanced_on_lru() {
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = U * dim * sizeof(f32);
   opt.max_bucket_size = 128;
+  opt.num_of_buckets_per_alloc = 32;
   using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kLru>;
   opt.dim = dim;
 
@@ -602,6 +605,7 @@ void test_insert_and_evict_advanced_on_lfu() {
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = U * dim * sizeof(f32);
   opt.max_bucket_size = 128;
+  opt.num_of_buckets_per_alloc = 32;
   using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kLfu>;
   opt.dim = dim;
 
@@ -873,6 +877,7 @@ void test_insert_and_evict_advanced_on_epochlru() {
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = U * dim * sizeof(f32);
   opt.max_bucket_size = 128;
+  opt.num_of_buckets_per_alloc = 32;
   using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kEpochLru>;
   opt.dim = dim;
 
@@ -1207,6 +1212,7 @@ void test_insert_and_evict_advanced_on_epochlfu() {
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = U * dim * sizeof(f32);
   opt.max_bucket_size = 128;
+  opt.num_of_buckets_per_alloc = 32;
   using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kEpochLfu>;
   opt.dim = dim;
 
@@ -1266,6 +1272,7 @@ void test_insert_and_evict_advanced_on_customized() {
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = U * dim * sizeof(f32);
   opt.max_bucket_size = 128;
+  opt.num_of_buckets_per_alloc = 2;
   using Table =
       nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kCustomized>;
   opt.dim = dim;
@@ -1312,6 +1319,7 @@ void test_insert_and_evict_with_export_batch() {
   opt.max_capacity = max_capacity;
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = uplimit * dim * sizeof(f32);
+  opt.num_of_buckets_per_alloc = 16;
   using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kLru>;
   opt.dim = dim;
 
@@ -1661,6 +1669,7 @@ void test_insert_and_evict_run_with_batch_find() {
   opt.max_capacity = U;
   opt.init_capacity = init_capacity;
   opt.max_hbm_for_vectors = U * dim * sizeof(f32);
+  opt.num_of_buckets_per_alloc = 128;
   using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kLru>;
   opt.dim = dim;
 

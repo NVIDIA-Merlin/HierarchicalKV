@@ -86,14 +86,20 @@ __global__ void allocate_bucket_vectors(Bucket<K, V, S>* __restrict buckets,
 
 template <class K, class V, class S>
 __global__ void allocate_bucket_others(Bucket<K, V, S>* __restrict buckets,
-                                       const int index, uint8_t* address,
+                                       size_t total_size_per_bucket,
+                                       size_t num_of_buckets_per_alloc,
+                                       const int start_index, uint8_t* address,
                                        const uint32_t reserve_size,
                                        const size_t bucket_max_size) {
-  buckets[index].digests_ = address;
-  buckets[index].keys_ =
-      reinterpret_cast<AtomicKey<K>*>(buckets[index].digests_ + reserve_size);
-  buckets[index].scores_ =
-      reinterpret_cast<AtomicScore<S>*>(buckets[index].keys_ + bucket_max_size);
+  for (size_t step = 0; step < num_of_buckets_per_alloc; step++) {
+    size_t index = start_index + step;
+    buckets[index].digests_ = address;
+    buckets[index].keys_ =
+        reinterpret_cast<AtomicKey<K>*>(buckets[index].digests_ + reserve_size);
+    buckets[index].scores_ = reinterpret_cast<AtomicScore<S>*>(
+        buckets[index].keys_ + bucket_max_size);
+    address += total_size_per_bucket;
+  }
 }
 
 template <class K, class V, class S>
@@ -222,12 +228,22 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
   uint32_t reserve_size =
       bucket_max_size < CACHE_LINE_SIZE ? CACHE_LINE_SIZE : bucket_max_size;
   bucket_memory_size += reserve_size * sizeof(uint8_t);
-  for (int i = start; i < end; i++) {
+
+  MERLIN_CHECK(start % (*table)->num_of_buckets_per_alloc == 0,
+               "initialize_buckets, start must be times of "
+               "num_of_buckets_per_alloc!");
+  /* NOTICE: Only the buckets which index is the times of
+   * `num_of_buckets_per_alloc` will allocate a real address, that provides the
+   * callers a method to avoid memory fragmentation.
+   */
+  for (int i = start; i < end; i += (*table)->num_of_buckets_per_alloc) {
     uint8_t* address = nullptr;
     allocator->alloc(MemoryType::Device, (void**)&(address),
-                     bucket_memory_size);
-    allocate_bucket_others<K, V, S><<<1, 1>>>((*table)->buckets, i, address,
-                                              reserve_size, bucket_max_size);
+                     bucket_memory_size * (*table)->num_of_buckets_per_alloc);
+    allocate_bucket_others<K, V, S>
+        <<<1, 1>>>((*table)->buckets, bucket_memory_size,
+                   (*table)->num_of_buckets_per_alloc, i, address, reserve_size,
+                   bucket_max_size);
   }
   CUDA_CHECK(cudaDeviceSynchronize());
 
@@ -296,6 +312,7 @@ void create_table(Table<K, V, S>** table, BaseAllocator* allocator,
                   const size_t max_size = std::numeric_limits<size_t>::max(),
                   const size_t max_hbm_for_vectors = 0,
                   const size_t bucket_max_size = 128,
+                  const size_t num_of_buckets_per_alloc = 1,
                   const size_t tile_size = 32, const bool primary = true) {
   allocator->alloc(MemoryType::Host, (void**)table, sizeof(Table<K, V, S>));
   std::memset(*table, 0, sizeof(Table<K, V, S>));
@@ -305,6 +322,7 @@ void create_table(Table<K, V, S>** table, BaseAllocator* allocator,
   (*table)->tile_size = tile_size;
   (*table)->is_pure_hbm = true;
   (*table)->bytes_per_slice = get_slice_size<K, V, S>(table);
+  (*table)->num_of_buckets_per_alloc = num_of_buckets_per_alloc;
 
   // The bucket number will be the minimum needed for saving memory if no
   // rehash.
@@ -367,7 +385,11 @@ template <class K, class V, class S>
 void destroy_table(Table<K, V, S>** table, BaseAllocator* allocator) {
   uint8_t** d_address = nullptr;
   CUDA_CHECK(cudaMalloc((void**)&d_address, sizeof(uint8_t*)));
-  for (int i = 0; i < (*table)->buckets_num; i++) {
+  /* NOTICE: Only the buckets which index is the times of
+   * `num_of_buckets_per_alloc` will hold a real address, and need to be freed
+   */
+  for (int i = 0; i < (*table)->buckets_num;
+       i += (*table)->num_of_buckets_per_alloc) {
     uint8_t* h_address;
     get_bucket_others_address<K, V, S>
         <<<1, 1>>>((*table)->buckets, i, d_address);
