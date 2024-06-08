@@ -207,6 +207,8 @@ struct Table {
   size_t bucket_max_size = 128;              // Volume of each buckets.
   size_t max_hbm_for_vectors = 0;            // Max HBM allocated for vectors
   size_t remaining_hbm_for_vectors = 0;  // Remaining HBM allocated for vectors
+  size_t num_of_buckets_per_alloc = 1;   // Number of buckets allocated in each
+                                         // HBM allocation, must be power of 2.
   bool is_pure_hbm = true;               // unused
   bool primary = true;                   // unused
   int slots_offset = 0;                  // unused

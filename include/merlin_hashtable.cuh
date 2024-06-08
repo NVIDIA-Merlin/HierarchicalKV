@@ -109,7 +109,9 @@ struct HashTableOptions {
    * `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFF8`, and `0xFFFFFFFFFFFFFFFA` the
    * console log prints the reserved keys during the table initialization.
    */
-  int reserved_key_start_bit = 0;  ///< The binary index of reserved key.
+  int reserved_key_start_bit = 0;       ///< The binary index of reserved key.
+  size_t num_of_buckets_per_alloc = 1;  ///< Number of buckets allocated in each
+                                        ///< HBM allocation, must be power of 2.
   MemoryPoolOptions
       device_memory_pool;  ///< Configuration options for device memory pool.
   MemoryPoolOptions
@@ -895,6 +897,15 @@ class HashTable : public HashTableBase<K, V, S> {
 
     MERLIN_CHECK(ispow2(static_cast<uint32_t>(options_.max_bucket_size)),
                  "Bucket size should be the pow of 2");
+    MERLIN_CHECK(
+        ispow2(static_cast<uint32_t>(options_.num_of_buckets_per_alloc)),
+        "Then `num_of_buckets_per_alloc` should be the pow of 2");
+    MERLIN_CHECK(options_.init_capacity >= options_.num_of_buckets_per_alloc *
+                                               options_.max_bucket_size,
+                 "Then `num_of_buckets_per_alloc` must be equal or less than "
+                 "initial required buckets number");
+
+    options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
 
     MERLIN_CHECK(
         (((options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
@@ -909,7 +920,7 @@ class HashTable : public HashTableBase<K, V, S> {
     create_table<key_type, value_type, score_type>(
         &table_, allocator_, options_.dim, options_.init_capacity,
         options_.max_capacity, options_.max_hbm_for_vectors,
-        options_.max_bucket_size);
+        options_.max_bucket_size, options_.num_of_buckets_per_alloc);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
     MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
