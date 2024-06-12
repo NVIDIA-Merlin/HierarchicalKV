@@ -87,11 +87,11 @@ __global__ void allocate_bucket_vectors(Bucket<K, V, S>* __restrict buckets,
 template <class K, class V, class S>
 __global__ void allocate_bucket_others(Bucket<K, V, S>* __restrict buckets,
                                        size_t total_size_per_bucket,
-                                       size_t num_of_buckets_per_alloc,
+                                       size_t num_of_buckets,
                                        const int start_index, uint8_t* address,
                                        const uint32_t reserve_size,
                                        const size_t bucket_max_size) {
-  for (size_t step = 0; step < num_of_buckets_per_alloc; step++) {
+  for (size_t step = 0; step < num_of_buckets; step++) {
     size_t index = start_index + step;
     buckets[index].digests_ = address;
     buckets[index].keys_ =
@@ -238,12 +238,13 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
    */
   for (int i = start; i < end; i += (*table)->num_of_buckets_per_alloc) {
     uint8_t* address = nullptr;
+    size_t num_of_buckets =
+        std::min(end - i, (*table)->num_of_buckets_per_alloc);
     allocator->alloc(MemoryType::Device, (void**)&(address),
-                     bucket_memory_size * (*table)->num_of_buckets_per_alloc);
+                     bucket_memory_size * num_of_buckets);
     allocate_bucket_others<K, V, S>
-        <<<1, 1>>>((*table)->buckets, bucket_memory_size,
-                   (*table)->num_of_buckets_per_alloc, i, address, reserve_size,
-                   bucket_max_size);
+        <<<1, 1>>>((*table)->buckets, bucket_memory_size, num_of_buckets, i,
+                   address, reserve_size, bucket_max_size);
   }
   CUDA_CHECK(cudaDeviceSynchronize());
 
