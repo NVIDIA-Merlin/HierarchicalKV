@@ -72,6 +72,19 @@ Program Listing for File merlin_hashtable.cuh
      int device_id = -1;              
      bool io_by_cpu = false;  
      bool use_constant_memory = false;  
+     /*
+      * reserved_key_start_bit = 0, is the default behavior, HKV reserves
+      * `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF`  for
+      * internal using. if the default one conflicted with your keys, change the
+      * reserved_key_start_bit value to a numbers between 1 and 62,
+      * reserved_key_start_bit = 1 means using the insignificant bits index 1 and 2
+      * as the keys as the reserved keys and the index 0 bit is 0 and all the other
+      * bits are 1, the new reserved keys are `FFFFFFFFFFFFFFFE`,
+      * `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFF8`, and `0xFFFFFFFFFFFFFFFA` the
+      * console log prints the reserved keys during the table initialization.
+      */
+     int reserved_key_start_bit = 0;       
+     size_t num_of_buckets_per_alloc = 1;  
      MemoryPoolOptions
          device_memory_pool;  
      MemoryPoolOptions
@@ -311,6 +324,10 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
        options_ = options;
+       MERLIN_CHECK(options.reserved_key_start_bit >= 0 &&
+                        options.reserved_key_start_bit <= MAX_RESERVED_KEY_BIT,
+                    "options.reserved_key_start_bit should >= 0 and <= 62.");
+       CUDA_CHECK(init_reserved_keys(options.reserved_key_start_bit));
    
        default_allocator_ = (allocator == nullptr);
        allocator_ = (allocator == nullptr) ? (new DefaultAllocator()) : allocator;
@@ -325,6 +342,15 @@ Program Listing for File merlin_hashtable.cuh
    
        MERLIN_CHECK(ispow2(static_cast<uint32_t>(options_.max_bucket_size)),
                     "Bucket size should be the pow of 2");
+       MERLIN_CHECK(
+           ispow2(static_cast<uint32_t>(options_.num_of_buckets_per_alloc)),
+           "Then `num_of_buckets_per_alloc` should be the pow of 2");
+       MERLIN_CHECK(options_.init_capacity >= options_.num_of_buckets_per_alloc *
+                                                  options_.max_bucket_size,
+                    "Then `num_of_buckets_per_alloc` must be equal or less than "
+                    "initial required buckets number");
+   
+       options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
    
        MERLIN_CHECK(
            (((options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
@@ -339,7 +365,7 @@ Program Listing for File merlin_hashtable.cuh
        create_table<key_type, value_type, score_type>(
            &table_, allocator_, options_.dim, options_.init_capacity,
            options_.max_capacity, options_.max_hbm_for_vectors,
-           options_.max_bucket_size);
+           options_.max_bucket_size, options_.num_of_buckets_per_alloc);
        options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
        reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
        MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
@@ -566,8 +592,7 @@ Program Listing for File merlin_hashtable.cuh
    
          size_type block_size = options_.block_size;
          size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
-         CUDA_CHECK(cudaMemsetAsync(evicted_keys, static_cast<int>(EMPTY_KEY),
-                                    n * sizeof(K), stream));
+         CUDA_CHECK(memset64Async(evicted_keys, EMPTY_KEY_CPU, n, stream));
          using Selector =
              SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
                                               evict_strategy>;

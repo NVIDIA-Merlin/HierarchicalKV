@@ -91,23 +91,44 @@ The `score_type` must be `uint64_t`. For more detail, please refer to [`class Ev
 
 It's recommended to keep the default configuration for the options ending with `*`.
 
-| Name                    | Type            | Default | Description                                           |
-|:------------------------|:----------------|:--------|:------------------------------------------------------|
-| __init_capacity__       | size_t          | 0       | The initial capacity of the hash table.               |
-| __max_capacity__        | size_t          | 0       | The maximum capacity of the hash table.               |
-| __max_hbm_for_vectors__ | size_t          | 0       | The maximum HBM for vectors, in bytes.                |
-| __dim__                 | size_t          | 64      | The dimension of the value vectors.                   |
-| __max_bucket_size*__    | size_t          | 128     | The length of each bucket.                            |
-| __max_load_factor*__    | float           | 0.5f    | The max load factor before rehashing.                 |
-| __block_size*__         | int             | 128     | The default block size for CUDA kernels.              |
-| __io_block_size*__      | int             | 1024    | The block size for IO CUDA kernels.                   |
-| __device_id*__          | int             | -1      | The ID of device. Managed internally when set to `-1` |
-| __io_by_cpu*__          | bool            | false   | The flag indicating if the CPU handles IO.            |
+| Name                       | Type   | Default | Description                                           |
+|:---------------------------|:-------|:--------|:------------------------------------------------------|
+| __init_capacity__          | size_t | 0       | The initial capacity of the hash table.               |
+| __max_capacity__           | size_t | 0       | The maximum capacity of the hash table.               |
+| __max_hbm_for_vectors__    | size_t | 0       | The maximum HBM for vectors, in bytes.                |
+| __dim__                    | size_t | 64      | The dimension of the value vectors.                   |
+| __max_bucket_size*__       | size_t | 128     | The length of each bucket.                            |
+| __max_load_factor*__       | float  | 0.5f    | The max load factor before rehashing.                 |
+| __block_size*__            | int    | 128     | The default block size for CUDA kernels.              |
+| __io_block_size*__         | int    | 1024    | The block size for IO CUDA kernels.                   |
+| __device_id*__             | int    | -1      | The ID of device. Managed internally when set to `-1` |
+| __io_by_cpu*__             | bool   | false   | The flag indicating if the CPU handles IO.            |
+| __reserved_key_start_bit__ | int    | 0       | The start bit offset of reserved key in the 64 bit    |
 
-For more detail, please refer to [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60).
+- Fore more details refer to [`struct HashTableOptions`](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60).
+
+#### Reserved Keys
+- By default, the keys of `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
+  change  `options.reserved_key_start_bit` if you want to use the above keys.
+  `reserved_key_start_bit` has a valid range from 0 to 62. The default value is 0, which is the above default reserved keys. When `reserved_key_start_bit` is set to any value other than 0, the least significant bit (bit 0) is always `0` for any reserved key.
+
+- Setting `reserved_key_start_bit = 1`:
+  - This setting reserves the two least significant bits 1 and 2 for the reserved keys.
+  - In binary, the last four bits range from `1000` to `1110`. Here, the least significant bit (bit 0) is always `0`, and bits from 3 to 63 are set to `1`.
+  - The new reserved keys in hexadecimal representation are as follows:
+    - `0xFFFFFFFFFFFFFFFE`
+    - `0xFFFFFFFFFFFFFFFC`
+    - `0xFFFFFFFFFFFFFFF8`
+    - `0xFFFFFFFFFFFFFFFA`
+
+- Setting `reserved_key_start_bit = 2`:
+  - This configuration reserves bits 2 and 3 as reserved keys.
+  - The binary representation for the last five bits ranges from `10010` to `11110`, with the least significant bit (bit 0) always set to `0`, and bits from 4 to 63 are set to `1`.
+
+- if you change the reserved_key_start_bit, you should use same value for save/load
+  For more detail, please refer to [`init_reserved_keys`](https://github.com/search?q=repo%3ANVIDIA-Merlin%2FHierarchicalKV%20init_reserved_keys&type=code)
 
 ### How to use:
-
 ```cpp
 #include "merlin_hashtable.cuh"
 
@@ -147,8 +168,6 @@ int main(int argc, char *argv[])
 
 - The `key_type` must be `int64_t` or `uint64_t`.
 - The `score_type` must be `uint64_t`.
-- The keys of `0xFFFFFFFFFFFFFFFC`, `0xFFFFFFFFFFFFFFFD`, `0xFFFFFFFFFFFFFFFE`, and `0xFFFFFFFFFFFFFFFF` are reserved for internal using.
-
 ## Contributors
 
 HierarchicalKV is co-maintianed by [NVIDIA Merlin Team](https://github.com/NVIDIA-Merlin) and NVIDIA product end-users,
@@ -170,6 +189,11 @@ Your environment must meet the following requirements:
 git clone --recursive https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 cd HierarchicalKV && mkdir -p build && cd build
 cmake -DCMAKE_BUILD_TYPE=Release -Dsm=80 .. && make -j
+```
+
+For Debug:
+```shell
+cmake -DCMAKE_BUILD_TYPE=Debug -Dsm=80 .. && make -j
 ```
 
 For Benchmark:

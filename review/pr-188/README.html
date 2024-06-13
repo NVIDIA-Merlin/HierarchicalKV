@@ -293,9 +293,46 @@ The <code class="docutils literal notranslate"><span class="pre">score_type</spa
 <td class="text-left"><p>false</p></td>
 <td class="text-left"><p>The flag indicating if the CPU handles IO.</p></td>
 </tr>
+<tr class="row-even"><td class="text-left"><p><strong>reserved_key_start_bit</strong></p></td>
+<td class="text-left"><p>int</p></td>
+<td class="text-left"><p>0</p></td>
+<td class="text-left"><p>The start bit offset of reserved key in the 64 bit</p></td>
+</tr>
 </tbody>
 </table>
-<p>For more detail, please refer to <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a>.</p>
+<ul class="simple">
+<li><p>Fore more details refer to <a class="reference external" href="https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/include/merlin_hashtable.cuh#L60"><code class="docutils literal notranslate"><span class="pre">struct</span> <span class="pre">HashTableOptions</span></code></a>.</p></li>
+</ul>
+<div class="section" id="reserved-keys">
+<h4>Reserved Keys<a class="headerlink" href="#reserved-keys" title="Permalink to this headline"></a></h4>
+<ul class="simple">
+<li><p>By default, the keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFD</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> are reserved for internal using.
+change  <code class="docutils literal notranslate"><span class="pre">options.reserved_key_start_bit</span></code> if you want to use the above keys.
+<code class="docutils literal notranslate"><span class="pre">reserved_key_start_bit</span></code> has a valid range from 0 to 62. The default value is 0, which is the above default reserved keys. When <code class="docutils literal notranslate"><span class="pre">reserved_key_start_bit</span></code> is set to any value other than 0, the least significant bit (bit 0) is always <code class="docutils literal notranslate"><span class="pre">0</span></code> for any reserved key.</p></li>
+<li><p>Setting <code class="docutils literal notranslate"><span class="pre">reserved_key_start_bit</span> <span class="pre">=</span> <span class="pre">1</span></code>:</p>
+<ul>
+<li><p>This setting reserves the two least significant bits 1 and 2 for the reserved keys.</p></li>
+<li><p>In binary, the last four bits range from <code class="docutils literal notranslate"><span class="pre">1000</span></code> to <code class="docutils literal notranslate"><span class="pre">1110</span></code>. Here, the least significant bit (bit 0) is always <code class="docutils literal notranslate"><span class="pre">0</span></code>, and bits from 3 to 63 are set to <code class="docutils literal notranslate"><span class="pre">1</span></code>.</p></li>
+<li><p>The new reserved keys in hexadecimal representation are as follows:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFC</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFF8</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFA</span></code></p></li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>Setting <code class="docutils literal notranslate"><span class="pre">reserved_key_start_bit</span> <span class="pre">=</span> <span class="pre">2</span></code>:</p>
+<ul>
+<li><p>This configuration reserves bits 2 and 3 as reserved keys.</p></li>
+<li><p>The binary representation for the last five bits ranges from <code class="docutils literal notranslate"><span class="pre">10010</span></code> to <code class="docutils literal notranslate"><span class="pre">11110</span></code>, with the least significant bit (bit 0) always set to <code class="docutils literal notranslate"><span class="pre">0</span></code>, and bits from 4 to 63 are set to <code class="docutils literal notranslate"><span class="pre">1</span></code>.</p></li>
+</ul>
+</li>
+<li><p>if you change the reserved_key_start_bit, you should use same value for save/load
+For more detail, please refer to <a class="reference external" href="https://github.com/search?q=repo%3ANVIDIA-Merlin%2FHierarchicalKV%20init_reserved_keys&amp;type=code"><code class="docutils literal notranslate"><span class="pre">init_reserved_keys</span></code></a></p></li>
+</ul>
+</div>
 </div>
 <div class="section" id="how-to-use">
 <h3>How to use:<a class="headerlink" href="#how-to-use" title="Permalink to this headline"></a></h3>
@@ -338,7 +375,6 @@ The <code class="docutils literal notranslate"><span class="pre">score_type</spa
 <ul class="simple">
 <li><p>The <code class="docutils literal notranslate"><span class="pre">key_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">int64_t</span></code> or <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
 <li><p>The <code class="docutils literal notranslate"><span class="pre">score_type</span></code> must be <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code>.</p></li>
-<li><p>The keys of <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFC</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFD</span></code>, <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFE</span></code>, and <code class="docutils literal notranslate"><span class="pre">0xFFFFFFFFFFFFFFFF</span></code> are reserved for internal using.</p></li>
 </ul>
 </div>
 </div>
@@ -362,6 +398,10 @@ and also open for public contributions, bug fixes, and documentation. [<a class=
 <div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>--recursive<span class="w"> </span>https://github.com/NVIDIA-Merlin/HierarchicalKV.git
 <span class="nb">cd</span><span class="w"> </span>HierarchicalKV<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>mkdir<span class="w"> </span>-p<span class="w"> </span>build<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="nb">cd</span><span class="w"> </span>build
 cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Release<span class="w"> </span>-Dsm<span class="o">=</span><span class="m">80</span><span class="w"> </span>..<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>-j
+</pre></div>
+</div>
+<p>For Debug:</p>
+<div class="highlight-shell notranslate"><div class="highlight"><pre><span></span>cmake<span class="w"> </span>-DCMAKE_BUILD_TYPE<span class="o">=</span>Debug<span class="w"> </span>-Dsm<span class="o">=</span><span class="m">80</span><span class="w"> </span>..<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>make<span class="w"> </span>-j
 </pre></div>
 </div>
 <p>For Benchmark:</p>
