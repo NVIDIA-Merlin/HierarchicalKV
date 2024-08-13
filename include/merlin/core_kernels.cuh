@@ -910,5 +910,167 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
+template <class K, class V, class S,
+          template <typename, typename> class PredFunctor, int TILE_SIZE>
+__global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
+                               Bucket<K, V, S>* buckets, const K pattern,
+                               const S threshold, K* d_key, V* __restrict d_val,
+                               S* __restrict d_score, const size_t offset,
+                               const size_t search_length,
+                               size_t* d_dump_counter) {
+  const size_t bucket_max_size = table->bucket_max_size;
+  int dim = table->dim;
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+
+  PredFunctor<K, S> pred;
+  size_t tid = static_cast<size_t>(blockIdx.x * blockDim.x + threadIdx.x);
+
+  for (size_t ii = tid; ii < search_length; ii += gridDim.x * blockDim.x) {
+    size_t bkt_idx = (ii + offset) / bucket_max_size;
+    size_t key_idx = (ii + offset) % bucket_max_size;
+    size_t leading_key_idx = key_idx / TILE_SIZE * TILE_SIZE;
+    Bucket<K, V, S>* bucket = &(buckets[bkt_idx]);
+
+    const K key =
+        (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
+    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+
+    bool match =
+        (!IS_RESERVED_KEY<K>(key)) && pred(key, score, pattern, threshold);
+    unsigned int vote = g.ballot(match);
+    int tile_cnt = __popc(vote);
+    size_t tile_offset = 0;
+    if (g.thread_rank() == 0) {
+      tile_offset = atomicAdd(d_dump_counter, static_cast<size_t>(tile_cnt));
+    }
+    tile_offset = g.shfl(tile_offset, 0);
+    int bias_g = tile_cnt - __popc(vote >> (key_idx % TILE_SIZE));
+
+    if (match) {
+      d_key[tile_offset + bias_g] = key;
+      if (d_score) {
+        d_score[tile_offset + bias_g] = score;
+      }
+    }
+
+#pragma unroll
+    for (int r = 0; r < TILE_SIZE; r++) {
+      unsigned int biased_vote = vote >> r;
+      bool cur_match = biased_vote & 1;
+      if (cur_match) {
+        int bias = tile_cnt - __popc(biased_vote);
+        size_t cur_idx = leading_key_idx + r;
+
+        for (int j = g.thread_rank(); j < dim; j += TILE_SIZE) {
+          d_val[(tile_offset + bias) * dim + j] =
+              bucket->vectors[cur_idx * dim + j];
+        }
+      }
+    }
+  }
+}
+
+template <class K, class V, class S,
+          template <typename, typename> class PredFunctor, int TILE_SIZE>
+__global__ void dump_kernel_v2_vectorized(const Table<K, V, S>* __restrict table,
+                                          Bucket<K, V, S>* buckets, const K pattern,
+                                          const S threshold, K* d_key, V* __restrict d_val,
+                                          S* __restrict d_score, const size_t offset,
+                                          const size_t search_length,
+                                          size_t* d_dump_counter) {
+  const size_t bucket_max_size = table->bucket_max_size;
+  int dim = table->dim;
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+
+  PredFunctor<K, S> pred;
+  size_t tid = static_cast<size_t>(blockIdx.x * blockDim.x + threadIdx.x);
+
+  for (size_t ii = tid; ii < search_length; ii += gridDim.x * blockDim.x) {
+    size_t bkt_idx = (ii + offset) / bucket_max_size;
+    size_t key_idx = (ii + offset) % bucket_max_size;
+    size_t leading_key_idx = key_idx / TILE_SIZE * TILE_SIZE;
+    Bucket<K, V, S>* bucket = &(buckets[bkt_idx]);
+
+    const K key =
+        (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
+    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+
+    bool match =
+        (!IS_RESERVED_KEY<K>(key)) && pred(key, score, pattern, threshold);
+    unsigned int vote = g.ballot(match);
+    int tile_cnt = __popc(vote);
+    size_t tile_offset = 0;
+    if (g.thread_rank() == 0) {
+      tile_offset = atomicAdd(d_dump_counter, static_cast<size_t>(tile_cnt));
+    }
+    tile_offset = g.shfl(tile_offset, 0);
+    int bias_g = tile_cnt - __popc(vote >> (key_idx % TILE_SIZE));
+
+    if (match) {
+      d_key[tile_offset + bias_g] = key;
+      if (d_score) {
+        d_score[tile_offset + bias_g] = score;
+      }
+    }
+
+#pragma unroll
+    for (int r = 0; r < TILE_SIZE; r++) {
+      unsigned int biased_vote = vote >> r;
+      bool cur_match = biased_vote & 1;
+      if (cur_match) {
+        int bias = tile_cnt - __popc(biased_vote);
+        size_t cur_idx = leading_key_idx + r;
+
+        float4* d_val_fp4 = reinterpret_cast<float4*>(d_val);
+        float4* vec_fp4 = reinterpret_cast<float4*>(bucket->vectors);
+        int d4 = dim / 4;
+        for (int j = g.thread_rank(); j < d4; j += TILE_SIZE) {
+          d_val_fp4[(tile_offset + bias) * d4 + j] = vec_fp4[cur_idx * d4 + j];
+        }
+      }
+    }
+  }
+}
+
+template <class K, class V, class S,
+          template <typename, typename> class PredFunctor>
+__global__ void size_if_kernel(const Table<K, V, S>* __restrict table,
+                               Bucket<K, V, S>* buckets, const K pattern,
+                               const S threshold, size_t* d_counter) {
+  extern __shared__ unsigned char s[];
+  KVM<K, V, S>* const block_tuples{reinterpret_cast<KVM<K, V, S>*>(s)};
+
+  const size_t bucket_max_size{table->bucket_max_size};
+
+  size_t local_acc = 0;
+  __shared__ size_t block_acc;
+  PredFunctor<K, S> pred;
+
+  const size_t tid{blockIdx.x * blockDim.x + threadIdx.x};
+
+  if (threadIdx.x == 0) {
+    block_acc = 0;
+  }
+  __syncthreads();
+
+  for (size_t i = tid; i < table->capacity; i += blockDim.x * gridDim.x) {
+    Bucket<K, V, S>* const bucket{&buckets[i / bucket_max_size]};
+
+    const int key_idx{static_cast<int>(i % bucket_max_size)};
+    const K key{(bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed)};
+    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+
+    if ((!IS_RESERVED_KEY(key)) && pred(key, score, pattern, threshold)) {
+      ++local_acc;
+    }
+  }
+  atomicAdd(&block_acc, local_acc);
+  __syncthreads();
+
+  if (threadIdx.x == 0) {
+    atomicAdd(d_counter, block_acc);
+  }
+}
+
 }  // namespace merlin
 }  // namespace nv
