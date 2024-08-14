@@ -1622,23 +1622,25 @@ Program Listing for File merlin_hashtable.cuh
          return;
        }
    
-       bool match_fast_cond = options_.max_bucket_size % TILE_SIZE == 0  \
-           && options_.max_bucket_size >= TILE_SIZE && offset % TILE_SIZE == 0  \
-           && n % TILE_SIZE == 0;
+       bool match_fast_cond = options_.max_bucket_size % TILE_SIZE == 0 &&
+                              options_.max_bucket_size >= TILE_SIZE &&
+                              offset % TILE_SIZE == 0 && n % TILE_SIZE == 0;
    
        if (match_fast_cond) {
-         int grid_size = std::min(sm_cnt_, static_cast<int>(SAFE_GET_GRID_SIZE(n, options_.block_size)));
+         int grid_size = std::min(sm_cnt_, static_cast<int>(SAFE_GET_GRID_SIZE(
+                                               n, options_.block_size)));
          const int TILE_SIZE = 8;
    
          dump_kernel_v2<key_type, value_type, score_type, PredFunctor, TILE_SIZE>
              <<<grid_size, options_.block_size, 0, stream>>>(
-                 d_table_, table_->buckets, pattern, threshold, keys, values, scores,
-                 offset, n, d_counter);
+                 d_table_, table_->buckets, pattern, threshold, keys, values,
+                 scores, offset, n, d_counter);
        } else {
          const size_t score_size = scores ? sizeof(score_type) : 0;
          const size_t kvm_size =
              sizeof(key_type) + sizeof(value_type) * dim() + score_size;
-         const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
+         const size_t block_size =
+             std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
          MERLIN_CHECK(
              block_size > 0,
              "[HierarchicalKV] block_size <= 0, the K-V-S size may be too large!");
@@ -1647,8 +1649,8 @@ Program Listing for File merlin_hashtable.cuh
          const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
          dump_kernel<key_type, value_type, score_type, PredFunctor>
              <<<grid_size, block_size, shared_size, stream>>>(
-                 d_table_, table_->buckets, pattern, threshold, keys, values, scores,
-                 offset, n, d_counter);
+                 d_table_, table_->buckets, pattern, threshold, keys, values,
+                 scores, offset, n, d_counter);
        }
    
        CudaCheckError();
