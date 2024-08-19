@@ -34,7 +34,7 @@ jobs:
       
     # This job only runs for pull request comments
     if: |
-         (github.actor == 'EmmaQiaoCh' || github.actor == 'rhdong' || github.actor == 'Ranjeet-Nvidia') &&
+         (github.actor == 'EmmaQiaoCh' || github.actor == 'rhdong' || github.actor == 'Ranjeet-Nvidia' ||  github.actor == 'jiashuy') &&
          github.event.comment.body == '/blossom-ci'  
     steps:
       - name: Check if comment is issued by authorized person
