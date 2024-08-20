@@ -54,7 +54,7 @@ constexpr uint64_t MAX_SCORE = UINT64_C(0xFFFFFFFFFFFFFFFF);
 constexpr uint64_t EMPTY_SCORE = UINT64_C(0);
 constexpr uint64_t IGNORED_GLOBAL_EPOCH = UINT64_C(0xFFFFFFFFFFFFFFFF);
 
-static uint64_t EMPTY_KEY_CPU = DEFAULT_EMPTY_KEY;
+uint64_t EMPTY_KEY_CPU = DEFAULT_EMPTY_KEY;
 __constant__ uint64_t EMPTY_KEY = DEFAULT_EMPTY_KEY;
 __constant__ uint64_t RECLAIM_KEY = DEFAULT_RECLAIM_KEY;
 __constant__ uint64_t LOCKED_KEY = DEFAULT_LOCKED_KEY;
@@ -76,7 +76,7 @@ __forceinline__ __device__ bool IS_VACANT_KEY(K key) {
   return (VACANT_KEY_MASK_1 & key) == VACANT_KEY_MASK_2;
 }
 
-static cudaError_t init_reserved_keys(int index) {
+cudaError_t init_reserved_keys(int index) {
   if (index < 1 || index > MAX_RESERVED_KEY_BIT) {
     // index = 0 is the default,
     // index = 62 is the maximum index can be set for reserved keys.

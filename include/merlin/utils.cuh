@@ -314,8 +314,7 @@ inline void free_pointers(cudaStream_t stream, int n, ...) {
   va_end(args);
 }
 
-static __global__ void memset64bitKernel(void* devPtr, uint64_t value,
-                                         size_t count) {
+__global__ void memset64bitKernel(void* devPtr, uint64_t value, size_t count) {
   size_t idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < count) {
     static_cast<uint64_t*>(devPtr)[idx] = value;
