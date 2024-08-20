@@ -624,6 +624,20 @@
 </dd></dl>
 
 <dl class="cpp function">
+<dt id="_CPPv4II00E0ENK2nv6merlin9HashTable7size_ifEvRK8key_typeRK10score_typeP9size_type12cudaStream_t">
+<span id="_CPPv3II00E0ENK2nv6merlin9HashTable7size_ifERK8key_typeRK10score_typeP9size_type12cudaStream_t"></span><span id="_CPPv2II00E0ENK2nv6merlin9HashTable7size_ifERK8key_typeRK10score_typeP9size_type12cudaStream_t"></span><span class="pre">template&lt;</span><span class="pre">template&lt;</span><span class="pre">typename</span><span class="pre">,</span> <span class="pre">typename</span><span class="pre">&gt;</span> <span class="pre">class</span> <code class="sig-name descname"><span class="pre">PredFunctor</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1HashTable_1a3a5a38ba3cd6b68b707892ea28274ddf"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">size_if</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a> <span class="pre">&amp;</span><em><span class="pre">pattern</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable10score_typeE" title="nv::merlin::HashTable::score_type"><span class="pre">score_type</span></a> <span class="pre">&amp;</span><em><span class="pre">threshold</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <span class="pre">*</span><em><span class="pre">d_counter</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em><a class="headerlink" href="#_CPPv4II00E0ENK2nv6merlin9HashTable7size_ifEvRK8key_typeRK10score_typeP9size_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns the number of keys if meet PredFunctor. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The table size match condiction of PredFunctor. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
 <dt id="_CPPv4NK2nv6merlin9HashTable8capacityEv">
 <span id="_CPPv3NK2nv6merlin9HashTable8capacityEv"></span><span id="_CPPv2NK2nv6merlin9HashTable8capacityEv"></span><span id="nv::merlin::HashTable::capacityC"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a083051d75a459ec2ee6a94257ff71457"></span><em class="property"><span class="pre">inline</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">capacity</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em><a class="headerlink" href="#_CPPv4NK2nv6merlin9HashTable8capacityEv" title="Permalink to this definition"></a><br /></dt>
 <dd><p>Returns the hash table capacity. </p>
