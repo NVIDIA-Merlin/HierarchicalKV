@@ -38,7 +38,7 @@
   }
 
 #define MERLIN_EXPECT_TRUE(cond, msg)                                    \
-  if (!cond) {                                                           \
+  if ((cond) == false) {                                                 \
     fprintf(stderr, "[ERROR] %s at %s : %d\n", msg, __FILE__, __LINE__); \
     exit(-1);                                                            \
   }
@@ -410,7 +410,7 @@ struct HostAndDeviceBuffer {
       CUDA_FREE_POINTERS(stream, d_data);
     }
     if (h_data) {
-      free(h_data);
+      CUDA_CHECK(cudaFreeHost(h_data));
       h_data = nullptr;
     }
     if (d_data) {
@@ -418,7 +418,7 @@ struct HostAndDeviceBuffer {
       d_data = nullptr;
     }
     getBufferOnDevice(&d_data, n * sizeof(T), stream);
-    h_data = (T*)malloc(n * sizeof(T));
+    CUDA_CHECK(cudaMallocHost(&h_data, n * sizeof(T)));
     size_ = n;
   }
 
@@ -433,7 +433,7 @@ struct HostAndDeviceBuffer {
       CUDA_FREE_POINTERS(stream, d_data);
     }
     if (h_data) {
-      free(h_data);
+      CUDA_CHECK(cudaFreeHost(h_data));
       h_data = nullptr;
     }
     if (d_data) {
