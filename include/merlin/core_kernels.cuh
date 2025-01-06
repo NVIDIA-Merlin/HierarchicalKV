@@ -910,7 +910,7 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
-template <class K, class V, class S,
+template <class K, class V, class S, class VecV,
           template <typename, typename> class PredFunctor, int TILE_SIZE>
 __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
                                Bucket<K, V, S>* buckets, const K pattern,
@@ -919,15 +919,15 @@ __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
                                const size_t search_length,
                                size_t* d_dump_counter) {
   const size_t bucket_max_size = table->bucket_max_size;
-  int dim = table->dim;
+  int vec_dim = table->dim * sizeof(V) / sizeof(VecV);
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
 
   PredFunctor<K, S> pred;
   size_t tid = static_cast<size_t>(blockIdx.x * blockDim.x + threadIdx.x);
 
-  for (size_t ii = tid; ii < search_length; ii += gridDim.x * blockDim.x) {
-    size_t bkt_idx = (ii + offset) / bucket_max_size;
-    size_t key_idx = (ii + offset) % bucket_max_size;
+  for (size_t i = tid; i < search_length; i += gridDim.x * blockDim.x) {
+    size_t bkt_idx = (i + offset) / bucket_max_size;
+    size_t key_idx = (i + offset) % bucket_max_size;
     size_t leading_key_idx = key_idx / TILE_SIZE * TILE_SIZE;
     Bucket<K, V, S>* bucket = &(buckets[bkt_idx]);
 
@@ -961,71 +961,10 @@ __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
         int bias = tile_cnt - __popc(biased_vote);
         size_t cur_idx = leading_key_idx + r;
 
-        for (int j = g.thread_rank(); j < dim; j += TILE_SIZE) {
-          d_val[(tile_offset + bias) * dim + j] =
-              bucket->vectors[cur_idx * dim + j];
-        }
-      }
-    }
-  }
-}
-
-template <class K, class V, class S,
-          template <typename, typename> class PredFunctor, int TILE_SIZE>
-__global__ void dump_kernel_v2_vectorized(const Table<K, V, S>* __restrict table,
-                                          Bucket<K, V, S>* buckets, const K pattern,
-                                          const S threshold, K* d_key, V* __restrict d_val,
-                                          S* __restrict d_score, const size_t offset,
-                                          const size_t search_length,
-                                          size_t* d_dump_counter) {
-  const size_t bucket_max_size = table->bucket_max_size;
-  int dim = table->dim;
-  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
-
-  PredFunctor<K, S> pred;
-  size_t tid = static_cast<size_t>(blockIdx.x * blockDim.x + threadIdx.x);
-
-  for (size_t ii = tid; ii < search_length; ii += gridDim.x * blockDim.x) {
-    size_t bkt_idx = (ii + offset) / bucket_max_size;
-    size_t key_idx = (ii + offset) % bucket_max_size;
-    size_t leading_key_idx = key_idx / TILE_SIZE * TILE_SIZE;
-    Bucket<K, V, S>* bucket = &(buckets[bkt_idx]);
-
-    const K key =
-        (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
-    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
-
-    bool match =
-        (!IS_RESERVED_KEY<K>(key)) && pred(key, score, pattern, threshold);
-    unsigned int vote = g.ballot(match);
-    int tile_cnt = __popc(vote);
-    size_t tile_offset = 0;
-    if (g.thread_rank() == 0) {
-      tile_offset = atomicAdd(d_dump_counter, static_cast<size_t>(tile_cnt));
-    }
-    tile_offset = g.shfl(tile_offset, 0);
-    int bias_g = tile_cnt - __popc(vote >> (key_idx % TILE_SIZE));
-
-    if (match) {
-      d_key[tile_offset + bias_g] = key;
-      if (d_score) {
-        d_score[tile_offset + bias_g] = score;
-      }
-    }
-
-#pragma unroll
-    for (int r = 0; r < TILE_SIZE; r++) {
-      unsigned int biased_vote = vote >> r;
-      bool cur_match = biased_vote & 1;
-      if (cur_match) {
-        int bias = tile_cnt - __popc(biased_vote);
-        size_t cur_idx = leading_key_idx + r;
-
-        float4* d_val_fp4 = reinterpret_cast<float4*>(d_val);
-        float4* vec_fp4 = reinterpret_cast<float4*>(bucket->vectors);
-        int d4 = dim / 4;
-        for (int j = g.thread_rank(); j < d4; j += TILE_SIZE) {
-          d_val_fp4[(tile_offset + bias) * d4 + j] = vec_fp4[cur_idx * d4 + j];
+        VecV* d_val_vec = reinterpret_cast<VecV*>(d_val);
+        VecV* vec = reinterpret_cast<VecV*>(bucket->vectors);
+        for (int j = g.thread_rank(); j < vec_dim; j += TILE_SIZE) {
+          d_val_vec[(tile_offset + bias) * vec_dim + j] = vec[cur_idx * vec_dim + j];
         }
       }
     }
