@@ -18,6 +18,7 @@
 
 #include <stddef.h>
 #include <cstdint>
+#include <cuda/atomic>
 #include <cuda/std/semaphore>
 #include "debug.hpp"
 

@@ -25,7 +25,7 @@ jobs:
         run: |
           make -C docs html
       - name: Upload HTML
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: html-build-artifact
           path: docs/build/html
@@ -38,7 +38,7 @@ jobs:
           echo ${{ github.event.pull_request.merged }} > ./pr/merged.txt
           echo ${{ github.event.action }}              > ./pr/action.txt
       - name: Upload PR information
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pr
           path: pr/
