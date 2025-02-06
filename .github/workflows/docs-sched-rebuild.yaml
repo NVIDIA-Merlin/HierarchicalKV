@@ -38,7 +38,7 @@ jobs:
           find docs/build -name .doctrees -prune -exec rm -rf {} \;
           find docs/build -name .buildinfo -exec rm {} \;
       - name: Upload HTML
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: html-build-artifact
           path: docs/build/html
