@@ -917,6 +917,8 @@ class HashTable : public HashTableBase<K, V, S> {
     cudaDeviceProp deviceProp;
     CUDA_CHECK(cudaGetDeviceProperties(&deviceProp, options_.device_id));
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
+    sm_cnt_ = deviceProp.multiProcessorCount;
+    max_threads_per_block_ = deviceProp.maxThreadsPerBlock;
     create_table<key_type, value_type, score_type>(
         &table_, allocator_, options_.dim, options_.init_capacity,
         options_.max_capacity, options_.max_hbm_for_vectors,
@@ -2611,22 +2613,62 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
     n = std::min(table_->capacity - offset, n);
+    if (n == 0) {
+      return;
+    }
 
-    const size_t score_size = scores ? sizeof(score_type) : 0;
-    const size_t kvm_size =
-        sizeof(key_type) + sizeof(value_type) * dim() + score_size;
-    const size_t block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
-    MERLIN_CHECK(
-        block_size > 0,
-        "[HierarchicalKV] block_size <= 0, the K-V-S size may be too large!");
+    bool match_fast_cond = true;
+    const size_t value_size = sizeof(V) * dim();
+    auto check_tile_size = [&](int tile_size) {
+        return options_.max_bucket_size % tile_size == 0 &&
+               options_.max_bucket_size >= tile_size && offset % tile_size == 0 &&
+               n % tile_size == 0;
+    };
+    auto select_tile_size = [&](auto vec) {
+        using VecV = decltype(vec);
+        size_t vec_dim = value_size / sizeof(VecV);
+        if (vec_dim >= 32 && check_tile_size(32)) {
+            return dump_kernel_v2<key_type, value_type, score_type, VecV, PredFunctor, 32>;
+        } else if (vec_dim >= 16 && check_tile_size(16)) {
+            return dump_kernel_v2<key_type, value_type, score_type, VecV, PredFunctor, 16>;
+        } else if (vec_dim >= 8 && check_tile_size(8)) {
+            return dump_kernel_v2<key_type, value_type, score_type, VecV, PredFunctor, 8>;
+        }
+        match_fast_cond = false;
+        return dump_kernel<key_type, value_type, score_type, PredFunctor>;
+    };
+    auto kernel = [&] {
+        if (value_size >= sizeof(float4) * 8 && value_size % sizeof(float4) == 0) {
+            return select_tile_size(float4{});
+        } else if (value_size >= sizeof(float2) * 8 && value_size % sizeof(float2) == 0) {
+            return select_tile_size(float2{});
+        } else if (value_size >= sizeof(float) * 8 && value_size % sizeof(float) == 0) {
+            return select_tile_size(float{});
+        } else if (value_size >= sizeof(uint16_t) * 8 && value_size % sizeof(uint16_t) == 0) {
+            return select_tile_size(uint16_t{});
+        }
+        return select_tile_size(V{});
+    }();
+    size_t grid_size = 0, block_size = 0, shared_size = 0;
+    if (match_fast_cond) {
+        block_size = options_.block_size;
+        grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
+                             SAFE_GET_GRID_SIZE(n, block_size));
+    } else {
+      const size_t score_size = scores ? sizeof(score_type) : 0;
+      const size_t kvm_size =
+          sizeof(key_type) + sizeof(value_type) * dim() + score_size;
+      block_size = std::min(shared_mem_size_ / 2 / kvm_size, 1024UL);
+      MERLIN_CHECK(
+          block_size > 0,
+          "[HierarchicalKV] block_size <= 0, the K-V-S size may be too large!");
 
-    const size_t shared_size = kvm_size * block_size;
-    const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
-
-    dump_kernel<key_type, value_type, score_type, PredFunctor>
-        <<<grid_size, block_size, shared_size, stream>>>(
-            d_table_, table_->buckets, pattern, threshold, keys, values, scores,
-            offset, n, d_counter);
+      shared_size = kvm_size * block_size;
+      grid_size = SAFE_GET_GRID_SIZE(n, block_size);
+    }
+    kernel<<<grid_size, block_size, shared_size, stream>>>(
+            d_table_, table_->buckets, pattern, threshold, keys, values,
+            scores, offset, n, d_counter);
 
     CudaCheckError();
   }
@@ -2666,6 +2708,28 @@ class HashTable : public HashTableBase<K, V, S> {
 
     CudaCheckError();
     return h_size;
+  }
+
+  /**
+   * @brief Returns the number of keys if meet PredFunctor.
+   *
+   * @param stream The CUDA stream that is used to execute the operation.
+   * @return The table size match condiction of PredFunctor.
+   */
+  template <template <typename, typename> class PredFunctor>
+  void size_if(const key_type& pattern, const score_type& threshold,
+               size_type* d_counter, cudaStream_t stream = 0) const {
+    read_shared_lock lock(mutex_, stream);
+    CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+
+    size_t grid_size = SAFE_GET_GRID_SIZE(capacity(), options_.block_size);
+    grid_size = std::min(grid_size,
+                         static_cast<size_t>(sm_cnt_ * max_threads_per_block_ /
+                                             options_.block_size));
+    size_if_kernel<key_type, value_type, score_type, PredFunctor>
+        <<<grid_size, options_.block_size, 0, stream>>>(
+            d_table_, table_->buckets, pattern, threshold, d_counter);
+    CudaCheckError();
   }
 
   /**
@@ -3037,6 +3101,8 @@ class HashTable : public HashTableBase<K, V, S> {
   TableCore* table_ = nullptr;
   TableCore* d_table_ = nullptr;
   size_t shared_mem_size_ = 0;
+  int sm_cnt_ = 0;
+  int max_threads_per_block_ = 0;
   std::atomic_bool reach_max_capacity_{false};
   bool initialized_ = false;
   mutable group_shared_mutex mutex_;
