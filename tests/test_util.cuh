@@ -410,7 +410,7 @@ struct HostAndDeviceBuffer {
       CUDA_FREE_POINTERS(stream, d_data);
     }
     if (h_data) {
-      CUDA_CHECK(cudaFreeHost(h_data));
+      free(h_data);
       h_data = nullptr;
     }
     if (d_data) {
@@ -418,7 +418,7 @@ struct HostAndDeviceBuffer {
       d_data = nullptr;
     }
     getBufferOnDevice(&d_data, n * sizeof(T), stream);
-    CUDA_CHECK(cudaMallocHost(&h_data, n * sizeof(T)));
+    h_data = (T*)malloc(n * sizeof(T));
     size_ = n;
   }
 
@@ -433,7 +433,7 @@ struct HostAndDeviceBuffer {
       CUDA_FREE_POINTERS(stream, d_data);
     }
     if (h_data) {
-      CUDA_CHECK(cudaFreeHost(h_data));
+      free(h_data);
       h_data = nullptr;
     }
     if (d_data) {
