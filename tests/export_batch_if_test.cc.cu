@@ -130,7 +130,7 @@ void test_export_batch_if_with_limited_size() {
   CUDA_CHECK(cudaMemsetAsync(d_cnt, 0, sizeof(size_t), stream));
   CUDA_CHECK(cudaStreamSynchronize(stream));
 
-  bool use_pin = true;
+  bool use_pin = false;
 
   uint64_t t0 = test_util::getTimestamp();
   cudaEvent_t start, stop;
