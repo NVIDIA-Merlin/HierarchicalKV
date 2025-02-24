@@ -97,7 +97,7 @@
 <dd><p>A customizable template function indicates which keys should be erased from the hash table by returning <code class="docutils literal notranslate"><span class="pre">true</span></code>. </p>
 <p>
 Example for erase_if:</p>
-<p><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">K</span><span class="p">,</span> <span class="k">class</span> <span class="nc">S</span><span class="o">&gt;</span>
+<p><div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="w"> </span><span class="nc">K</span><span class="p">,</span> <span class="k">class</span><span class="w"> </span><span class="nc">S</span><span class="o">&gt;</span>
 <span class="n">struct</span> <span class="n">EraseIfPredFunctor</span> <span class="p">{</span>
   <span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">operator</span><span class="p">()(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
                                              <span class="n">S</span><span class="o">&amp;</span> <span class="n">score</span><span class="p">,</span>
@@ -110,7 +110,7 @@ Example for erase_if:</p>
 </pre></div>
 </div>
 </p>
-<p>Example for export_batch_if: <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span> <span class="nc">K</span><span class="p">,</span> <span class="k">class</span> <span class="nc">S</span><span class="o">&gt;</span>
+<p>Example for export_batch_if: <div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">template</span> <span class="o">&lt;</span><span class="k">class</span><span class="w"> </span><span class="nc">K</span><span class="p">,</span> <span class="k">class</span><span class="w"> </span><span class="nc">S</span><span class="o">&gt;</span>
 <span class="n">struct</span> <span class="n">ExportIfPredFunctor</span> <span class="p">{</span>
   <span class="n">__forceinline__</span> <span class="n">__device__</span> <span class="nb">bool</span> <span class="n">operator</span><span class="p">()(</span><span class="n">const</span> <span class="n">K</span><span class="o">&amp;</span> <span class="n">key</span><span class="p">,</span>
                                              <span class="n">S</span><span class="o">&amp;</span> <span class="n">score</span><span class="p">,</span>
@@ -143,7 +143,7 @@ Example for erase_if:</p>
 
   <div role="contentinfo">
 
-    <p>&#169; Copyright 2022–2024, NVIDIA.</p>
+    <p>&#169; Copyright 2022–2025, NVIDIA.</p>
 <p>
 <a href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/" target="_blank">Privacy Policy</a> |
 <a href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/" target="_blank">Manage My Privacy</a> |
