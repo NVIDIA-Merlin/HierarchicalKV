@@ -421,12 +421,8 @@ static Test_Mode test_mode = Test_Mode::pure_hbm;
 
 void print_title_a() {
   cout << endl
-       << "|    \u03BB "
-       << "| insert_or_assign "
-       << "|   find "
-       << "| find_or_insert "
-       << "| assign "
-       << "|  find* "
+       << "|    \u03BB " << "| insert_or_assign " << "|   find "
+       << "| find_or_insert " << "| assign " << "|  find* "
        << "| find_or_insert* ";
   if (Test_Mode::pure_hbm == test_mode) {
     cout << "| insert_and_evict ";
@@ -456,9 +452,7 @@ void print_title_a() {
 
 void print_title_b() {
   cout << endl
-       << "|    \u03BB "
-       << "| export_batch "
-       << "| export_batch_if "
+       << "|    \u03BB " << "| export_batch " << "| export_batch_if "
        << "|  contains ";
   cout << "|\n";
 
@@ -580,8 +574,7 @@ int main() {
        << "* Value Type = float32 * {dim}" << endl
        << "* Key-Values per OP = " << key_num_per_op << endl
        << "* Evict strategy: LRU" << endl
-       << "* `\u03BB`"
-       << ": load factor" << endl
+       << "* `\u03BB`" << ": load factor" << endl
        << "* `find*` means the `find` API that directly returns the addresses "
           "of values."
        << endl
@@ -596,9 +589,8 @@ int main() {
     int32_t capacity = static_cast<int32_t>(init_capacity / (1024 * 1024));
     size_t hmem4values = init_capacity * dim * sizeof(V) / (1024 * 1024 * 1024);
     hmem4values = hmem4values < hbm4values ? 0 : (hmem4values - hbm4values);
-    cout << "\n* dim = " << dim << ", "
-         << "capacity = " << capacity << " Million-KV, "
-         << "HBM = " << hbm4values << " GB, "
+    cout << "\n* dim = " << dim << ", " << "capacity = " << capacity
+         << " Million-KV, " << "HBM = " << hbm4values << " GB, "
          << "HMEM = " << hmem4values << " GB\n";
   };
 

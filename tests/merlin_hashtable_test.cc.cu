@@ -3238,9 +3238,8 @@ void test_insert_or_assign_multi_threads(size_t max_hbm_for_vectors,
     } else {
       if (found_num != KEY_NUM or err_times != 0) {
         std::cout << " [Thread " << task_n << "]\t"
-                  << "Number of keys(insert/found/error) : "
-                  << "(" << KEY_NUM << "/" << found_num << "/" << err_times
-                  << ") \t";
+                  << "Number of keys(insert/found/error) : " << "(" << KEY_NUM
+                  << "/" << found_num << "/" << err_times << ") \t";
         print_thread_id = true;
       }
     }
@@ -3371,9 +3370,8 @@ void test_insert_or_assign_multi_threads(size_t max_hbm_for_vectors,
     } else {
       if (found_num != KEY_NUM or err_times != 0) {
         std::cout << " [Thread " << task_n << "]\t"
-                  << "Number of keys(insert/found/error) : "
-                  << "(" << KEY_NUM << "/" << found_num << "/" << err_times
-                  << ") \t";
+                  << "Number of keys(insert/found/error) : " << "(" << KEY_NUM
+                  << "/" << found_num << "/" << err_times << ") \t";
         print_thread_id = true;
       }
     }
