@@ -22,7 +22,7 @@ namespace nv {
 namespace merlin {
 namespace group_lock {
 
-template<typename T>
+template <typename T>
 __global__ void init_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count,
     cuda::atomic<T, cuda::thread_scope_device>* read_count,
@@ -34,7 +34,7 @@ __global__ void init_kernel(
   }
 }
 
-template<typename T>
+template <typename T>
 __global__ void lock_read_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count,
     cuda::atomic<T, cuda::thread_scope_device>* read_count) {
@@ -49,13 +49,13 @@ __global__ void lock_read_kernel(
   }
 }
 
-template<typename T>
+template <typename T>
 __global__ void unlock_read_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* read_count) {
   read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
 }
 
-template<typename T>
+template <typename T>
 __global__ void lock_update_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count,
     cuda::atomic<T, cuda::thread_scope_device>* read_count) {
@@ -70,13 +70,13 @@ __global__ void lock_update_kernel(
   }
 }
 
-template<typename T>
+template <typename T>
 __global__ void unlock_update_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count) {
   update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
 }
 
-template<typename T>
+template <typename T>
 __global__ void lock_update_read_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count,
     cuda::atomic<T, cuda::thread_scope_device>* read_count,
@@ -111,7 +111,7 @@ __global__ void lock_update_read_kernel(
   }
 }
 
-template<typename T>
+template <typename T>
 __global__ void unlock_update_read_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count,
     cuda::atomic<T, cuda::thread_scope_device>* read_count,
@@ -121,13 +121,13 @@ __global__ void unlock_update_read_kernel(
   unique_flag->store(false, cuda::std::memory_order_relaxed);
 }
 
-template<typename T>
+template <typename T>
 __global__ void update_count_kernel(
     T* counter, cuda::atomic<T, cuda::thread_scope_device>* update_count) {
   *counter = update_count->load(cuda::std::memory_order_relaxed);
 }
 
-template<typename T>
+template <typename T>
 __global__ void read_count_kernel(
     T* counter, cuda::atomic<T, cuda::thread_scope_device>* read_count) {
   *counter = read_count->load(cuda::std::memory_order_relaxed);

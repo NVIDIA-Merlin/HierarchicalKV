@@ -40,12 +40,8 @@ using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
 void print_tile() {
   std::cout << std::endl
-            << "|    \u03BB "
-            << "| capacity "
-            << "| max_hbm_for_vectors "
-            << "| max_bucket_size "
-            << "| dim "
-            << "| missed_ratio "
+            << "|    \u03BB " << "| capacity " << "| max_hbm_for_vectors "
+            << "| max_bucket_size " << "| dim " << "| missed_ratio "
             << "| througput(BillionKV/secs) ";
   std::cout << "|\n";
 

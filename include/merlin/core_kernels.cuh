@@ -964,7 +964,8 @@ __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
         VecV* d_val_vec = reinterpret_cast<VecV*>(d_val);
         VecV* vec = reinterpret_cast<VecV*>(bucket->vectors);
         for (int j = g.thread_rank(); j < vec_dim; j += TILE_SIZE) {
-          d_val_vec[(tile_offset + bias) * vec_dim + j] = vec[cur_idx * vec_dim + j];
+          d_val_vec[(tile_offset + bias) * vec_dim + j] =
+              vec[cur_idx * vec_dim + j];
         }
       }
     }

@@ -2620,40 +2620,47 @@ class HashTable : public HashTableBase<K, V, S> {
     bool match_fast_cond = true;
     const size_t value_size = sizeof(V) * dim();
     auto check_tile_size = [&](int tile_size) {
-        return options_.max_bucket_size % tile_size == 0 &&
-               options_.max_bucket_size >= tile_size && offset % tile_size == 0 &&
-               n % tile_size == 0;
+      return options_.max_bucket_size % tile_size == 0 &&
+             options_.max_bucket_size >= tile_size && offset % tile_size == 0 &&
+             n % tile_size == 0;
     };
     auto select_tile_size = [&](auto vec) {
-        using VecV = decltype(vec);
-        size_t vec_dim = value_size / sizeof(VecV);
-        if (vec_dim >= 32 && check_tile_size(32)) {
-            return dump_kernel_v2<key_type, value_type, score_type, VecV, PredFunctor, 32>;
-        } else if (vec_dim >= 16 && check_tile_size(16)) {
-            return dump_kernel_v2<key_type, value_type, score_type, VecV, PredFunctor, 16>;
-        } else if (vec_dim >= 8 && check_tile_size(8)) {
-            return dump_kernel_v2<key_type, value_type, score_type, VecV, PredFunctor, 8>;
-        }
-        match_fast_cond = false;
-        return dump_kernel<key_type, value_type, score_type, PredFunctor>;
+      using VecV = decltype(vec);
+      size_t vec_dim = value_size / sizeof(VecV);
+      if (vec_dim >= 32 && check_tile_size(32)) {
+        return dump_kernel_v2<key_type, value_type, score_type, VecV,
+                              PredFunctor, 32>;
+      } else if (vec_dim >= 16 && check_tile_size(16)) {
+        return dump_kernel_v2<key_type, value_type, score_type, VecV,
+                              PredFunctor, 16>;
+      } else if (vec_dim >= 8 && check_tile_size(8)) {
+        return dump_kernel_v2<key_type, value_type, score_type, VecV,
+                              PredFunctor, 8>;
+      }
+      match_fast_cond = false;
+      return dump_kernel<key_type, value_type, score_type, PredFunctor>;
     };
     auto kernel = [&] {
-        if (value_size >= sizeof(float4) * 8 && value_size % sizeof(float4) == 0) {
-            return select_tile_size(float4{});
-        } else if (value_size >= sizeof(float2) * 8 && value_size % sizeof(float2) == 0) {
-            return select_tile_size(float2{});
-        } else if (value_size >= sizeof(float) * 8 && value_size % sizeof(float) == 0) {
-            return select_tile_size(float{});
-        } else if (value_size >= sizeof(uint16_t) * 8 && value_size % sizeof(uint16_t) == 0) {
-            return select_tile_size(uint16_t{});
-        }
-        return select_tile_size(V{});
+      if (value_size >= sizeof(float4) * 8 &&
+          value_size % sizeof(float4) == 0) {
+        return select_tile_size(float4{});
+      } else if (value_size >= sizeof(float2) * 8 &&
+                 value_size % sizeof(float2) == 0) {
+        return select_tile_size(float2{});
+      } else if (value_size >= sizeof(float) * 8 &&
+                 value_size % sizeof(float) == 0) {
+        return select_tile_size(float{});
+      } else if (value_size >= sizeof(uint16_t) * 8 &&
+                 value_size % sizeof(uint16_t) == 0) {
+        return select_tile_size(uint16_t{});
+      }
+      return select_tile_size(V{});
     }();
     size_t grid_size = 0, block_size = 0, shared_size = 0;
     if (match_fast_cond) {
-        block_size = options_.block_size;
-        grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
-                             SAFE_GET_GRID_SIZE(n, block_size));
+      block_size = options_.block_size;
+      grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
+                           SAFE_GET_GRID_SIZE(n, block_size));
     } else {
       const size_t score_size = scores ? sizeof(score_type) : 0;
       const size_t kvm_size =
@@ -2667,8 +2674,8 @@ class HashTable : public HashTableBase<K, V, S> {
       grid_size = SAFE_GET_GRID_SIZE(n, block_size);
     }
     kernel<<<grid_size, block_size, shared_size, stream>>>(
-            d_table_, table_->buckets, pattern, threshold, keys, values,
-            scores, offset, n, d_counter);
+        d_table_, table_->buckets, pattern, threshold, keys, values, scores,
+        offset, n, d_counter);
 
     CudaCheckError();
   }

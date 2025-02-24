@@ -439,7 +439,7 @@ class MemoryPool final {
     return {this, n, requested_buffer_size, stream};
   }
 
-  friend std::ostream& operator<<<Allocator>(std::ostream&, const MemoryPool&);
+  friend std::ostream& operator<< <Allocator>(std::ostream&, const MemoryPool&);
 
  private:
   inline void collect_pending_unsafe(cudaStream_t stream) {

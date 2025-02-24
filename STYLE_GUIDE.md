@@ -14,15 +14,14 @@ int formatted_code;
 void formatted_code_again;
 ```
 
-Install Clang-format 9 (the version 9.0.1-12 is required) for Ubuntu:
+Install Clang-format (the version 18.1.3 is required) for Ubuntu:
 
 ```bash
-wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add - 
-sudo add-apt-repository -u 'http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main'
-sudo apt install clang-format-9
+sudo apt install clang-format-18
 ```
 
 format all with:
 ```bash
-find ./ -iname *.h -o -iname *.cpp -o -iname *.cc -o -iname *.cu -o -iname *.cuh | xargs clang-format-9 -i --style=file
+find ./ \( -path ./tests/googletest -prune \) -o \( -iname *.h -o -iname *.cpp -o -iname *.cc -o -iname *.cu -o -iname *.cuh \) -print | xargs clang-format-18 -i --style=file
+
 ```
