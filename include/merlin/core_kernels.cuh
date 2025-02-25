@@ -1012,5 +1012,31 @@ __global__ void size_if_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
+template <typename K>
+__global__ void unlock_keys_kernel(uint64_t n, K** __restrict__ locked_key_ptrs,
+                                   const K* __restrict__ keys,
+                                   bool* __restrict__ flags) {
+  int kv_idx = blockIdx.x * blockDim.x + threadIdx.x;
+  if (kv_idx < n) {
+    K* locked_key_ptr = locked_key_ptrs[kv_idx];
+    bool flag = true;
+    if (locked_key_ptr != nullptr) {
+      K locked_key = *locked_key_ptr;
+      K expected_key = static_cast<K>(LOCKED_KEY);
+      K key = keys[kv_idx];
+      if (locked_key == expected_key) {
+        *locked_key_ptr = key;
+      } else {
+        flag = false;
+      }
+    } else {
+      flag = false;
+    }
+    if (flags != nullptr) {
+      flags[kv_idx] = flag;
+    }
+  }
+}
+
 }  // namespace merlin
 }  // namespace nv
