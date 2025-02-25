@@ -428,6 +428,9 @@ class HashTableBase {
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    * @param unique_key If all keys in the same batch are unique.
+   * @param locked_key_ptrs If it isn't nullptr then the keys in the table will
+   * be locked, and key's address will write to locked_key_ptrs. Using
+   * unlock_keys to unlock these keys.
    *
    */
   virtual void find_or_insert(const size_type n, const key_type* keys,  // (n)
@@ -435,7 +438,28 @@ class HashTableBase {
                               bool* founds,                             // (n)
                               score_type* scores = nullptr,             // (n)
                               cudaStream_t stream = 0, bool unique_key = true,
-                              bool ignore_evict_strategy = false) = 0;
+                              bool ignore_evict_strategy = false,
+                              key_type** locked_key_ptrs = nullptr) = 0;
+
+  /**
+   * @brief Using pointers to address the keys in the hash table and set them
+   * to target keys.
+   * This function will unlock the keys in the table which are locked by
+   * the previous call to find_or_insert.
+   *
+   * @param n The number of keys in the table to be unlocked.
+   * @param locked_key_ptrs The pointers of locked keys in the table with shape
+   * (n).
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param flags The status that indicates if the unlock operation is succeed.
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   */
+  virtual void unlock_keys(const size_type n,
+                           key_type** locked_key_ptrs,  // (n)
+                           const key_type* keys,        // (n)
+                           bool* flags = nullptr,       // (n)
+                           cudaStream_t stream = 0) = 0;
 
   /**
    * @brief Assign new key-value-score tuples into the hash table.
@@ -1625,6 +1649,9 @@ class HashTable : public HashTableBase<K, V, S> {
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    * @param unique_key If all keys in the same batch are unique.
+   * @param locked_key_ptrs If it isn't nullptr then the keys in the table will
+   * be locked, and key's address will write to locked_key_ptrs. Using
+   * unlock_keys to unlock these keys.
    *
    */
   void find_or_insert(const size_type n, const key_type* keys,  // (n)
@@ -1632,7 +1659,8 @@ class HashTable : public HashTableBase<K, V, S> {
                       bool* founds,                             // (n)
                       score_type* scores = nullptr,             // (n)
                       cudaStream_t stream = 0, bool unique_key = true,
-                      bool ignore_evict_strategy = false) {
+                      bool ignore_evict_strategy = false,
+                      key_type** locked_key_ptrs = nullptr) {
     if (n == 0) {
       return;
     }
@@ -1649,6 +1677,23 @@ class HashTable : public HashTableBase<K, V, S> {
     insert_unique_lock lock(mutex_, stream);
 
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
+
+    if (locked_key_ptrs != nullptr) {
+      if (!unique_key || options_.max_bucket_size < MinBucketCapacityFilter) {
+        throw std::invalid_argument(
+            "unique_key should be true and max_bucket_size should be larger.");
+      }
+
+      constexpr uint32_t BLOCK_SIZE = 128U;
+      find_or_insert_ptr_kernel_lock_key<key_type, value_type, score_type,
+                                         BLOCK_SIZE, evict_strategy>
+          <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+              table_->buckets, table_->buckets_size, table_->buckets_num,
+              options_.max_bucket_size, options_.dim, keys, values, scores,
+              locked_key_ptrs, n, founds, global_epoch_);
+      CudaCheckError();
+      return;
+    }
 
     if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
       constexpr uint32_t BLOCK_SIZE = 128U;
@@ -1685,6 +1730,38 @@ class HashTable : public HashTableBase<K, V, S> {
 
     CudaCheckError();
   }
+
+  /**
+   * @brief Using pointers to address the keys in the hash table and set them
+   * to target keys.
+   * This function will unlock the keys in the table which are locked by
+   * the previous call to find_or_insert.
+   *
+   * @param n The number of keys in the table to be unlocked.
+   * @param locked_key_ptrs The pointers of locked keys in the table with shape
+   * (n).
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param flags The status that indicates if the unlock operation is succeed.
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   */
+  void unlock_keys(const size_type n, key_type** locked_key_ptrs,  // (n)
+                   const key_type* keys,                           // (n)
+                   bool* flags = nullptr,                          // (n)
+                   cudaStream_t stream = 0) {
+    if (n == 0) {
+      return;
+    }
+
+    insert_unique_lock lock(mutex_, stream);
+
+    constexpr uint32_t BLOCK_SIZE = 128U;
+    /// TODO: check the key belongs to the bucket.
+    unlock_keys_kernel<key_type>
+        <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+            n, locked_key_ptrs, keys, flags);
+  }
+
   /**
    * @brief Assign new key-value-score tuples into the hash table.
    * If the key doesn't exist, the operation on the key will be ignored.
