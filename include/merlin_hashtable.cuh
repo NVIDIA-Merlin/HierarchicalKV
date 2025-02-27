@@ -2757,6 +2757,73 @@ class HashTable : public HashTableBase<K, V, S> {
     CudaCheckError();
   }
 
+  /**
+   * @brief Exports a certain number of the key-value-score tuples which match
+   * @tparam PredFunctor
+   *
+   * @param pred A functor with template <K, V, S> defined an operator with
+   * signature:  __device__ (bool*)(const K&, const V*, const S&, const
+   * cg::tiled_partition<GroupSize>&).
+   * @param n The maximum number of exported pairs.
+   * @param offset The position of the key to remove.
+   * @param d_counter The number of elements dumped which is on device.
+   * @param keys The keys to dump from GPU-accessible memory with shape (n).
+   * @param values The values to dump from GPU-accessible memory with shape (n,
+   * DIM).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p scores is `nullptr`, the score for each key will not be returned.
+   * @endparblock
+   *
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   * @return void
+   *
+   * @throw CudaException If the key-value size is too large for GPU shared
+   * memory. Reducing the value for @p n is currently required if this exception
+   * occurs.
+   */
+
+  template <typename PredFunctor>
+  void export_batch_if_v2(PredFunctor& pred, size_type n,
+                          const size_type offset, size_type* d_counter,
+                          key_type* keys,                // (n)
+                          value_type* values,            // (n, DIM)
+                          score_type* scores = nullptr,  // (n)
+                          cudaStream_t stream = 0) const {
+    read_shared_lock lock(mutex_, stream);
+    CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+
+    if (offset >= table_->capacity) {
+      return;
+    }
+    n = std::min(table_->capacity - offset, n);
+    if (n == 0) {
+      return;
+    }
+
+    /// Search_length should be multiple of GroupSize for communication.
+    uint64_t dim = table_->dim;
+    auto kernel = [&] {
+      if (dim >= 32 && n % 32 == 0) {
+        return dump_kernel<key_type, value_type, score_type, PredFunctor, 32>;
+      } else if (dim >= 16 && n % 16 == 0) {
+        return dump_kernel<key_type, value_type, score_type, PredFunctor, 16>;
+      } else if (dim >= 8 && n % 8 == 0) {
+        return dump_kernel<key_type, value_type, score_type, PredFunctor, 8>;
+      }
+      return dump_kernel<key_type, value_type, score_type, PredFunctor, 1>;
+    }();
+    uint64_t block_size = 128UL;
+    uint64_t grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
+                                  SAFE_GET_GRID_SIZE(n, block_size));
+    kernel<<<grid_size, block_size, 0, stream>>>(
+        n, offset, pred, table_->buckets, table_->bucket_max_size, dim, keys,
+        values, scores, d_counter);
+
+    CudaCheckError();
+  }
+
  public:
   /**
    * @brief Indicates if the hash table has no elements.

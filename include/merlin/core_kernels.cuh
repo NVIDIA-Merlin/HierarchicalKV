@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include "allocator.cuh"
 #include "core_kernels/accum_or_assign.cuh"
 #include "core_kernels/contains.cuh"
@@ -923,7 +924,7 @@ __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
 
   PredFunctor<K, S> pred;
-  size_t tid = static_cast<size_t>(blockIdx.x * blockDim.x + threadIdx.x);
+  size_t tid = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
 
   for (size_t i = tid; i < search_length; i += gridDim.x * blockDim.x) {
     size_t bkt_idx = (i + offset) / bucket_max_size;
@@ -966,6 +967,77 @@ __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
         for (int j = g.thread_rank(); j < vec_dim; j += TILE_SIZE) {
           d_val_vec[(tile_offset + bias) * vec_dim + j] =
               vec[cur_idx * vec_dim + j];
+        }
+      }
+    }
+  }
+}
+
+template <typename K, typename V, typename S, typename PredFunctor,
+          uint32_t GroupSize = 32>
+__global__ void dump_kernel(const uint64_t search_length, const uint64_t offset,
+                            PredFunctor pred, Bucket<K, V, S>* buckets,
+                            const uint64_t bucket_capacity, const uint64_t dim,
+                            K* __restrict__ out_keys, V* __restrict__ out_vals,
+                            S* __restrict__ out_scores,
+                            uint64_t* dump_counter) {
+  cg::thread_block_tile<GroupSize> g =
+      cg::tiled_partition<GroupSize>(cg::this_thread_block());
+
+  uint64_t tid = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+
+  for (uint64_t i = tid; i < search_length; i += gridDim.x * blockDim.x) {
+    uint64_t bkt_idx = (i + offset) / bucket_capacity;
+    uint64_t key_idx = (i + offset) % bucket_capacity;
+
+    // May be different for threads within the same group.
+    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+
+    const K key = bucket->keys(key_idx)->load(cuda::std::memory_order_relaxed);
+    const S score =
+        bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+    const V* value = bucket->vectors + key_idx * dim;
+
+    bool match = pred.template operator()<GroupSize>(key, value, score, g);
+    uint32_t vote = g.ballot(match);
+    int group_cnt = __popc(vote);
+    uint64_t group_offset = 0;
+    if (g.thread_rank() == 0) {
+      group_offset = atomicAdd(dump_counter, static_cast<uint64_t>(group_cnt));
+    }
+    group_offset = g.shfl(group_offset, 0);
+    // Each thread gets the count of previous matches ranks.
+    // Using `g.thread_rank()` instead of `key_idx % GroupSize` to handle case:
+    // bucket_capacity < GroupSize.
+    int previous_cnt = group_cnt - __popc(vote >> g.thread_rank());
+    // Only matched threads need to output.
+    if (match) {
+      out_keys[group_offset + previous_cnt] = key;
+      if (out_scores) {
+        out_scores[group_offset + previous_cnt] = score;
+      }
+    }
+
+    for (int r = 0; r < GroupSize; r++) {
+      uint32_t biased_vote = vote >> r;
+      bool cur_match = biased_vote & 1;
+      if (cur_match) {
+        int bias = group_cnt - __popc(biased_vote);
+
+        /// TODO:timing them
+        //----------------------- Solution 1
+        // uint64_t cur_bkt_idx = g.shfl(bkt_idx, r);
+        // uint64_t cur_key_idx = g.shfl(key_idx, r);
+        // auto cur_bucket = buckets + cur_bkt_idx;
+        //----------------------- Solution 2
+        uint64_t cur_idx = (i / GroupSize) * GroupSize + r + offset;
+        uint64_t cur_bkt_idx = cur_idx / bucket_capacity;
+        uint64_t cur_key_idx = cur_idx % bucket_capacity;
+        Bucket<K, V, S>* cur_bucket = buckets + cur_bkt_idx;
+
+        for (int j = g.thread_rank(); j < dim; j += GroupSize) {
+          out_vals[(group_offset + bias) * dim + j] =
+              cur_bucket->vectors[cur_key_idx * dim + j];
         }
       }
     }
