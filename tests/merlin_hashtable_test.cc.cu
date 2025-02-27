@@ -46,6 +46,23 @@ struct EraseIfPredFunctor {
   }
 };
 
+template <class K, class V, class S>
+struct EraseIfPredFunctorV2 {
+  K pattern;
+  S threshold;
+  EraseIfPredFunctorV2(K pattern, S threshold)
+      : pattern(pattern), threshold(threshold) {}
+  template <int GroupSize>
+  __forceinline__ __device__ bool operator()(
+      const K& key, const V* value, const S& score,
+      cg::thread_block_tile<GroupSize>& g) {
+    /* evaluate key, score and value. */
+    return ((key & 0x7f > pattern) && (score > threshold));
+  }
+};
+
+enum class EraseIfVersion { V1, V2 };
+
 template <class K, class S>
 struct ExportIfPredFunctor {
   __forceinline__ __device__ bool operator()(const K& key, S& score,
@@ -878,6 +895,7 @@ void test_basic_when_full(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
+template <EraseIfVersion EV>
 void test_erase_if_pred(size_t max_hbm_for_vectors) {
   constexpr uint64_t INIT_CAPACITY = 256UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
@@ -947,8 +965,15 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
 
     K pattern = 100;
     S threshold = 0;
-    size_t erase_num = table->template erase_if<EraseIfPredFunctor>(
-        pattern, threshold, stream);
+    size_t erase_num = 0;
+    if (EV == EraseIfVersion::V1) {
+      erase_num = table->template erase_if<EraseIfPredFunctor>(
+          pattern, threshold, stream);
+    } else if (EV == EraseIfVersion::V2) {
+      EraseIfPredFunctorV2<K, V, S> pred(pattern, threshold);
+      erase_num = table->template erase_if_v2<EraseIfPredFunctorV2<K, V, S>>(
+          pred, stream);
+    }
     total_size = table->size(stream);
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ((erase_num + total_size), BUCKET_MAX_SIZE);
@@ -3756,8 +3781,10 @@ TEST(MerlinHashTableTest, test_basic_when_full) {
   test_basic_when_full(0);
 }
 TEST(MerlinHashTableTest, test_erase_if_pred) {
-  test_erase_if_pred(16);
-  test_erase_if_pred(0);
+  test_erase_if_pred<EraseIfVersion::V1>(16);
+  test_erase_if_pred<EraseIfVersion::V1>(0);
+  test_erase_if_pred<EraseIfVersion::V2>(16);
+  test_erase_if_pred<EraseIfVersion::V2>(0);
 }
 TEST(MerlinHashTableTest, test_rehash) {
   test_rehash(16);

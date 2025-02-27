@@ -775,6 +775,57 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
+template <typename K, typename V, typename S, typename PredFunctor,
+          uint32_t GroupSize = 32>
+__global__ void remove_kernel_v2(const uint64_t search_length,
+                                 const uint64_t offset, PredFunctor pred,
+                                 Bucket<K, V, S>* buckets,
+                                 int* __restrict buckets_size,
+                                 const uint64_t bucket_capacity,
+                                 const uint64_t dim, uint64_t* remove_counter) {
+  cg::thread_block_tile<GroupSize> g =
+      cg::tiled_partition<GroupSize>(cg::this_thread_block());
+
+  uint64_t tid = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+
+  for (uint64_t i = tid; i < search_length; i += gridDim.x * blockDim.x) {
+    uint64_t bkt_idx = (i + offset) / bucket_capacity;
+    uint64_t key_idx = (i + offset) % bucket_capacity;
+
+    // May be different for threads within the same group.
+    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+
+    const K key = bucket->keys(key_idx)->load(cuda::std::memory_order_relaxed);
+    const S score =
+        bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+    const V* value = bucket->vectors + key_idx * dim;
+
+    bool match = pred.template operator()<GroupSize>(key, value, score, g);
+    if (IS_RESERVED_KEY<K>(key)) {
+      match = false;
+    }
+    uint32_t vote = g.ballot(match);
+    int group_cnt = __popc(vote);
+    if (g.thread_rank() == 0) {
+      atomicAdd(remove_counter, static_cast<uint64_t>(group_cnt));
+      if (bucket_capacity >= GroupSize) {
+        atomicSub(&buckets_size[bkt_idx], group_cnt);
+      }
+    }
+    // Only matched threads need to erase.
+    if (match) {
+      bucket->digests(key_idx)[0] = empty_digest<K>();
+      bucket->keys(key_idx)->store(static_cast<K>(RECLAIM_KEY),
+                                   cuda::std::memory_order_relaxed);
+      bucket->scores(key_idx)->store(static_cast<S>(EMPTY_SCORE),
+                                     cuda::std::memory_order_relaxed);
+      if (bucket_capacity < GroupSize) {
+        atomicSub(&buckets_size[bkt_idx], 1);
+      }
+    }
+  }
+}
+
 /* Dump with score. */
 template <class K, class V, class S>
 inline std::tuple<size_t, size_t> dump_kernel_shared_memory_size(
