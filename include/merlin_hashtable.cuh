@@ -2544,6 +2544,61 @@ class HashTable : public HashTableBase<K, V, S> {
   }
 
   /**
+   * @brief Erase the key-value-score tuples which match @tparam PredFunctor.
+   * @param pred A functor with template <K, V, S> defined an operator with
+   * signature:  __device__ (bool*)(const K&, const V*, const S&, const
+   * cg::tiled_partition<GroupSize>&).
+   *  @param stream The CUDA stream that is used to execute the operation.
+   *
+   * @return The number of elements removed.
+   */
+
+  template <typename PredFunctor>
+  size_type erase_if_v2(PredFunctor& pred, cudaStream_t stream = 0) {
+    update_read_lock lock(mutex_, stream);
+
+    auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
+    auto d_count{dev_ws.get<size_type*>(0)};
+
+    CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
+
+    {
+      /// Search_length should be multiple of GroupSize for communication.
+      uint64_t dim = table_->dim;
+      uint64_t n = options_.max_capacity;
+      auto kernel = [&] {
+        if (dim >= 32 && n % 32 == 0) {
+          return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                  32>;
+        } else if (dim >= 16 && n % 16 == 0) {
+          return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                  16>;
+        } else if (dim >= 8 && n % 8 == 0) {
+          return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                  8>;
+        }
+        return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                1>;
+      }();
+      uint64_t block_size = 128UL;
+      uint64_t grid_size =
+          std::min(sm_cnt_ * max_threads_per_block_ / block_size,
+                   SAFE_GET_GRID_SIZE(n, block_size));
+      kernel<<<grid_size, block_size, 0, stream>>>(
+          n, 0, pred, table_->buckets, table_->buckets_size,
+          table_->bucket_max_size, table_->dim, d_count);
+    }
+
+    size_type count = 0;
+    CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+
+    CudaCheckError();
+    return count;
+  }
+
+  /**
    * @brief Removes all of the elements in the hash table with no release
    * object.
    */
