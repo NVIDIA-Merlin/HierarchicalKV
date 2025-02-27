@@ -1,3 +1,4 @@
+#include <cooperative_groups.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +13,8 @@
 #include "merlin_hashtable.cuh"
 #include "test_util.cuh"
 
+namespace cg = cooperative_groups;
+
 using K = uint64_t;
 using V = float;
 using S = uint64_t;
@@ -20,6 +23,7 @@ using u64 = uint64_t;
 using f32 = float;
 using EvictStrategy = nv::merlin::EvictStrategy;
 using TableOptions = nv::merlin::HashTableOptions;
+using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kCustomized>;
 
 template <class K, class S>
 struct ExportIfPredFunctor {
@@ -30,6 +34,24 @@ struct ExportIfPredFunctor {
   }
 };
 
+template <class K, class V, class S>
+struct ExportIfPredFunctorV2 {
+  K pattern;
+  S threshold;
+  ExportIfPredFunctorV2(K pattern, S threshold)
+      : pattern(pattern), threshold(threshold) {}
+  template <int GroupSize>
+  __forceinline__ __device__ bool operator()(
+      const K& key, const V* value, const S& score,
+      cg::thread_block_tile<GroupSize>& g) {
+    /* evaluate key, score and value. */
+    return score < threshold;
+  }
+};
+
+enum class ExportIfVersion { V1, V2 };
+
+template <ExportIfVersion EV>
 void test_export_batch_if_with_limited_size() {
   constexpr uint64_t CAP = 1llu << 24;
   size_t n0 = (1llu << 23) - 163;
@@ -48,8 +70,6 @@ void test_export_batch_if_with_limited_size() {
   options.max_capacity = CAP;
   options.dim = dim;
   options.max_hbm_for_vectors = nv::merlin::GB(100);
-  using Table =
-      nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kCustomized>;
 
   std::unique_ptr<Table> table = std::make_unique<Table>();
   table->init(options);
@@ -137,10 +157,18 @@ void test_export_batch_if_with_limited_size() {
   cudaEventCreate(&start);
   cudaEventCreate(&stop);
   cudaEventRecord(start);
-  table->export_batch_if<ExportIfPredFunctor>(
-      pattern, threshold, static_cast<size_t>(CAP), 0, d_cnt,
-      buffer_out.keys_ptr(!use_pin), buffer_out.values_ptr(!use_pin),
-      buffer_out.scores_ptr(!use_pin), stream);
+  if (EV == ExportIfVersion::V1) {
+    table->export_batch_if<ExportIfPredFunctor>(
+        pattern, threshold, static_cast<size_t>(CAP), 0, d_cnt,
+        buffer_out.keys_ptr(!use_pin), buffer_out.values_ptr(!use_pin),
+        buffer_out.scores_ptr(!use_pin), stream);
+  } else if (EV == ExportIfVersion::V2) {
+    ExportIfPredFunctorV2<K, V, S> pred(pattern, threshold);
+    table->export_batch_if_v2<ExportIfPredFunctorV2<K, V, S>>(
+        pred, static_cast<size_t>(CAP), 0, d_cnt, buffer_out.keys_ptr(!use_pin),
+        buffer_out.values_ptr(!use_pin), buffer_out.scores_ptr(!use_pin),
+        stream);
+  }
   cudaEventRecord(stop);
   CUDA_CHECK(cudaMemcpyAsync(&h_cnt2, d_cnt, sizeof(size_t),
                              cudaMemcpyDeviceToHost, stream));
@@ -183,6 +211,7 @@ void test_export_batch_if_with_limited_size() {
 }
 
 int main() {
-  test_export_batch_if_with_limited_size();
+  test_export_batch_if_with_limited_size<ExportIfVersion::V1>();
+  test_export_batch_if_with_limited_size<ExportIfVersion::V2>();
   return 0;
 }
