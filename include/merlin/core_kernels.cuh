@@ -1155,7 +1155,7 @@ __global__ void traverse_kernel(const uint64_t search_length,
     Bucket<K, V, S>* bucket = buckets + bkt_idx;
 
     const K key = bucket->keys(key_idx)->load(cuda::std::memory_order_relaxed);
-    S* score = bucket->scores(key_idx);
+    S* score = reinterpret_cast<S*>(bucket->scores(key_idx));
     V* value = bucket->vectors + key_idx * dim;
 
     f.template operator()<GroupSize>(key, value, score, g);
