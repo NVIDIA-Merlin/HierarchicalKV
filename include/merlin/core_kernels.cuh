@@ -1135,6 +1135,33 @@ __global__ void size_if_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
+template <typename K, typename V, typename S, typename ExecutionFunc,
+          uint32_t GroupSize = 32>
+__global__ void traverse_kernel(const uint64_t search_length,
+                                const uint64_t offset, ExecutionFunc f,
+                                Bucket<K, V, S>* buckets,
+                                const uint64_t bucket_capacity,
+                                const uint64_t dim) {
+  cg::thread_block_tile<GroupSize> g =
+      cg::tiled_partition<GroupSize>(cg::this_thread_block());
+
+  uint64_t tid = static_cast<uint64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+
+  for (uint64_t i = tid; i < search_length; i += gridDim.x * blockDim.x) {
+    uint64_t bkt_idx = (i + offset) / bucket_capacity;
+    uint64_t key_idx = (i + offset) % bucket_capacity;
+
+    // May be different for threads within the same group.
+    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+
+    const K key = bucket->keys(key_idx)->load(cuda::std::memory_order_relaxed);
+    S* score = bucket->scores(key_idx);
+    V* value = bucket->vectors + key_idx * dim;
+
+    f.template operator()<GroupSize>(key, value, score, g);
+  }
+}
+
 template <typename K>
 __global__ void unlock_keys_kernel(uint64_t n, K** __restrict__ locked_key_ptrs,
                                    const K* __restrict__ keys,
