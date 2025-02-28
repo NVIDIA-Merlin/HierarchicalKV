@@ -15,9 +15,6 @@
 
 namespace cg = cooperative_groups;
 
-using K = uint64_t;
-using V = float;
-using S = uint64_t;
 using i64 = int64_t;
 using u64 = uint64_t;
 using f32 = float;
@@ -49,7 +46,84 @@ struct ExportIfPredFunctorV2 {
   }
 };
 
-enum class ExportIfVersion { V1, V2 };
+template <class K, class V, class S>
+struct ExportIfPredFunctorV3 {
+  K pattern;
+  S threshold;
+  int dim;
+  ExportIfPredFunctorV3(K pattern, S threshold)
+      : pattern(pattern), threshold(threshold) {}
+  template <int GroupSize>
+  __forceinline__ __device__ bool operator()(
+      const K& key, const V* value, const S& score,
+      cg::thread_block_tile<GroupSize>& g) {
+    /* evaluate key, score and value. */
+    bool pred = score < threshold;
+
+    for (int i = 0; i < g.size(); i++) {
+      auto cur_value = g.shfl(value, i);
+      auto cur_key = g.shfl(key, i);
+      bool cur_pred = g.shfl(pred, i);
+      if (cur_pred == false) continue;
+      unsigned int vote = 0;
+      /* evaluate one value cooperatively in one loop. */
+      for (int j = g.thread_rank(); j < dim; j += g.size()) {
+        if (cur_value[j] != cur_key) cur_pred = false;
+        vote = g.ballot(cur_pred == false);
+        if (vote != 0) break;
+      }
+      if (g.thread_rank() == i && vote != 0) pred = false;
+    }
+    return pred;
+  }
+};
+
+// Using for_each API to simulate export_batch_if_v2 API.
+template <class K, class V, class S>
+struct ForEachExecutionFuncV4 {
+  K pattern;
+  S threshold;
+  int dim;
+  uint64_t* d_counter;
+  K* out_keys;
+  V* out_vals;
+  S* out_scores;
+  ForEachExecutionFuncV4(K pattern, S threshold)
+      : pattern(pattern), threshold(threshold) {}
+  template <int GroupSize>
+  __forceinline__ __device__ void operator()(
+      const K& key, V* value, S* score, cg::thread_block_tile<GroupSize>& g) {
+    S score_val = *score;
+    bool match = score_val < threshold;
+    uint32_t vote = g.ballot(match);
+    int group_cnt = __popc(vote);
+    uint64_t group_offset = 0;
+    if (g.thread_rank() == 0) {
+      group_offset = atomicAdd(d_counter, static_cast<uint64_t>(group_cnt));
+    }
+    group_offset = g.shfl(group_offset, 0);
+    int previous_cnt = group_cnt - __popc(vote >> g.thread_rank());
+    if (match) {
+      out_keys[group_offset + previous_cnt] = key;
+      if (out_scores) {
+        out_scores[group_offset + previous_cnt] = score_val;
+      }
+    }
+    for (int r = 0; r < GroupSize; r++) {
+      uint32_t biased_vote = vote >> r;
+      bool cur_match = biased_vote & 1;
+      if (cur_match) {
+        int bias = group_cnt - __popc(biased_vote);
+        V* cur_vals = g.shfl(value, r);
+        for (int j = g.thread_rank(); j < dim; j += GroupSize) {
+          out_vals[(group_offset + bias) * dim + j] = cur_vals[j];
+        }
+      }
+    }
+  }
+};
+
+enum class ExportIfVersion { V1, V2, V3, V4 };
 
 template <ExportIfVersion EV>
 void test_export_batch_if_with_limited_size() {
@@ -163,11 +237,27 @@ void test_export_batch_if_with_limited_size() {
         buffer_out.keys_ptr(!use_pin), buffer_out.values_ptr(!use_pin),
         buffer_out.scores_ptr(!use_pin), stream);
   } else if (EV == ExportIfVersion::V2) {
-    ExportIfPredFunctorV2<K, V, S> pred(pattern, threshold);
-    table->export_batch_if_v2<ExportIfPredFunctorV2<K, V, S>>(
+    ExportIfPredFunctorV2<i64, f32, u64> pred(pattern, threshold);
+    table->export_batch_if_v2<ExportIfPredFunctorV2<i64, f32, u64>>(
         pred, static_cast<size_t>(CAP), 0, d_cnt, buffer_out.keys_ptr(!use_pin),
         buffer_out.values_ptr(!use_pin), buffer_out.scores_ptr(!use_pin),
         stream);
+  } else if (EV == ExportIfVersion::V3) {
+    ExportIfPredFunctorV3<i64, f32, u64> pred(pattern, threshold);
+    pred.dim = dim;
+    table->export_batch_if_v2<ExportIfPredFunctorV3<i64, f32, u64>>(
+        pred, static_cast<size_t>(CAP), 0, d_cnt, buffer_out.keys_ptr(!use_pin),
+        buffer_out.values_ptr(!use_pin), buffer_out.scores_ptr(!use_pin),
+        stream);
+  } else if (EV == ExportIfVersion::V4) {
+    ForEachExecutionFuncV4<i64, f32, u64> f(pattern, threshold);
+    f.dim = dim;
+    f.d_counter = d_cnt;
+    f.out_keys = buffer_out.keys_ptr(!use_pin);
+    f.out_vals = buffer_out.values_ptr(!use_pin);
+    f.out_scores = buffer_out.scores_ptr(!use_pin);
+    table->for_each<ForEachExecutionFuncV4<i64, f32, u64>>(
+        0, static_cast<size_t>(CAP), f, stream);
   }
   cudaEventRecord(stop);
   CUDA_CHECK(cudaMemcpyAsync(&h_cnt2, d_cnt, sizeof(size_t),
@@ -213,5 +303,7 @@ void test_export_batch_if_with_limited_size() {
 int main() {
   test_export_batch_if_with_limited_size<ExportIfVersion::V1>();
   test_export_batch_if_with_limited_size<ExportIfVersion::V2>();
+  test_export_batch_if_with_limited_size<ExportIfVersion::V3>();
+  test_export_batch_if_with_limited_size<ExportIfVersion::V4>();
   return 0;
 }
