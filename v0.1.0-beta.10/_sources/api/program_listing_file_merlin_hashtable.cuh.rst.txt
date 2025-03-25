@@ -1585,6 +1585,50 @@ Program Listing for File merlin_hashtable.cuh
        return count;
      }
    
+     template <typename PredFunctor>
+     size_type erase_if_v2(PredFunctor& pred, cudaStream_t stream = 0) {
+       update_read_lock lock(mutex_, stream);
+   
+       auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
+       auto d_count{dev_ws.get<size_type*>(0)};
+   
+       CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
+   
+       {
+         uint64_t dim = table_->dim;
+         uint64_t n = options_.max_capacity;
+         auto kernel = [&] {
+           if (dim >= 32 && n % 32 == 0) {
+             return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                     32>;
+           } else if (dim >= 16 && n % 16 == 0) {
+             return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                     16>;
+           } else if (dim >= 8 && n % 8 == 0) {
+             return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                     8>;
+           }
+           return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+                                   1>;
+         }();
+         uint64_t block_size = 128UL;
+         uint64_t grid_size =
+             std::min(sm_cnt_ * max_threads_per_block_ / block_size,
+                      SAFE_GET_GRID_SIZE(n, block_size));
+         kernel<<<grid_size, block_size, 0, stream>>>(
+             n, 0, pred, table_->buckets, table_->buckets_size,
+             table_->bucket_max_size, table_->dim, d_count);
+       }
+   
+       size_type count = 0;
+       CUDA_CHECK(cudaMemcpyAsync(&count, d_count, sizeof(size_type),
+                                  cudaMemcpyDeviceToHost, stream));
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+   
+       CudaCheckError();
+       return count;
+     }
+   
      void clear(cudaStream_t stream = 0) {
        update_read_lock lock(mutex_, stream);
    
@@ -1724,6 +1768,79 @@ Program Listing for File merlin_hashtable.cuh
        kernel<<<grid_size, block_size, shared_size, stream>>>(
            d_table_, table_->buckets, pattern, threshold, keys, values, scores,
            offset, n, d_counter);
+   
+       CudaCheckError();
+     }
+   
+     template <typename PredFunctor>
+     void export_batch_if_v2(PredFunctor& pred, size_type n,
+                             const size_type offset, size_type* d_counter,
+                             key_type* keys,                // (n)
+                             value_type* values,            // (n, DIM)
+                             score_type* scores = nullptr,  // (n)
+                             cudaStream_t stream = 0) const {
+       read_shared_lock lock(mutex_, stream);
+       CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
+   
+       if (offset >= table_->capacity) {
+         return;
+       }
+       n = std::min(table_->capacity - offset, n);
+       if (n == 0) {
+         return;
+       }
+   
+       uint64_t dim = table_->dim;
+       auto kernel = [&] {
+         if (dim >= 32 && n % 32 == 0) {
+           return dump_kernel<key_type, value_type, score_type, PredFunctor, 32>;
+         } else if (dim >= 16 && n % 16 == 0) {
+           return dump_kernel<key_type, value_type, score_type, PredFunctor, 16>;
+         } else if (dim >= 8 && n % 8 == 0) {
+           return dump_kernel<key_type, value_type, score_type, PredFunctor, 8>;
+         }
+         return dump_kernel<key_type, value_type, score_type, PredFunctor, 1>;
+       }();
+       uint64_t block_size = 128UL;
+       uint64_t grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
+                                     SAFE_GET_GRID_SIZE(n, block_size));
+       kernel<<<grid_size, block_size, 0, stream>>>(
+           n, offset, pred, table_->buckets, table_->bucket_max_size, dim, keys,
+           values, scores, d_counter);
+   
+       CudaCheckError();
+     }
+   
+     template <typename ExecutionFunc>
+     void for_each(const size_type first, const size_type last, ExecutionFunc& f,
+                   cudaStream_t stream = 0) {
+       update_read_lock lock(mutex_, stream);
+   
+       if (first >= table_->capacity or last > table_->capacity or first >= last) {
+         return;
+       }
+       uint64_t n = last - first;
+   
+       uint64_t dim = table_->dim;
+       auto kernel = [&] {
+         if (dim >= 32 && n % 32 == 0) {
+           return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+                                  32>;
+         } else if (dim >= 16 && n % 16 == 0) {
+           return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+                                  16>;
+         } else if (dim >= 8 && n % 8 == 0) {
+           return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+                                  8>;
+         }
+         return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+                                1>;
+       }();
+       uint64_t block_size = 128UL;
+       uint64_t grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
+                                     SAFE_GET_GRID_SIZE(n, block_size));
+       kernel<<<grid_size, block_size, 0, stream>>>(n, first, f, table_->buckets,
+                                                    table_->bucket_max_size, dim);
    
        CudaCheckError();
      }

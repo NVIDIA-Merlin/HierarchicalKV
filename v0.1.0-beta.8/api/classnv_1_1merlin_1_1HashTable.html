@@ -535,6 +535,26 @@
 </dd></dl>
 
 <dl class="cpp function">
+<dt id="_CPPv4I0EN2nv6merlin9HashTable11erase_if_v2E9size_typeR11PredFunctor12cudaStream_t">
+<span id="_CPPv3I0EN2nv6merlin9HashTable11erase_if_v2ER11PredFunctor12cudaStream_t"></span><span id="_CPPv2I0EN2nv6merlin9HashTable11erase_if_v2ER11PredFunctor12cudaStream_t"></span><span class="pre">template&lt;</span><span class="pre">typename</span> <code class="sig-name descname"><span class="pre">PredFunctor</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1HashTable_1a5c1233fcc70d4ff143427dd697a6985b"></span><em class="property"><span class="pre">inline</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">erase_if_v2</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0EN2nv6merlin9HashTable11erase_if_v2E9size_typeR11PredFunctor12cudaStream_t" title="nv::merlin::HashTable::erase_if_v2::PredFunctor"><span class="pre">PredFunctor</span></a> <span class="pre">&amp;</span><em><span class="pre">pred</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN2nv6merlin9HashTable11erase_if_v2E9size_typeR11PredFunctor12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Erase the key-value-score tuples which match. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters</dt>
+<dd class="field-odd"><p><strong>PredFunctor.</strong> – </p>
+</dd>
+<dt class="field-even">Parameters</dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>pred</strong> – A functor with template &lt;K, V, S&gt; defined an operator with signature: <strong>device</strong> (bool*)(const K&amp;, const V*, const S&amp;, const cg::thread_block_tile&lt;GroupSize&gt;&amp;). </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>The number of elements removed. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
 <dt id="_CPPv4N2nv6merlin9HashTable5clearE12cudaStream_t">
 <span id="_CPPv3N2nv6merlin9HashTable5clearE12cudaStream_t"></span><span id="_CPPv2N2nv6merlin9HashTable5clearE12cudaStream_t"></span><span id="nv::merlin::HashTable::clear__cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTable_1a6774bb08e89c03239b0e227d21b75a16"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">clear</span></code><span class="sig-paren">(</span><span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin9HashTable5clearE12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
 <dd><p>Removes all of the elements in the hash table with no release object. </p>
@@ -596,7 +616,7 @@
 <li><p><strong>n</strong> – The maximum number of exported pairs. The value for <code class="docutils literal notranslate"><span class="pre">pred</span></code> should be a function with type <code class="docutils literal notranslate"><span class="pre">Pred</span></code> defined like the following example:</p></li>
 <li><p><strong>pattern</strong> – The third user-defined argument to <code class="docutils literal notranslate"><span class="pre">pred</span></code> with key_type type. </p></li>
 <li><p><strong>threshold</strong> – The fourth user-defined argument to <code class="docutils literal notranslate"><span class="pre">pred</span></code> with score_type type. </p></li>
-<li><p><strong>offset</strong> – The position of the key to remove. </p></li>
+<li><p><strong>offset</strong> – The position of the key to search. </p></li>
 <li><p><strong>keys</strong> – The keys to dump from GPU-accessible memory with shape (n). </p></li>
 <li><p><strong>values</strong> – The values to dump from GPU-accessible memory with shape (n, DIM). </p></li>
 <li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
@@ -609,6 +629,55 @@
 </dd>
 <dt class="field-even">Returns</dt>
 <dd class="field-even"><p>The number of elements dumped.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4I0ENK2nv6merlin9HashTable18export_batch_if_v2EvR11PredFunctor9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t">
+<span id="_CPPv3I0ENK2nv6merlin9HashTable18export_batch_if_v2ER11PredFunctor9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t"></span><span id="_CPPv2I0ENK2nv6merlin9HashTable18export_batch_if_v2ER11PredFunctor9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t"></span><span class="pre">template&lt;</span><span class="pre">typename</span> <code class="sig-name descname"><span class="pre">PredFunctor</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1HashTable_1a6bbacaede29f2d8a55062d07e1ee218a"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">export_batch_if_v2</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4I0ENK2nv6merlin9HashTable18export_batch_if_v2EvR11PredFunctor9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t" title="nv::merlin::HashTable::export_batch_if_v2::PredFunctor"><span class="pre">PredFunctor</span></a> <span class="pre">&amp;</span><em><span class="pre">pred</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">offset</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <span class="pre">*</span><em><span class="pre">d_counter</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable8key_typeE" title="nv::merlin::HashTable::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable10value_typeE" title="nv::merlin::HashTable::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable10score_typeE" title="nv::merlin::HashTable::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em><a class="headerlink" href="#_CPPv4I0ENK2nv6merlin9HashTable18export_batch_if_v2EvR11PredFunctor9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Exports a certain number of key-value-score tuples that match a given predicate. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters</dt>
+<dd class="field-odd"><p><strong>PredFunctor</strong> – A functor type with a template signature <code class="docutils literal notranslate"><span class="pre">&lt;K,</span> <span class="pre">V,</span> <span class="pre">S&gt;</span></code>. It should define an operator with the signature: <code class="docutils literal notranslate"><span class="pre">__device__</span> <span class="pre">bool</span> <span class="pre">operator()(const</span> <span class="pre">K&amp;,</span> <span class="pre">const</span> <span class="pre">V*,</span> <span class="pre">const</span> <span class="pre">S&amp;,</span> <span class="pre">cg::thread_block_tile&lt;GroupSize&gt;&amp;)</span></code>.</p>
+</dd>
+<dt class="field-even">Parameters</dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>pred</strong> – A functor of type <code class="docutils literal notranslate"><span class="pre">PredFunctor</span></code> that defines the predicate for filtering tuples. </p></li>
+<li><p><strong>n</strong> – The maximum number of exported pairs. </p></li>
+<li><p><strong>offset</strong> – The position of the key to search. </p></li>
+<li><p><strong>d_counter</strong> – The number of elements dumped which is on device. </p></li>
+<li><p><strong>keys</strong> – The keys to dump from GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to dump from GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>void </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4I0EN2nv6merlin9HashTable8for_eachEvK9size_typeK9size_typeR13ExecutionFunc12cudaStream_t">
+<span id="_CPPv3I0EN2nv6merlin9HashTable8for_eachEK9size_typeK9size_typeR13ExecutionFunc12cudaStream_t"></span><span id="_CPPv2I0EN2nv6merlin9HashTable8for_eachEK9size_typeK9size_typeR13ExecutionFunc12cudaStream_t"></span><span class="pre">template&lt;</span><span class="pre">typename</span> <code class="sig-name descname"><span class="pre">ExecutionFunc</span></code><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1HashTable_1a6257f32f176988ab5cbc94485934283a"></span><em class="property"><span class="pre">inline</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">for_each</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">first</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin9HashTable9size_typeE" title="nv::merlin::HashTable::size_type"><span class="pre">size_type</span></a> <em><span class="pre">last</span></em>, <a class="reference internal" href="#_CPPv4I0EN2nv6merlin9HashTable8for_eachEvK9size_typeK9size_typeR13ExecutionFunc12cudaStream_t" title="nv::merlin::HashTable::for_each::ExecutionFunc"><span class="pre">ExecutionFunc</span></a> <span class="pre">&amp;</span><em><span class="pre">f</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4I0EN2nv6merlin9HashTable8for_eachEvK9size_typeK9size_typeR13ExecutionFunc12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Applies the given function to items in the range [first, last) in the table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Template Parameters</dt>
+<dd class="field-odd"><p><strong>ExecutionFunc</strong> – A functor type with a template signature <code class="docutils literal notranslate"><span class="pre">&lt;K,</span> <span class="pre">V,</span> <span class="pre">S&gt;</span></code>. It should define an operator with the signature: <code class="docutils literal notranslate"><span class="pre">__device__</span> <span class="pre">void</span> <span class="pre">operator()(const</span> <span class="pre">K&amp;,</span> <span class="pre">V*,</span> <span class="pre">S*,</span> <span class="pre">cg::thread_block_tile&lt;GroupSize&gt;&amp;)</span></code>.</p>
+</dd>
+<dt class="field-even">Parameters</dt>
+<dd class="field-even"><ul class="simple">
+<li><p><strong>first</strong> – The first element to which the function object will be applied. </p></li>
+<li><p><strong>last</strong> – The last element(excluding) to which the function object will be applied. </p></li>
+<li><p><strong>f</strong> – A functor of type <code class="docutils literal notranslate"><span class="pre">ExecutionFunc</span></code> that defines the predicate for filtering tuples. signature: <strong>device</strong> (bool*)(const K&amp;, const V*, const S&amp;, const cg::tiled_partition&lt;GroupSize&gt;&amp;). </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>void </p>
 </dd>
 </dl>
 </dd></dl>
