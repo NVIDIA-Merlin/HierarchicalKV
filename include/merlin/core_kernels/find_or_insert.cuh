@@ -112,8 +112,9 @@ __global__ void tlp_v1_find_or_insert_kernel_with_io(
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
         key_pos = possible_pos;
-        S* src = BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
-        score = *src;
+        ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
+                                         kv_idx, score, bucket_capacity,
+                                         get_digest<K>(key), false);
         break;
       } else if (bucket_size == bucket_capacity) {
         continue;
@@ -225,7 +226,6 @@ __global__ void tlp_v1_find_or_insert_kernel_with_io(
 
   if (occupy_result != OccupyResult::REFUSED) {
     if (occupy_result == OccupyResult::DUPLICATE) {
-      if (scores) *(scores + kv_idx) = score;
       CopyValue::ldg_stg(0, param_value_ptr, bucket_value_ptr, dim);
     } else {
       CopyValue::ldg_stg(0, bucket_value_ptr, param_value_ptr, dim);
@@ -331,8 +331,9 @@ __global__ void tlp_v2_find_or_insert_kernel_with_io(
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
         key_pos = possible_pos;
-        S* src = BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
-        score = *src;
+        ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
+                                         kv_idx, score, bucket_capacity,
+                                         get_digest<K>(key), false);
         break;
       } else if (bucket_size == bucket_capacity) {
         continue;
@@ -506,9 +507,6 @@ __global__ void tlp_v2_find_or_insert_kernel_with_io(
         VecV* dst = values + kv_idx_cur * dim;
         __pipeline_wait_prior(1);
         CopyValue::lds_stg(rank, dst, src, dim);
-        if (rank == i && scores) {
-          *(scores + kv_idx) = score;
-        }
       } else {
         VecV* dst = g.shfl(bucket_value_ptr, i);
         __pipeline_wait_prior(1);
@@ -717,8 +715,11 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
           occupy_result = OccupyResult::DUPLICATE;
           key_pos = possible_pos;
           S* sm_param_scores = SMM::param_scores(smem);
-          S* src = BUCKET::scores(bucket_keys_ptr, BUCKET_SIZE, key_pos);
-          __pipeline_memcpy_async(sm_param_scores + tx, src, sizeof(S));
+          S score = ScoreFunctor::desired_when_missed(sm_param_scores, tx,
+                                                      global_epoch);
+          ScoreFunctor::update_with_digest(
+              bucket_keys_ptr, key_pos, sm_param_scores, tx, score, BUCKET_SIZE,
+              get_digest<K>(key), false);
         }
       } else if (bucket_size_cur < BUCKET_SIZE) {
         VecD_Comp empty_digests_ = empty_digests<K>();
@@ -878,10 +879,6 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
           occupy_result_cur != OccupyResult::REFUSED) {
         VecV* src = SMM::values_buffer(smem, groupID, same_buf(i), dim);
         if (occupy_result_cur == OccupyResult::DUPLICATE) {
-          if (rank == i - 2 && scores) {
-            S* sm_param_scores = SMM::param_scores(smem);
-            *(scores + kv_idx) = sm_param_scores[tx];
-          }
           uint32_t kv_idx_cur = g.shfl(kv_idx, i - 2);
           VecV* dst = values + kv_idx_cur * dim;
           __pipeline_wait_prior(3);
@@ -1006,9 +1003,6 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
       occupy_result_cur != OccupyResult::REFUSED) {
     VecV* src = SMM::values_buffer(smem, groupID, same_buf(GROUP_SIZE), dim);
     if (occupy_result_cur == OccupyResult::DUPLICATE) {
-      if (rank == GROUP_SIZE - 2 && scores) {
-        *(scores + kv_idx) = sm_param_scores[tx];
-      }
       uint32_t kv_idx_cur = g.shfl(kv_idx, GROUP_SIZE - 2);
       VecV* dst = values + kv_idx_cur * dim;
       __pipeline_wait_prior(1);
@@ -1035,9 +1029,6 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
     VecV* src =
         SMM::values_buffer(smem, groupID, same_buf(GROUP_SIZE + 1), dim);
     if (occupy_result_cur == OccupyResult::DUPLICATE) {
-      if (rank == GROUP_SIZE - 1 && scores) {
-        *(scores + kv_idx) = sm_param_scores[tx];
-      }
       uint32_t kv_idx_cur = g.shfl(kv_idx, GROUP_SIZE - 1);
       VecV* dst = values + kv_idx_cur * dim;
       __pipeline_wait_prior(0);
@@ -1371,18 +1362,14 @@ __global__ void find_or_insert_kernel_with_io(
     if (occupy_result == OccupyResult::DUPLICATE) {
       copy_vector<V, TILE_SIZE>(g, bucket->vectors + key_pos * dim,
                                 find_or_insert_value, dim);
-      if (scores != nullptr && g.thread_rank() == src_lane) {
-        *(scores + key_idx) =
-            bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
-      }
     } else {
       copy_vector<V, TILE_SIZE>(g, find_or_insert_value,
                                 bucket->vectors + key_pos * dim, dim);
-      if (g.thread_rank() == src_lane) {
-        ScoreFunctor::update(bucket, key_pos, scores, key_idx,
-                             find_or_insert_score,
-                             (occupy_result != OccupyResult::DUPLICATE));
-      }
+    }
+    if (g.thread_rank() == src_lane) {
+      ScoreFunctor::update(bucket, key_pos, scores, key_idx,
+                           find_or_insert_score,
+                           (occupy_result != OccupyResult::DUPLICATE));
     }
 
     if (g.thread_rank() == src_lane) {
@@ -1523,8 +1510,9 @@ __global__ void find_or_insert_kernel_lock_key_hybrid(
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
         key_pos = possible_pos;
-        S* src = BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
-        score = *src;
+        ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
+                                         kv_idx, score, bucket_capacity,
+                                         get_digest<K>(key), false);
         break;
       } else if (bucket_size == bucket_capacity) {
         continue;
@@ -1644,12 +1632,7 @@ __global__ void find_or_insert_kernel_lock_key_hybrid(
       key_ptrs[kv_idx] = nullptr;
     } else {
       value_ptrs[kv_idx] = bucket_values_ptr + key_pos * dim;
-      if (occupy_result == OccupyResult::DUPLICATE) {
-        founds[kv_idx] = true;
-        if (scores) scores[kv_idx] = score;
-      } else {
-        founds[kv_idx] = false;
-      }
+      founds[kv_idx] = occupy_result == OccupyResult::DUPLICATE;
       auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
       key_ptrs[kv_idx] = reinterpret_cast<K*>(key_address);
     }
@@ -1758,28 +1741,16 @@ __global__ void find_or_insert_kernel(
       atomicAdd(&(buckets_size[bkt_idx]), 1);
     }
 
-    if (occupy_result == OccupyResult::DUPLICATE) {
-      if (g.thread_rank() == src_lane) {
-        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-
+    if (g.thread_rank() == src_lane) {
+      *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
+      ScoreFunctor::update(bucket, key_pos, scores, key_idx,
+                           find_or_insert_score,
+                           occupy_result != OccupyResult::DUPLICATE);
+      if (occupy_result == OccupyResult::DUPLICATE) {
         if (found != nullptr) {
           *(found + key_idx) = true;
         }
-
-        if (scores != nullptr) {
-          *(scores + key_idx) =
-              bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
-        }
       }
-    } else {
-      if (g.thread_rank() == src_lane) {
-        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-        ScoreFunctor::update(bucket, key_pos, scores, key_idx,
-                             find_or_insert_score, true);
-      }
-    }
-
-    if (g.thread_rank() == src_lane) {
       bucket->digests(key_pos)[0] = get_digest<K>(find_or_insert_key);
       (bucket->keys(key_pos))
           ->store(find_or_insert_key, ScoreFunctor::UNLOCK_MEM_ORDER);

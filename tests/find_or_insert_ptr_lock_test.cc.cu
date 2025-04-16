@@ -1553,7 +1553,8 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors,
             h_keys_test.end() !=
             std::find(h_keys_test.begin(), h_keys_test.end(), h_keys_temp[i]);
         if (in_base && in_test) {
-          ASSERT_EQ(h_scores_temp[i], (h_keys_temp[i] % freq_range) * 2);
+          ASSERT_EQ(h_scores_temp[i], (h_keys_temp[i] % freq_range) *
+                                          3);  // update score when found.
         } else {
           ASSERT_EQ(h_scores_temp[i], (h_keys_temp[i] % freq_range));
         }
@@ -2028,7 +2029,8 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
             ASSERT_EQ(h_scores_temp[i], expected_score);
           } else {
             S expected_score = test_util::make_expected_score_for_epochlfu<S>(
-                global_epoch, (h_keys_temp[i] % freq_range) * 2);
+                global_epoch,
+                (h_keys_temp[i] % freq_range) * 3);  // update score when found.
             ASSERT_EQ(h_scores_temp[i], expected_score);
           }
         } else {

@@ -1636,7 +1636,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors,
             h_keys_test.end() !=
             std::find(h_keys_test.begin(), h_keys_test.end(), h_keys_temp[i]);
         if (in_base && in_test) {
-          ASSERT_EQ(h_scores_temp[i], (h_keys_temp[i] % freq_range) * 2);
+          ASSERT_EQ(h_scores_temp[i], (h_keys_temp[i] % freq_range) * 3);
         } else {
           ASSERT_EQ(h_scores_temp[i], (h_keys_temp[i] % freq_range));
         }
@@ -2027,7 +2027,8 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
             ASSERT_EQ(h_scores_temp[i], expected_score);
           } else {
             S expected_score = test_util::make_expected_score_for_epochlfu<S>(
-                global_epoch, (h_keys_temp[i] % freq_range) * 2);
+                global_epoch,
+                (h_keys_temp[i] % freq_range) * 3);  // update score when found.
             ASSERT_EQ(h_scores_temp[i], expected_score);
           }
         } else {
@@ -3305,7 +3306,6 @@ void test_value_type_hbm_mode() {
   uint64_t table_size_before = 0;
   uint64_t table_size_after = 0;
   uint64_t found_num = 0;
-  uint64_t score_diff_cnt = 0;
   uint64_t value_diff_cnt = 0;
   uint64_t table_size_verify = 0;
 
@@ -3353,11 +3353,10 @@ void test_value_type_hbm_mode() {
                           KEY_NUM * sizeof(V) * options.dim,
                           cudaMemcpyDeviceToHost));
     found_num = 0;
-    score_diff_cnt = 0;
     value_diff_cnt = 0;
     for (int i = 0; i < KEY_NUM; i++) {
-      if (h_scores[i] != 0) ++found_num;
-      if (h_scores[i] != h_keys[i]) ++score_diff_cnt;
+      if (h_vectors[i * options.dim] == static_cast<V>(h_keys[i] * 0.1))
+        ++found_num;
       for (int j = 0; j < options.dim; j++) {
         if (h_vectors[i * options.dim + j] != static_cast<V>(h_keys[i] * 0.1)) {
           ++value_diff_cnt;
@@ -3366,11 +3365,9 @@ void test_value_type_hbm_mode() {
       }
     }
     ASSERT_EQ(found_num, KEY_NUM);
-    ASSERT_EQ(score_diff_cnt, 0);
     ASSERT_EQ(value_diff_cnt, 0);
     std::cout << "Check find_or_insert behavior got "
               << " key_miss_cnt: " << KEY_NUM - found_num
-              << " score_diff_cnt: " << score_diff_cnt
               << " value_diff_cnt: " << value_diff_cnt
               << " while table_size_before: " << table_size_before
               << ", while table_size_after: " << table_size_after
@@ -3410,11 +3407,10 @@ void test_value_type_hbm_mode() {
                           KEY_NUM * sizeof(V) * options.dim,
                           cudaMemcpyDeviceToHost));
     found_num = 0;
-    score_diff_cnt = 0;
     value_diff_cnt = 0;
     for (int i = 0; i < KEY_NUM; i++) {
-      if (h_scores[i] != 0) ++found_num;
-      if (h_scores[i] != h_keys[i]) ++score_diff_cnt;
+      if (h_vectors[i * options.dim] == static_cast<V>(h_keys[i] * 0.2))
+        ++found_num;
       for (int j = 0; j < options.dim; j++) {
         if (h_vectors[i * options.dim + j] != static_cast<V>(h_keys[i] * 0.2)) {
           ++value_diff_cnt;
@@ -3423,11 +3419,9 @@ void test_value_type_hbm_mode() {
       }
     }
     ASSERT_EQ(found_num, KEY_NUM);
-    ASSERT_EQ(score_diff_cnt, 0);
     ASSERT_EQ(value_diff_cnt, 0);
     std::cout << "Check  assign        behavior got "
               << " key_miss_cnt: " << KEY_NUM - found_num
-              << " score_diff_cnt: " << score_diff_cnt
               << " value_diff_cnt: " << value_diff_cnt
               << " while table_size_before: " << table_size_before
               << ", while table_size_after: " << table_size_after
