@@ -113,8 +113,9 @@ __global__ void find_or_insert_ptr_kernel_lock_key(
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
         key_pos = possible_pos;
-        S* src = BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
-        score = *src;
+        ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
+                                         kv_idx, score, bucket_capacity,
+                                         get_digest<K>(key), false);
         break;
       } else if (bucket_size == bucket_capacity) {
         continue;
@@ -235,12 +236,7 @@ __global__ void find_or_insert_ptr_kernel_lock_key(
       key_ptrs[kv_idx] = nullptr;
     } else {
       value_ptrs[kv_idx] = bucket_values_ptr + key_pos * dim;
-      if (occupy_result == OccupyResult::DUPLICATE) {
-        founds[kv_idx] = true;
-        if (scores) scores[kv_idx] = score;
-      } else {
-        founds[kv_idx] = false;
-      }
+      founds[kv_idx] = occupy_result == OccupyResult::DUPLICATE;
       auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
       key_ptrs[kv_idx] = reinterpret_cast<K*>(key_address);
     }
@@ -324,25 +320,12 @@ __global__ void find_ptr_or_insert_kernel(
       atomicAdd(&(buckets_size[bkt_idx]), 1);
     }
 
-    if (occupy_result == OccupyResult::DUPLICATE) {
-      if (g.thread_rank() == src_lane) {
-        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-        *(found + key_idx) = true;
-        if (scores != nullptr) {
-          *(scores + key_idx) =
-              bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
-        }
-      }
-    } else {
-      if (g.thread_rank() == src_lane) {
-        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
-        *(found + key_idx) = false;
-        ScoreFunctor::update(bucket, key_pos, scores, key_idx,
-                             find_or_insert_score, true);
-      }
-    }
-
     if (g.thread_rank() == src_lane) {
+      *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
+      *(found + key_idx) = occupy_result == OccupyResult::DUPLICATE;
+      ScoreFunctor::update(bucket, key_pos, scores, key_idx,
+                           find_or_insert_score,
+                           occupy_result != OccupyResult::DUPLICATE);
       bucket->digests(key_pos)[0] = get_digest<K>(find_or_insert_key);
       (bucket->keys(key_pos))
           ->store(find_or_insert_key, ScoreFunctor::UNLOCK_MEM_ORDER);
