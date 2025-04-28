@@ -236,10 +236,10 @@ __global__ void find_or_insert_ptr_kernel_lock_key(
       key_ptrs[kv_idx] = nullptr;
     } else {
       value_ptrs[kv_idx] = bucket_values_ptr + key_pos * dim;
-      founds[kv_idx] = occupy_result == OccupyResult::DUPLICATE;
       auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
       key_ptrs[kv_idx] = reinterpret_cast<K*>(key_address);
     }
+    founds[kv_idx] = occupy_result == OccupyResult::DUPLICATE;
   }
 }
 
@@ -312,8 +312,6 @@ __global__ void find_ptr_or_insert_kernel(
       occupy_result = g.shfl(occupy_result, src_lane);
     } while (occupy_result == OccupyResult::CONTINUE);
 
-    if (occupy_result == OccupyResult::REFUSED) continue;
-
     if ((occupy_result == OccupyResult::OCCUPIED_EMPTY ||
          occupy_result == OccupyResult::OCCUPIED_RECLAIMED) &&
         g.thread_rank() == src_lane) {
@@ -321,14 +319,18 @@ __global__ void find_ptr_or_insert_kernel(
     }
 
     if (g.thread_rank() == src_lane) {
-      *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
+      if (occupy_result != OccupyResult::REFUSED) {
+        ScoreFunctor::update(bucket, key_pos, scores, key_idx,
+                             find_or_insert_score,
+                             occupy_result != OccupyResult::DUPLICATE);
+        bucket->digests(key_pos)[0] = get_digest<K>(find_or_insert_key);
+        (bucket->keys(key_pos))
+            ->store(find_or_insert_key, ScoreFunctor::UNLOCK_MEM_ORDER);
+        *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
+      } else {
+        *(vectors + key_idx) = nullptr;
+      }
       *(found + key_idx) = occupy_result == OccupyResult::DUPLICATE;
-      ScoreFunctor::update(bucket, key_pos, scores, key_idx,
-                           find_or_insert_score,
-                           occupy_result != OccupyResult::DUPLICATE);
-      bucket->digests(key_pos)[0] = get_digest<K>(find_or_insert_key);
-      (bucket->keys(key_pos))
-          ->store(find_or_insert_key, ScoreFunctor::UNLOCK_MEM_ORDER);
     }
   }
 }

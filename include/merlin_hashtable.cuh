@@ -2378,8 +2378,6 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
-    CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
-
     read_shared_lock lock(mutex_, stream);
 
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);

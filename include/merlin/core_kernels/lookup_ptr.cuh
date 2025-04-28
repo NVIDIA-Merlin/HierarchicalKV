@@ -29,6 +29,8 @@ __global__ void tlp_lookup_ptr_kernel_with_filter(
     V** __restrict values, S* __restrict scores, bool* __restrict founds,
     uint64_t n) {
   using BUCKET = Bucket<K, V, S>;
+  // Load `STRIDE` digests every time.
+  constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
 
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
@@ -52,18 +54,15 @@ __global__ void tlp_lookup_ptr_kernel_with_filter(
       bucket_keys_ptr = reinterpret_cast<K*>(bucket->keys(0));
       bucket_values_ptr = reinterpret_cast<V*>(bucket->vectors);
     } else {
-      return;
+      occupy_result = OccupyResult::ILLEGAL;
+      goto WRITE_BACK;
     }
   } else {
     return;
   }
 
-  // Load `STRIDE` digests every time.
-  constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
   // One more loop to handle empty keys.
   for (int offset = 0; offset < bucket_capacity + STRIDE; offset += STRIDE) {
-    if (occupy_result != OccupyResult::INITIAL) break;
-
     uint32_t pos_cur = align_to<STRIDE>(key_pos);
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
@@ -91,14 +90,8 @@ __global__ void tlp_lookup_ptr_kernel_with_filter(
         score = *BUCKET::scores(bucket_keys_ptr, bucket_capacity, possible_pos);
         if (current_key == key) {
           key_pos = possible_pos;
-          if (scores) {
-            scores[kv_idx] = score;
-          }
-          values[kv_idx] = bucket_values_ptr + key_pos * dim;
-          if (founds) {
-            founds[kv_idx] = true;
-          }
-          return;
+          occupy_result = OccupyResult::DUPLICATE;
+          goto WRITE_BACK;
         }
       } while (true);
       VecD_Comp empty_digests_ = empty_digests<K>();
@@ -112,10 +105,25 @@ __global__ void tlp_lookup_ptr_kernel_with_filter(
         if (offset == 0 && possible_pos < key_pos) continue;
         auto current_key = bucket_keys_ptr[possible_pos];
         if (current_key == static_cast<K>(EMPTY_KEY)) {
-          return;
+          occupy_result = OccupyResult::OCCUPIED_EMPTY;
+          goto WRITE_BACK;
         }
       } while (true);
     }
+  }
+
+WRITE_BACK:
+  bool found_ = occupy_result == OccupyResult::DUPLICATE;
+  if (founds) {
+    founds[kv_idx] = found_;
+  }
+  if (found_) {
+    if (scores) {
+      scores[kv_idx] = score;
+    }
+    values[kv_idx] = bucket_values_ptr + key_pos * dim;
+  } else {
+    values[kv_idx] = nullptr;
   }
 }
 
@@ -140,35 +148,41 @@ __global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
     int key_idx = t / TILE_SIZE;
 
     const K find_key = keys[key_idx];
-    if (IS_RESERVED_KEY<K>(find_key)) continue;
-
+    OccupyResult occupy_result{OccupyResult::INITIAL};
     int key_pos = -1;
     int src_lane = -1;
-    size_t bkt_idx = 0;
-    size_t start_idx = 0;
+    Bucket<K, V, S>* bucket{nullptr};
+    if (!IS_RESERVED_KEY<K>(find_key)) {
+      size_t bkt_idx = 0;
+      size_t start_idx = 0;
 
-    Bucket<K, V, S>* bucket = get_key_position<K>(
-        buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
+      bucket = get_key_position<K>(buckets, find_key, bkt_idx, start_idx,
+                                   buckets_num, bucket_max_size);
 
-    const int bucket_size = buckets_size[bkt_idx];
-    if (bucket_size >= bucket_max_size) {
-      start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
+      const int bucket_size = buckets_size[bkt_idx];
+      if (bucket_size >= bucket_max_size) {
+        start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
+      }
+
+      occupy_result = find_without_lock<K, V, S, TILE_SIZE>(
+          g, bucket, find_key, start_idx, key_pos, src_lane, bucket_max_size);
+    } else {
+      occupy_result = OccupyResult::ILLEGAL;
     }
 
-    OccupyResult occupy_result{OccupyResult::INITIAL};
-    occupy_result = find_without_lock<K, V, S, TILE_SIZE>(
-        g, bucket, find_key, start_idx, key_pos, src_lane, bucket_max_size);
-
-    if (occupy_result == OccupyResult::DUPLICATE) {
-      if (rank == src_lane) {
+    if (rank == src_lane) {
+      bool found_ = occupy_result == OccupyResult::DUPLICATE;
+      if (found != nullptr) {
+        *(found + key_idx) = found_;
+      }
+      if (found_) {
         values[key_idx] = bucket->vectors + key_pos * dim;
         if (scores != nullptr) {
           *(scores + key_idx) =
               bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
         }
-        if (found != nullptr) {
-          *(found + key_idx) = true;
-        }
+      } else {
+        values[key_idx] = nullptr;
       }
     }
   }
