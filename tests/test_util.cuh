@@ -749,7 +749,9 @@ __global__ void read_from_ptr_kernel(const V* const* __restrict src,
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int vec_index = int(t / dim);
     int dim_index = t % dim;
-    dst[vec_index * dim + dim_index] = src[vec_index][dim_index];
+    if (src[vec_index]) {
+      dst[vec_index * dim + dim_index] = src[vec_index][dim_index];
+    }
   }
 }
 
