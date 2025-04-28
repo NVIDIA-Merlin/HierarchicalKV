@@ -1101,7 +1101,6 @@ __global__ void size_if_kernel(const Table<K, V, S>* __restrict table,
                                Bucket<K, V, S>* buckets, const K pattern,
                                const S threshold, size_t* d_counter) {
   extern __shared__ unsigned char s[];
-  KVM<K, V, S>* const block_tuples{reinterpret_cast<KVM<K, V, S>*>(s)};
 
   const size_t bucket_max_size{table->bucket_max_size};
 
