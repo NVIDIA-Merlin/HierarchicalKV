@@ -26,6 +26,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <type_traits>
+#include "cub/cub.cuh"
 #include "merlin/allocator.cuh"
 #include "merlin/array_kernels.cuh"
 #include "merlin/core_kernels.cuh"
@@ -1262,9 +1263,20 @@ class HashTable : public HashTableBase<K, V, S> {
 
       keys_not_empty<K>
           <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
+
+      void* d_temp_storage = nullptr;
+      size_t temp_storage_bytes = 0;
+      CUDA_CHECK(cub::DeviceScan::ExclusiveSum(d_temp_storage,
+                                               temp_storage_bytes, d_offsets,
+                                               d_offsets, n_offsets, stream));
+      auto helper_ws{
+          dev_mem_pool_->get_workspace<1>(temp_storage_bytes, stream)};
+      int64_t* d_temp_storage_i64 = helper_ws.get<int64_t*>(0);
+
       gpu_boolean_mask<K, V, S, int64_t, TILE_SIZE>(
           grid_size, block_size, d_masks, n, d_evicted_counter, d_offsets,
-          evicted_keys, evicted_values, evicted_scores, dim(), stream);
+          evicted_keys, evicted_values, evicted_scores, d_temp_storage_i64,
+          temp_storage_bytes, dim(), stream);
     }
     return;
   }
