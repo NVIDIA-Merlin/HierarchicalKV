@@ -104,7 +104,7 @@ inline void __cudaCheckError(const char* file, const int line) {
 
 static inline size_t SAFE_GET_GRID_SIZE(size_t N, int block_size) {
   return ((N) > std::numeric_limits<int>::max())
-             ? ((1 << 30 - 1) / block_size + 1)
+             ? (((1 << 30) - 1) / block_size + 1)
              : (((N)-1) / block_size + 1);
 }
 
