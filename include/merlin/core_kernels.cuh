@@ -1229,5 +1229,113 @@ __global__ void compact_key_value_score_kernel(
   }
 }
 
+template <typename K, typename V, typename S>
+__global__ void lock_kernel_with_filter(
+    Bucket<K, V, S>* __restrict__ buckets, uint64_t const buckets_num,
+    uint32_t bucket_capacity, uint32_t const dim, K const* __restrict__ keys,
+    K** __restrict locked_keys_ptr, bool* __restrict succeed, uint64_t n) {
+  using BUCKET = Bucket<K, V, S>;
+  // Load `STRIDE` digests every time.
+  constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
+
+  uint32_t tx = threadIdx.x;
+  uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
+  K key{static_cast<K>(EMPTY_KEY)};
+  OccupyResult occupy_result{OccupyResult::INITIAL};
+  VecD_Comp target_digests{0};
+  K* bucket_keys_ptr{nullptr};
+  uint32_t key_pos = {0};
+  if (kv_idx < n) {
+    key = keys[kv_idx];
+    if (!IS_RESERVED_KEY<K>(key)) {
+      const K hashed_key = Murmur3HashDevice(key);
+      target_digests = digests_from_hashed<K>(hashed_key);
+      uint64_t global_idx =
+          static_cast<uint64_t>(hashed_key % (buckets_num * bucket_capacity));
+      key_pos = get_start_position(global_idx, bucket_capacity);
+      uint64_t bkt_idx = global_idx / bucket_capacity;
+      BUCKET* bucket = buckets + bkt_idx;
+      bucket_keys_ptr = reinterpret_cast<K*>(bucket->keys(0));
+    } else {
+      occupy_result = OccupyResult::ILLEGAL;
+      goto WRITE_BACK;
+    }
+  } else {
+    return;
+  }
+
+  // One more loop to handle empty keys.
+  for (int offset = 0; offset < bucket_capacity + STRIDE; offset += STRIDE) {
+    uint32_t pos_cur = align_to<STRIDE>(key_pos);
+    pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
+
+    D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
+    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
+                                digests_vec.w};
+
+    for (int i = 0; i < 4; i++) {
+      VecD_Comp probe_digests = digests_arr[i];
+      uint32_t possible_pos = 0;
+      // Perform a vectorized comparison by byte,
+      // and if they are equal, set the corresponding byte in the result to
+      // 0xff.
+      int cmp_result = __vcmpeq4(probe_digests, target_digests);
+      cmp_result &= 0x01010101;
+      do {
+        if (cmp_result == 0) break;
+        // CUDA uses little endian,
+        // and the lowest byte in register stores in the lowest address.
+        uint32_t index = (__ffs(cmp_result) - 1) >> 3;
+        cmp_result &= (cmp_result - 1);
+        possible_pos = pos_cur + i * 4 + index;
+        auto current_key = bucket_keys_ptr[possible_pos];
+        if (current_key == key) {
+          key_pos = possible_pos;
+          occupy_result = OccupyResult::DUPLICATE;
+          goto WRITE_BACK;
+        }
+      } while (true);
+      VecD_Comp empty_digests_ = empty_digests<K>();
+      cmp_result = __vcmpeq4(probe_digests, empty_digests_);
+      cmp_result &= 0x01010101;
+      do {
+        if (cmp_result == 0) break;
+        uint32_t index = (__ffs(cmp_result) - 1) >> 3;
+        cmp_result &= (cmp_result - 1);
+        possible_pos = pos_cur + i * 4 + index;
+        if (offset == 0 && possible_pos < key_pos) continue;
+        auto current_key = bucket_keys_ptr[possible_pos];
+        if (current_key == static_cast<K>(EMPTY_KEY)) {
+          occupy_result = OccupyResult::OCCUPIED_EMPTY;
+          goto WRITE_BACK;
+        }
+      } while (true);
+    }
+  }
+
+WRITE_BACK:
+  bool found_ = occupy_result == OccupyResult::DUPLICATE;
+  if (found_) {
+    auto current_key = BUCKET::keys(bucket_keys_ptr, key_pos);
+    K expected_key = key;
+    // Modifications to the bucket will not before this instruction.
+    bool result = current_key->compare_exchange_strong(
+        expected_key, static_cast<K>(LOCKED_KEY),
+        cuda::std::memory_order_relaxed, cuda::std::memory_order_relaxed);
+    if (not result) {
+      found_ = false;
+    }
+  }
+  if (found_) {
+    locked_keys_ptr[kv_idx] = bucket_keys_ptr + key_pos;
+  } else {
+    locked_keys_ptr[kv_idx] = nullptr;
+  }
+  if (succeed) {
+    succeed[kv_idx] = found_;
+  }
+}
+
 }  // namespace merlin
 }  // namespace nv
