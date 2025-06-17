@@ -1187,5 +1187,47 @@ __global__ void unlock_keys_kernel(uint64_t n, K** __restrict__ locked_key_ptrs,
   }
 }
 
+template <typename K, typename V, typename S, typename Tidx, int TILE_SIZE = 8>
+__global__ void compact_key_value_score_kernel(
+    const bool* masks, size_t n, const Tidx* offsets,
+    K* __restrict const src_keys, V* __restrict const src_values,
+    S* __restrict const src_scores, K* __restrict dst_keys,
+    V* __restrict dst_values, S* __restrict dst_scores, const size_t dim) {
+  int tid = blockIdx.x * blockDim.x + threadIdx.x;
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  int rank = g.thread_rank();
+
+  bool is_existed = false;
+  if (tid < n) {
+    if (masks[tid]) {
+      is_existed = true;
+    }
+  }
+  unsigned int vote = g.ballot(is_existed);
+  unsigned int r_vote = __brev(vote) >> (32 - TILE_SIZE);
+  K empty_key = (K)EMPTY_KEY;
+  Tidx bias;
+  if (is_existed) {
+    r_vote = r_vote >> (TILE_SIZE - rank - 1);
+    int prefix_n = __popc(r_vote) - 1;
+    bias = offsets[tid / TILE_SIZE] + static_cast<Tidx>(prefix_n);
+    dst_keys[bias] = src_keys[tid];
+    if (src_scores and dst_scores) dst_scores[bias] = src_scores[tid];
+  }
+
+  int group_offset = (tid / TILE_SIZE) * TILE_SIZE;
+  for (int i = 0; i < TILE_SIZE; i++) {
+    if (group_offset + i >= n) return;
+    auto cur_existed = g.shfl(is_existed, i);
+    if (cur_existed) {
+      auto cur_bias = g.shfl(bias, i);
+      for (size_t j = rank; j < dim; j += TILE_SIZE) {
+        dst_values[dim * cur_bias + j] =
+            src_values[dim * (group_offset + i) + j];
+      }
+    }
+  }
+}
+
 }  // namespace merlin
 }  // namespace nv
