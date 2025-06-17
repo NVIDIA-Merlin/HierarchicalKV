@@ -1754,6 +1754,44 @@ class HashTable : public HashTableBase<K, V, S> {
   }
 
   /**
+   * @brief
+   * This function will lock the keys in the table and unexisted keys will be
+   * ignored.
+   *
+   * @param n The number of keys in the table to be locked.
+   * @param locked_key_ptrs The pointers of locked keys in the table with shape
+   * (n).
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param flags The status that indicates if the lock operation is succeed.
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   */
+  void lock_keys(const size_type n,
+                 key_type const* keys,        // (n)
+                 key_type** locked_key_ptrs,  // (n)
+                 bool* flags = nullptr,       // (n)
+                 cudaStream_t stream = 0) {
+    if (n == 0) {
+      return;
+    }
+
+    insert_unique_lock lock(mutex_, stream);
+
+    constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
+    if (options_.max_bucket_size < MinBucketCapacityFilter) {
+      throw std::runtime_error(
+          "Not support lock_keys API because the bucket capacity is too "
+          "small.");
+    }
+    constexpr uint32_t BLOCK_SIZE = 128U;
+    lock_kernel_with_filter<key_type, value_type, score_type>
+        <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+            table_->buckets, table_->buckets_num, options_.max_bucket_size,
+            options_.dim, keys, locked_key_ptrs, flags, n);
+    CudaCheckError();
+  }
+
+  /**
    * @brief Using pointers to address the keys in the hash table and set them
    * to target keys.
    * This function will unlock the keys in the table which are locked by
