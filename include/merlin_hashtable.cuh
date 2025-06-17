@@ -21,6 +21,7 @@
 #include <thrust/sort.h>
 #include <atomic>
 #include <cstdint>
+#include <cub/cub.cuh>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -1237,10 +1238,16 @@ class HashTable : public HashTableBase<K, V, S> {
       const int TILE_SIZE = 32;
       size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
       const size_type dev_ws_size =
+          n * (dim() * sizeof(value_type) + sizeof(key_type) +
+               sizeof(score_type)) +
           n_offsets * sizeof(int64_t) + n * sizeof(bool) + sizeof(size_type);
 
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto d_offsets{dev_ws.get<int64_t*>(0)};
+      auto tmp_evict_values{dev_ws.get<value_type*>(0)};
+      auto tmp_evict_keys =
+          reinterpret_cast<key_type*>(tmp_evict_values + n * dim());
+      auto tmp_evict_scores = reinterpret_cast<score_type*>(tmp_evict_keys + n);
+      auto d_offsets = reinterpret_cast<int64_t*>(tmp_evict_scores + n);
       auto d_masks = reinterpret_cast<bool*>(d_offsets + n_offsets);
 
       CUDA_CHECK(
@@ -1249,7 +1256,7 @@ class HashTable : public HashTableBase<K, V, S> {
 
       size_type block_size = options_.block_size;
       size_type grid_size = SAFE_GET_GRID_SIZE(n, block_size);
-      CUDA_CHECK(memset64Async(evicted_keys, EMPTY_KEY_CPU, n, stream));
+      CUDA_CHECK(memset64Async(tmp_evict_keys, EMPTY_KEY_CPU, n, stream));
       using Selector =
           SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
                                            evict_strategy>;
@@ -1257,14 +1264,29 @@ class HashTable : public HashTableBase<K, V, S> {
       Selector::execute_kernel(
           load_factor, options_.block_size, options_.max_bucket_size,
           table_->buckets_num, options_.dim, stream, n, d_table_,
-          table_->buckets, keys, values, scores, evicted_keys, evicted_values,
-          evicted_scores, global_epoch_);
+          table_->buckets, keys, values, scores, tmp_evict_keys,
+          tmp_evict_values, tmp_evict_scores, global_epoch_);
 
       keys_not_empty<K>
-          <<<grid_size, block_size, 0, stream>>>(evicted_keys, d_masks, n);
-      gpu_boolean_mask<K, V, S, int64_t, TILE_SIZE>(
-          grid_size, block_size, d_masks, n, d_evicted_counter, d_offsets,
-          evicted_keys, evicted_values, evicted_scores, dim(), stream);
+          <<<grid_size, block_size, 0, stream>>>(tmp_evict_keys, d_masks, n);
+
+      gpu_cell_count<int64_t, TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
+          d_masks, d_offsets, n, d_evicted_counter);
+
+      void* d_temp_storage = nullptr;
+      size_t temp_storage_bytes = 0;
+      cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes,
+                                    d_offsets, d_offsets, n_offsets, stream);
+      auto dev_ws1{dev_mem_pool_->get_workspace<1>(temp_storage_bytes, stream)};
+      d_temp_storage = dev_ws1.get<void*>(0);
+      cub::DeviceScan::ExclusiveSum(d_temp_storage, temp_storage_bytes,
+                                    d_offsets, d_offsets, n_offsets, stream);
+
+      compact_key_value_score_kernel<K, V, S, int64_t, TILE_SIZE>
+          <<<grid_size, block_size, 0, stream>>>(
+              d_masks, n, d_offsets, tmp_evict_keys, tmp_evict_values,
+              tmp_evict_scores, evicted_keys, evicted_values, evicted_scores,
+              dim());
     }
     return;
   }
