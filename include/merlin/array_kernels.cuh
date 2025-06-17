@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cooperative_groups.h>
+#include "cub/cub.cuh"
 #include "cuda_runtime.h"
 #include "thrust/device_vector.h"
 #include "thrust/execution_policy.h"
@@ -104,18 +105,13 @@ template <typename K, typename V, typename S, typename Tidx, int TILE_SIZE = 8>
 void gpu_boolean_mask(size_t grid_size, size_t block_size, const bool* masks,
                       size_t n, size_t* n_evicted, Tidx* offsets,
                       K* __restrict keys, V* __restrict values,
-                      S* __restrict scores, size_t dim, cudaStream_t stream) {
+                      S* __restrict scores, Tidx* offset_ws,
+                      size_t offset_ws_bytes, size_t dim, cudaStream_t stream) {
   size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
   gpu_cell_count<Tidx, TILE_SIZE>
       <<<grid_size, block_size, 0, stream>>>(masks, offsets, n, n_evicted);
-#if THRUST_VERSION >= 101600
-  auto policy = thrust::cuda::par_nosync.on(stream);
-#else
-  auto policy = thrust::cuda::par.on(stream);
-#endif
-  thrust::device_ptr<Tidx> d_src(offsets);
-  thrust::device_ptr<Tidx> d_dest(offsets);
-  thrust::exclusive_scan(policy, d_src, d_src + n_offsets, d_dest);
+  CUDA_CHECK(cub::DeviceScan::ExclusiveSum(offset_ws, offset_ws_bytes, offsets,
+                                           offsets, n_offsets, stream));
   gpu_select_kvm_kernel<K, V, S, Tidx, TILE_SIZE>
       <<<grid_size, block_size, 0, stream>>>(masks, n, offsets, keys, values,
                                              scores, dim);
