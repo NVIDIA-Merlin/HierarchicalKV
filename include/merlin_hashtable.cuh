@@ -22,6 +22,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cub/cub.cuh>
+#include <iostream>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -1233,22 +1234,33 @@ class HashTable : public HashTableBase<K, V, S> {
           evicted_keys, evicted_values, evicted_scores, n, d_evicted_counter,
           global_epoch_);
       Selector::select_kernel(kernelParams, stream);
+    } else if (unique_key and options_.max_bucket_size % 16 == 0) {
+      using KernelLauncher =
+          InsertAndEvictKernelLauncher<key_type, value_type, score_type,
+                                       evict_strategy>;
+      typename KernelLauncher::Params kernelParams(
+          load_factor, table_->buckets, table_->buckets_size,
+          table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
+          static_cast<uint32_t>(options_.dim), keys, values, scores,
+          evicted_keys, evicted_values, evicted_scores, n, d_evicted_counter,
+          global_epoch_);
+      KernelLauncher::launch_kernel(kernelParams, stream);
     } else {
       // always use max tile to avoid data-deps as possible.
       const int TILE_SIZE = 32;
       size_t n_offsets = (n + TILE_SIZE - 1) / TILE_SIZE;
       const size_type dev_ws_size =
-          n * (dim() * sizeof(value_type) + sizeof(key_type) +
-               sizeof(score_type)) +
-          n_offsets * sizeof(int64_t) + n * sizeof(bool) + sizeof(size_type);
+          n * (sizeof(key_type) + sizeof(score_type)) +
+          n_offsets * sizeof(int64_t) + n * dim() * sizeof(value_type) +
+          n * sizeof(bool);
 
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto tmp_evict_values{dev_ws.get<value_type*>(0)};
-      auto tmp_evict_keys =
-          reinterpret_cast<key_type*>(tmp_evict_values + n * dim());
+      auto tmp_evict_keys{dev_ws.get<key_type*>(0)};
       auto tmp_evict_scores = reinterpret_cast<score_type*>(tmp_evict_keys + n);
       auto d_offsets = reinterpret_cast<int64_t*>(tmp_evict_scores + n);
-      auto d_masks = reinterpret_cast<bool*>(d_offsets + n_offsets);
+      auto tmp_evict_values =
+          reinterpret_cast<value_type*>(d_offsets + n_offsets);
+      auto d_masks = reinterpret_cast<bool*>(tmp_evict_values + n * dim());
 
       CUDA_CHECK(
           cudaMemsetAsync(d_offsets, 0, n_offsets * sizeof(int64_t), stream));
@@ -1260,13 +1272,15 @@ class HashTable : public HashTableBase<K, V, S> {
       using Selector =
           SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
                                            evict_strategy>;
-
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      std::cout << __FILE__ << " " << __LINE__ << "\n";
       Selector::execute_kernel(
           load_factor, options_.block_size, options_.max_bucket_size,
           table_->buckets_num, options_.dim, stream, n, d_table_,
           table_->buckets, keys, values, scores, tmp_evict_keys,
           tmp_evict_values, tmp_evict_scores, global_epoch_);
-
+      CUDA_CHECK(cudaStreamSynchronize(stream));
+      std::cout << __FILE__ << " " << __LINE__ << "\n";
       keys_not_empty<K>
           <<<grid_size, block_size, 0, stream>>>(tmp_evict_keys, d_masks, n);
 
