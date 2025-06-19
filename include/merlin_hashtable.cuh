@@ -444,6 +444,26 @@ class HashTableBase {
                               key_type** locked_key_ptrs = nullptr) = 0;
 
   /**
+   * @brief
+   * This function will lock the keys in the table and unexisted keys will be
+   * ignored.
+   *
+   * @param n The number of keys in the table to be locked.
+   * @param locked_key_ptrs The pointers of locked keys in the table with shape
+   * (n).
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param succeededs The status that indicates if the lock operation is
+   * succeed.
+   * @param stream The CUDA stream that is used to execute the operation.
+   *
+   */
+  virtual void lock_keys(const size_type n,
+                         key_type const* keys,        // (n)
+                         key_type** locked_key_ptrs,  // (n)
+                         bool* succeededs = nullptr,  // (n)
+                         cudaStream_t stream = 0) = 0;
+
+  /**
    * @brief Using pointers to address the keys in the hash table and set them
    * to target keys.
    * This function will unlock the keys in the table which are locked by
@@ -453,14 +473,15 @@ class HashTableBase {
    * @param locked_key_ptrs The pointers of locked keys in the table with shape
    * (n).
    * @param keys The keys to search on GPU-accessible memory with shape (n).
-   * @param flags The status that indicates if the unlock operation is succeed.
+   * @param succeededs The status that indicates if the unlock operation is
+   * succeed.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   virtual void unlock_keys(const size_type n,
                            key_type** locked_key_ptrs,  // (n)
                            const key_type* keys,        // (n)
-                           bool* flags = nullptr,       // (n)
+                           bool* succeededs = nullptr,  // (n)
                            cudaStream_t stream = 0) = 0;
 
   /**
@@ -1776,15 +1797,15 @@ class HashTable : public HashTableBase<K, V, S> {
    * @param locked_key_ptrs The pointers of locked keys in the table with shape
    * (n).
    * @param keys The keys to search on GPU-accessible memory with shape (n).
-   * @param lock_results The status that indicates if the lock operation is
+   * @param succeededs The status that indicates if the lock operation is
    * succeed.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void lock_keys(const size_type n,
-                 key_type const* keys,          // (n)
-                 key_type** locked_key_ptrs,    // (n)
-                 bool* lock_results = nullptr,  // (n)
+                 key_type const* keys,        // (n)
+                 key_type** locked_key_ptrs,  // (n)
+                 bool* succeededs = nullptr,  // (n)
                  cudaStream_t stream = 0) {
     if (n == 0) {
       return;
@@ -1802,7 +1823,7 @@ class HashTable : public HashTableBase<K, V, S> {
     lock_kernel_with_filter<key_type, value_type, score_type>
         <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             table_->buckets, table_->buckets_num, options_.max_bucket_size,
-            options_.dim, keys, locked_key_ptrs, lock_results, n);
+            options_.dim, keys, locked_key_ptrs, succeededs, n);
     CudaCheckError();
   }
 
@@ -1816,14 +1837,14 @@ class HashTable : public HashTableBase<K, V, S> {
    * @param locked_key_ptrs The pointers of locked keys in the table with shape
    * (n).
    * @param keys The keys to search on GPU-accessible memory with shape (n).
-   * @param unlock_results The status that indicates if the unlock operation is
+   * @param succeededs The status that indicates if the unlock operation is
    * succeed.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void unlock_keys(const size_type n, key_type** locked_key_ptrs,  // (n)
                    const key_type* keys,                           // (n)
-                   bool* unlock_results = nullptr,                 // (n)
+                   bool* succeededs = nullptr,                     // (n)
                    cudaStream_t stream = 0) {
     if (n == 0) {
       return;
@@ -1835,7 +1856,7 @@ class HashTable : public HashTableBase<K, V, S> {
     /// TODO: check the key belongs to the bucket.
     unlock_keys_kernel<key_type>
         <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
-            n, locked_key_ptrs, keys, unlock_results);
+            n, locked_key_ptrs, keys, succeededs);
   }
 
   /**
@@ -2156,13 +2177,26 @@ class HashTable : public HashTableBase<K, V, S> {
 
       if (filter_condition) {
         const size_t block_size = options_.io_block_size;
-        const size_t N = n * dim();
-        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+        uint64_t total_value_size = sizeof(value_type) * dim();
+        if (total_value_size % 16 == 0) {
+          using VecV = byte16;
+          uint64_t vec_dim = total_value_size / sizeof(VecV);
+          const size_t N = n * vec_dim;
+          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        write_kernel_unlock_key<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
-                                                   dim(), keys, keys_ptr, N);
+          write_kernel_unlock_key<key_type, VecV, score_type>
+              <<<grid_size, block_size, 0, stream>>>(
+                  reinterpret_cast<const VecV*>(values),
+                  reinterpret_cast<VecV**>(d_dst), d_src_offset, vec_dim, keys,
+                  keys_ptr, N);
+        } else {
+          const size_t N = n * dim();
+          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
+          write_kernel_unlock_key<key_type, value_type, score_type>
+              <<<grid_size, block_size, 0, stream>>>(
+                  values, d_dst, d_src_offset, dim(), keys, keys_ptr, N);
+        }
       } else if (options_.io_by_cpu) {
         const size_type host_ws_size{dev_ws_size +
                                      n * sizeof(value_type) * dim()};
