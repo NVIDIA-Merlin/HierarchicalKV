@@ -31,6 +31,8 @@ Includes
 
 - ``cub/cub.cuh``
 
+- ``iostream``
+
 - ``limits``
 
 - ``memory``
