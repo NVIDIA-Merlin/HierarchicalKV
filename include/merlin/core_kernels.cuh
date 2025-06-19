@@ -1164,7 +1164,7 @@ __global__ void traverse_kernel(const uint64_t search_length,
 template <typename K>
 __global__ void unlock_keys_kernel(uint64_t n, K** __restrict__ locked_key_ptrs,
                                    const K* __restrict__ keys,
-                                   bool* __restrict__ flags) {
+                                   bool* __restrict__ unlock_results) {
   int kv_idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (kv_idx < n) {
     K* locked_key_ptr = locked_key_ptrs[kv_idx];
@@ -1181,8 +1181,8 @@ __global__ void unlock_keys_kernel(uint64_t n, K** __restrict__ locked_key_ptrs,
     } else {
       flag = false;
     }
-    if (flags != nullptr) {
-      flags[kv_idx] = flag;
+    if (unlock_results != nullptr) {
+      unlock_results[kv_idx] = flag;
     }
   }
 }

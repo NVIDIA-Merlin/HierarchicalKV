@@ -1776,14 +1776,15 @@ class HashTable : public HashTableBase<K, V, S> {
    * @param locked_key_ptrs The pointers of locked keys in the table with shape
    * (n).
    * @param keys The keys to search on GPU-accessible memory with shape (n).
-   * @param flags The status that indicates if the lock operation is succeed.
+   * @param lock_results The status that indicates if the lock operation is
+   * succeed.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void lock_keys(const size_type n,
-                 key_type const* keys,        // (n)
-                 key_type** locked_key_ptrs,  // (n)
-                 bool* flags = nullptr,       // (n)
+                 key_type const* keys,          // (n)
+                 key_type** locked_key_ptrs,    // (n)
+                 bool* lock_results = nullptr,  // (n)
                  cudaStream_t stream = 0) {
     if (n == 0) {
       return;
@@ -1801,7 +1802,7 @@ class HashTable : public HashTableBase<K, V, S> {
     lock_kernel_with_filter<key_type, value_type, score_type>
         <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             table_->buckets, table_->buckets_num, options_.max_bucket_size,
-            options_.dim, keys, locked_key_ptrs, flags, n);
+            options_.dim, keys, locked_key_ptrs, lock_results, n);
     CudaCheckError();
   }
 
@@ -1815,13 +1816,14 @@ class HashTable : public HashTableBase<K, V, S> {
    * @param locked_key_ptrs The pointers of locked keys in the table with shape
    * (n).
    * @param keys The keys to search on GPU-accessible memory with shape (n).
-   * @param flags The status that indicates if the unlock operation is succeed.
+   * @param unlock_results The status that indicates if the unlock operation is
+   * succeed.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
   void unlock_keys(const size_type n, key_type** locked_key_ptrs,  // (n)
                    const key_type* keys,                           // (n)
-                   bool* flags = nullptr,                          // (n)
+                   bool* unlock_results = nullptr,                 // (n)
                    cudaStream_t stream = 0) {
     if (n == 0) {
       return;
@@ -1833,7 +1835,7 @@ class HashTable : public HashTableBase<K, V, S> {
     /// TODO: check the key belongs to the bucket.
     unlock_keys_kernel<key_type>
         <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
-            n, locked_key_ptrs, keys, flags);
+            n, locked_key_ptrs, keys, unlock_results);
   }
 
   /**

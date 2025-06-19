@@ -48,10 +48,10 @@ void test_lock_and_unlock() {
 
   cudaStream_t stream;
   CUDA_CHECK(cudaStreamCreate(&stream));
-  bool *d_found, *d_found1;
+  bool *d_found, *d_lock_results;
   i64** lock_keys_ptr;
   CUDA_CHECK(cudaMalloc(&d_found, M * sizeof(bool)));
-  CUDA_CHECK(cudaMalloc(&d_found1, M * sizeof(bool)));
+  CUDA_CHECK(cudaMalloc(&d_lock_results, M * sizeof(bool)));
   CUDA_CHECK(cudaMalloc(&lock_keys_ptr, M * sizeof(i64*)));
 
   // step1
@@ -71,31 +71,33 @@ void test_lock_and_unlock() {
                             buffer.scores_ptr(), stream);
 
     CUDA_CHECK(cudaMemsetAsync(d_found, 0, M * sizeof(bool), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_found1, 0, M * sizeof(bool), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_lock_results, 0, M * sizeof(bool), stream));
     table->contains(M, buffer.keys_ptr(), d_found, stream);
-    table->lock_keys(M, buffer.keys_ptr(), lock_keys_ptr, d_found1, stream);
-    bool result = test_util::allEqualGpu(d_found, d_found1, M, stream);
+    table->lock_keys(M, buffer.keys_ptr(), lock_keys_ptr, d_lock_results,
+                     stream);
+    bool result = test_util::allEqualGpu(d_found, d_lock_results, M, stream);
     ASSERT_EQ(result, true);
     result = test_util::allTrueGpu(d_found, M, stream);
     ASSERT_EQ(result, true);
 
     CUDA_CHECK(cudaMemsetAsync(d_found, 0, M * sizeof(bool), stream));
-    CUDA_CHECK(cudaMemsetAsync(d_found1, 0, M * sizeof(bool), stream));
+    CUDA_CHECK(cudaMemsetAsync(d_lock_results, 0, M * sizeof(bool), stream));
     table->contains(M, buffer.keys_ptr(), d_found, stream);
-    result = test_util::allEqualGpu(d_found, d_found1, M, stream);
+    result = test_util::allEqualGpu(d_found, d_lock_results, M, stream);
     ASSERT_EQ(result, true);
 
     CUDA_CHECK(cudaMemsetAsync(d_found, 0, M * sizeof(bool), stream));
-    table->unlock_keys(M, lock_keys_ptr, buffer.keys_ptr(), d_found, stream);
-    table->contains(M, buffer.keys_ptr(), d_found1, stream);
-    result = test_util::allEqualGpu(d_found, d_found1, M, stream);
+    table->unlock_keys(M, lock_keys_ptr, buffer.keys_ptr(), d_lock_results,
+                       stream);
+    table->contains(M, buffer.keys_ptr(), d_found, stream);
+    result = test_util::allEqualGpu(d_found, d_lock_results, M, stream);
     ASSERT_EQ(result, true);
     result = test_util::allTrueGpu(d_found, M, stream);
     ASSERT_EQ(result, true);
   }
 
   CUDA_CHECK(cudaFree(d_found));
-  CUDA_CHECK(cudaFree(d_found1));
+  CUDA_CHECK(cudaFree(d_lock_results));
   CUDA_CHECK(cudaFree(lock_keys_ptr));
 }
 
