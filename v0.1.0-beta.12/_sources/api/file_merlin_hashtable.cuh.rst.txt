@@ -29,6 +29,10 @@ Includes
 
 - ``cstdint``
 
+- ``cub/cub.cuh``
+
+- ``iostream``
+
 - ``limits``
 
 - ``memory``
