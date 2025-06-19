@@ -173,10 +173,16 @@ Program Listing for File merlin_hashtable.cuh
                                  bool ignore_evict_strategy = false,
                                  key_type** locked_key_ptrs = nullptr) = 0;
    
+     virtual void lock_keys(const size_type n,
+                            key_type const* keys,        // (n)
+                            key_type** locked_key_ptrs,  // (n)
+                            bool* succeededs = nullptr,  // (n)
+                            cudaStream_t stream = 0) = 0;
+   
      virtual void unlock_keys(const size_type n,
                               key_type** locked_key_ptrs,  // (n)
                               const key_type* keys,        // (n)
-                              bool* flags = nullptr,       // (n)
+                              bool* succeededs = nullptr,  // (n)
                               cudaStream_t stream = 0) = 0;
    
      virtual void assign(const size_type n,
@@ -997,9 +1003,9 @@ Program Listing for File merlin_hashtable.cuh
      }
    
      void lock_keys(const size_type n,
-                    key_type const* keys,          // (n)
-                    key_type** locked_key_ptrs,    // (n)
-                    bool* lock_results = nullptr,  // (n)
+                    key_type const* keys,        // (n)
+                    key_type** locked_key_ptrs,  // (n)
+                    bool* succeededs = nullptr,  // (n)
                     cudaStream_t stream = 0) {
        if (n == 0) {
          return;
@@ -1017,13 +1023,13 @@ Program Listing for File merlin_hashtable.cuh
        lock_kernel_with_filter<key_type, value_type, score_type>
            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                table_->buckets, table_->buckets_num, options_.max_bucket_size,
-               options_.dim, keys, locked_key_ptrs, lock_results, n);
+               options_.dim, keys, locked_key_ptrs, succeededs, n);
        CudaCheckError();
      }
    
      void unlock_keys(const size_type n, key_type** locked_key_ptrs,  // (n)
                       const key_type* keys,                           // (n)
-                      bool* unlock_results = nullptr,                 // (n)
+                      bool* succeededs = nullptr,                     // (n)
                       cudaStream_t stream = 0) {
        if (n == 0) {
          return;
@@ -1034,7 +1040,7 @@ Program Listing for File merlin_hashtable.cuh
        constexpr uint32_t BLOCK_SIZE = 128U;
        unlock_keys_kernel<key_type>
            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
-               n, locked_key_ptrs, keys, unlock_results);
+               n, locked_key_ptrs, keys, succeededs);
      }
    
      void assign(const size_type n,
@@ -1294,13 +1300,26 @@ Program Listing for File merlin_hashtable.cuh
    
          if (filter_condition) {
            const size_t block_size = options_.io_block_size;
-           const size_t N = n * dim();
-           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+           uint64_t total_value_size = sizeof(value_type) * dim();
+           if (total_value_size % 16 == 0) {
+             using VecV = byte16;
+             uint64_t vec_dim = total_value_size / sizeof(VecV);
+             const size_t N = n * vec_dim;
+             const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           write_kernel_unlock_key<key_type, value_type, score_type>
-               <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
-                                                      dim(), keys, keys_ptr, N);
+             write_kernel_unlock_key<key_type, VecV, score_type>
+                 <<<grid_size, block_size, 0, stream>>>(
+                     reinterpret_cast<const VecV*>(values),
+                     reinterpret_cast<VecV**>(d_dst), d_src_offset, vec_dim, keys,
+                     keys_ptr, N);
+           } else {
+             const size_t N = n * dim();
+             const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
+             write_kernel_unlock_key<key_type, value_type, score_type>
+                 <<<grid_size, block_size, 0, stream>>>(
+                     values, d_dst, d_src_offset, dim(), keys, keys_ptr, N);
+           }
          } else if (options_.io_by_cpu) {
            const size_type host_ws_size{dev_ws_size +
                                         n * sizeof(value_type) * dim()};
