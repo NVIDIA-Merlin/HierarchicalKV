@@ -456,6 +456,7 @@ class HashTableBase {
    * @param keys The keys to search on GPU-accessible memory with shape (n).
    * @param succeededs The status that indicates if the lock operation is
    * succeed.
+   * @param scores The scores of the input keys will set to scores if provided.
    * @param stream The CUDA stream that is used to execute the operation.
    *
    */
@@ -463,7 +464,8 @@ class HashTableBase {
                          key_type const* keys,        // (n)
                          key_type** locked_key_ptrs,  // (n)
                          bool* succeededs = nullptr,  // (n)
-                         cudaStream_t stream = 0) = 0;
+                         cudaStream_t stream = 0,
+                         score_type const* scores = nullptr) = 0;
 
   /**
    * @brief Using pointers to address the keys in the hash table and set them
@@ -1813,13 +1815,14 @@ class HashTable : public HashTableBase<K, V, S> {
    * @param success The status that indicates if the lock operation is
    * succeed.
    * @param stream The CUDA stream that is used to execute the operation.
+   * @param scores The scores of the input keys will set to scores if provided.
    *
    */
   void lock_keys(const size_type n,
                  key_type const* keys,        // (n)
                  key_type** locked_key_ptrs,  // (n)
                  bool* success = nullptr,     // (n)
-                 cudaStream_t stream = 0) {
+                 cudaStream_t stream = 0, score_type const* scores = nullptr) {
     if (n == 0) {
       return;
     }
@@ -1836,10 +1839,11 @@ class HashTable : public HashTableBase<K, V, S> {
           "small.");
     }
     constexpr uint32_t BLOCK_SIZE = 128U;
-    lock_kernel_with_filter<key_type, value_type, score_type>
+    lock_kernel_with_filter<key_type, value_type, score_type, evict_strategy>
         <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             table_->buckets, table_->buckets_num, options_.max_bucket_size,
-            options_.dim, keys, locked_key_ptrs, success, n);
+            options_.dim, keys, locked_key_ptrs, success, scores, global_epoch_,
+            n);
     CudaCheckError();
   }
 
