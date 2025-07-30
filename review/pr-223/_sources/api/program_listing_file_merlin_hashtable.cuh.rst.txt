@@ -2087,7 +2087,7 @@ Program Listing for File merlin_hashtable.cuh
    
        std::unique_ptr<update_read_lock> lock_ptr;
        if (options_.api_lock) {
-         lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+         lock_ptr = std::make_unique<update_read_lock>(mutex_);
        }
    
        if (new_max_capacity < capacity()) {
@@ -2269,7 +2269,7 @@ Program Listing for File merlin_hashtable.cuh
              std::make_unique<read_shared_lock>(mutex_, std::defer_lock, stream);
        }
        if (need_lock) {
-         lock.lock();
+         lock_ptr->lock();
        }
    
        size_t N = std::min(table_->buckets_num, 1024UL);
