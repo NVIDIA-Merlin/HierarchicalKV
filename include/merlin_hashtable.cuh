@@ -114,6 +114,8 @@ struct HashTableOptions {
   int reserved_key_start_bit = 0;       ///< The binary index of reserved key.
   size_t num_of_buckets_per_alloc = 1;  ///< Number of buckets allocated in each
                                         ///< HBM allocation, must be power of 2.
+  bool api_lock = true;  ///<  The flag indicating whether to lock the table
+                         ///<  once enters the API.
   MemoryPoolOptions
       device_memory_pool;  ///< Configuration options for device memory pool.
   MemoryPoolOptions
@@ -1044,7 +1046,10 @@ class HashTable : public HashTableBase<K, V, S> {
       check_evict_strategy(scores);
     }
 
-    insert_unique_lock lock(mutex_, stream);
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
 
     if (is_fast_mode()) {
       static thread_local int step_counter = 0;
@@ -1228,7 +1233,10 @@ class HashTable : public HashTableBase<K, V, S> {
       check_evict_strategy(scores);
     }
 
-    insert_unique_lock lock(mutex_, stream);
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
 
     // TODO: Currently only need eviction when using HashTable as HBM cache.
     if (!is_fast_mode()) {
@@ -1458,7 +1466,10 @@ class HashTable : public HashTableBase<K, V, S> {
       check_evict_strategy(scores);
     }
 
-    insert_unique_lock lock(mutex_, stream);
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
 
     if (is_fast_mode()) {
       using Selector =
@@ -1556,7 +1567,10 @@ class HashTable : public HashTableBase<K, V, S> {
       check_evict_strategy(scores);
     }
 
-    insert_unique_lock lock(mutex_, stream);
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
 
     if (is_fast_mode()) {
       static thread_local int step_counter = 0;
@@ -1731,7 +1745,10 @@ class HashTable : public HashTableBase<K, V, S> {
       check_evict_strategy(scores);
     }
 
-    insert_unique_lock lock(mutex_, stream);
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
 
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
 
@@ -1811,7 +1828,10 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
-    insert_unique_lock lock(mutex_, stream);
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
 
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
     if (options_.max_bucket_size < MinBucketCapacityFilter) {
@@ -1850,7 +1870,10 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
-    insert_unique_lock lock(mutex_, stream);
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
 
     constexpr uint32_t BLOCK_SIZE = 128U;
     /// TODO: check the key belongs to the bucket.
@@ -1894,7 +1917,10 @@ class HashTable : public HashTableBase<K, V, S> {
 
     check_evict_strategy(scores);
 
-    update_shared_lock lock(mutex_, stream);
+    std::unique_ptr<update_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_shared_lock>(mutex_, stream);
+    }
 
     if (is_fast_mode()) {
       static thread_local int step_counter = 0;
@@ -2040,7 +2066,10 @@ class HashTable : public HashTableBase<K, V, S> {
     check_evict_strategy(scores);
 
     {
-      update_shared_lock lock(mutex_, stream);
+      std::unique_ptr<update_shared_lock> lock_ptr;
+      if (options_.api_lock) {
+        lock_ptr = std::make_unique<update_shared_lock>(mutex_, stream);
+      }
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -2101,7 +2130,10 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
-    update_shared_lock lock(mutex_, stream);
+    std::unique_ptr<update_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_shared_lock>(mutex_, stream);
+    }
 
     if (is_fast_mode()) {
       static thread_local int step_counter = 0;
@@ -2255,7 +2287,10 @@ class HashTable : public HashTableBase<K, V, S> {
 
     CUDA_CHECK(cudaMemsetAsync(founds, 0, n * sizeof(bool), stream));
 
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
 
     const uint32_t value_size = dim() * sizeof(V);
 
@@ -2372,7 +2407,10 @@ class HashTable : public HashTableBase<K, V, S> {
 
     CUDA_CHECK(cudaMemsetAsync(missed_size, 0, sizeof(*missed_size), stream));
 
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
 
     const uint32_t value_size = options_.dim * sizeof(V);
 
@@ -2488,7 +2526,10 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
 
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
     if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
@@ -2533,7 +2574,10 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
 
     if (options_.max_bucket_size == 128) {
       // Pipeline lookup kernel only supports "bucket_size = 128".
@@ -2572,7 +2616,10 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
-    update_read_lock lock(mutex_, stream);
+    std::unique_ptr<update_read_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+    }
 
     {
       const size_t block_size = options_.block_size;
@@ -2623,7 +2670,10 @@ class HashTable : public HashTableBase<K, V, S> {
   template <template <typename, typename> class PredFunctor>
   size_type erase_if(const key_type& pattern, const score_type& threshold,
                      cudaStream_t stream = 0) {
-    update_read_lock lock(mutex_, stream);
+    std::unique_ptr<update_read_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+    }
 
     auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
     auto d_count{dev_ws.get<size_type*>(0)};
@@ -2663,7 +2713,10 @@ class HashTable : public HashTableBase<K, V, S> {
 
   template <typename PredFunctor>
   size_type erase_if_v2(PredFunctor& pred, cudaStream_t stream = 0) {
-    update_read_lock lock(mutex_, stream);
+    std::unique_ptr<update_read_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+    }
 
     auto dev_ws{dev_mem_pool_->get_workspace<1>(sizeof(size_type), stream)};
     auto d_count{dev_ws.get<size_type*>(0)};
@@ -2711,7 +2764,10 @@ class HashTable : public HashTableBase<K, V, S> {
    * object.
    */
   void clear(cudaStream_t stream = 0) {
-    update_read_lock lock(mutex_, stream);
+    std::unique_ptr<update_read_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+    }
 
     const size_t block_size = options_.block_size;
     const size_t N = table_->buckets_num * table_->bucket_max_size;
@@ -2753,7 +2809,10 @@ class HashTable : public HashTableBase<K, V, S> {
                     value_type* values,            // (n, DIM)
                     score_type* scores = nullptr,  // (n)
                     cudaStream_t stream = 0) const {
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
 
     CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
     if (offset >= table_->capacity) {
@@ -2846,7 +2905,10 @@ class HashTable : public HashTableBase<K, V, S> {
                        value_type* values,            // (n, DIM)
                        score_type* scores = nullptr,  // (n)
                        cudaStream_t stream = 0) const {
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
     CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
 
     if (offset >= table_->capacity) {
@@ -2955,7 +3017,10 @@ class HashTable : public HashTableBase<K, V, S> {
                           value_type* values,            // (n, DIM)
                           score_type* scores = nullptr,  // (n)
                           cudaStream_t stream = 0) const {
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
     CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
 
     if (offset >= table_->capacity) {
@@ -3013,7 +3078,10 @@ class HashTable : public HashTableBase<K, V, S> {
   template <typename ExecutionFunc>
   void for_each(const size_type first, const size_type last, ExecutionFunc& f,
                 cudaStream_t stream = 0) {
-    update_read_lock lock(mutex_, stream);
+    std::unique_ptr<update_read_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+    }
 
     if (first >= table_->capacity or last > table_->capacity or first >= last) {
       return;
@@ -3061,7 +3129,10 @@ class HashTable : public HashTableBase<K, V, S> {
    * @return The table size.
    */
   size_type size(cudaStream_t stream = 0) const {
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
 
     size_type h_size = 0;
 
@@ -3091,7 +3162,10 @@ class HashTable : public HashTableBase<K, V, S> {
   template <template <typename, typename> class PredFunctor>
   void size_if(const key_type& pattern, const score_type& threshold,
                size_type* d_counter, cudaStream_t stream = 0) const {
-    read_shared_lock lock(mutex_, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
     CUDA_CHECK(cudaMemsetAsync(d_counter, 0, sizeof(size_type), stream));
 
     size_t grid_size = SAFE_GET_GRID_SIZE(capacity(), options_.block_size);
@@ -3136,7 +3210,10 @@ class HashTable : public HashTableBase<K, V, S> {
     }
 
     {
-      update_read_lock lock(mutex_, stream);
+      std::unique_ptr<update_read_lock> lock_ptr;
+      if (options_.api_lock) {
+        lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+      }
 
       // Once we have exclusive access, make sure that pending GPU calls have
       // been processed.
@@ -3186,7 +3263,10 @@ class HashTable : public HashTableBase<K, V, S> {
           "None power-of-2 new_max_capacity is not supported.");
     }
 
-    update_read_lock lock(mutex_);
+    std::unique_ptr<update_read_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_read_lock>(mutex_);
+    }
 
     if (new_max_capacity < capacity()) {
       return;
@@ -3246,7 +3326,10 @@ class HashTable : public HashTableBase<K, V, S> {
         dump_kernel_shared_memory_size<K, V, S>(shared_mem_size_);
 
     // Request exclusive access (to make sure capacity won't change anymore).
-    update_read_lock lock(mutex_, stream);
+    std::unique_ptr<update_read_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<update_read_lock>(mutex_, stream);
+    }
 
     const size_type total_size{capacity()};
     const size_type n{std::min(max_workspace_size / tuple_size, total_size)};
@@ -3408,9 +3491,13 @@ class HashTable : public HashTableBase<K, V, S> {
   inline float fast_load_factor(const size_type delta = 0,
                                 cudaStream_t stream = 0,
                                 const bool need_lock = true) const {
-    read_shared_lock lock(mutex_, std::defer_lock, stream);
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr =
+          std::make_unique<read_shared_lock>(mutex_, std::defer_lock, stream);
+    }
     if (need_lock) {
-      lock.lock();
+      lock_ptr->lock();
     }
 
     size_t N = std::min(table_->buckets_num, 1024UL);
