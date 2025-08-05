@@ -537,7 +537,7 @@ class MemoryPool final {
     // If the workspace that borrowed a stream was moved out of the RAII scope
     // where it was created, it could happen that the stream was destroyed when
     // we return the buffer ownershup. This `cudaStreamQuery` will prevent that.
-    if (stream && cudaStreamQuery(stream) != cudaErrorInvalidResourceHandle) {
+    if (cudaStreamQuery(stream) != cudaErrorInvalidResourceHandle) {
       for (; first != last; ++first) {
         // Avoid adding already deallocated buffers.
         if (*first == nullptr) {
