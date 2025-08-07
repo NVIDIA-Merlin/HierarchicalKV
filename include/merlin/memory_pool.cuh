@@ -536,8 +536,12 @@ class MemoryPool final {
 
     // If the workspace that borrowed a stream was moved out of the RAII scope
     // where it was created, it could happen that the stream was destroyed when
-    // we return the buffer ownershup. This `cudaStreamQuery` will prevent that.
-    if (stream && cudaStreamQuery(stream) != cudaErrorInvalidResourceHandle) {
+    // we return the buffer ownership. This  will prevent that.
+    //
+    // Note that `cudaStreamQuery` isn't designed to track stream destruction.
+    // This check is a last resort, and may not work reliably. The recommended
+    // best practice is to simply ensure streams you use are alive and well.
+    if (cudaStreamQuery(stream) != cudaErrorInvalidResourceHandle) {
       for (; first != last; ++first) {
         // Avoid adding already deallocated buffers.
         if (*first == nullptr) {
@@ -560,6 +564,7 @@ class MemoryPool final {
         pending_.emplace_back(*first, allocation_size, ready_event);
       }
     } else {
+      std::cout << "Without stream context, we must force a hard sync with the GPU." << std::endl;
       // Without stream context, we must force a hard sync with the GPU.
       CUDA_CHECK(cudaDeviceSynchronize());
 
