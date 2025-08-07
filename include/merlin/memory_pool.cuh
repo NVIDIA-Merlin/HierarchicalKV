@@ -564,7 +564,6 @@ class MemoryPool final {
         pending_.emplace_back(*first, allocation_size, ready_event);
       }
     } else {
-      std::cout << "Without stream context, we must force a hard sync with the GPU." << std::endl;
       // Without stream context, we must force a hard sync with the GPU.
       CUDA_CHECK(cudaDeviceSynchronize());
 
