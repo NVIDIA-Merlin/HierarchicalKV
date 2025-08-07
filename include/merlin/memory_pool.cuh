@@ -536,7 +536,7 @@ class MemoryPool final {
 
     // If the workspace that borrowed a stream was moved out of the RAII scope
     // where it was created, it could happen that the stream was destroyed when
-    // we return the buffer ownership. This  will prevent that.
+    // we return the buffer ownership. This will prevent that.
     //
     // Note that `cudaStreamQuery` isn't designed to track stream destruction.
     // This check is a last resort, and may not work reliably. The recommended
