@@ -208,7 +208,7 @@ void create_random_keys(size_t dim, K* h_keys, S* h_scores, V* h_vectors,
 template <class K, class S, class V>
 void create_random_keys_advanced(
     size_t dim, K* h_keys, S* h_scores, V* h_vectors, int KEY_NUM,
-    size_t range = std::numeric_limits<uint64_t>::max, int freq_range = 10) {
+    size_t range = std::numeric_limits<uint64_t>::max(), int freq_range = 10) {
   std::unordered_set<K> numbers;
   std::random_device rd;
   std::mt19937_64 eng(rd());
@@ -235,7 +235,7 @@ void create_random_keys_advanced(
 template <class K, class S, class V>
 void create_random_keys_advanced(
     size_t dim, K* h_keys, K* pre_h_keys, S* h_scores, V* h_vectors,
-    int KEY_NUM, size_t range = std::numeric_limits<uint64_t>::max,
+    int KEY_NUM, size_t range = std::numeric_limits<uint64_t>::max(),
     int freq_range = 10, float repeat_rate = 0.9) {
   std::unordered_set<K> numbers;
   std::random_device rd;
