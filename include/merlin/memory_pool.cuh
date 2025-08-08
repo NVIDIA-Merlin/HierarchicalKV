@@ -121,22 +121,15 @@ struct DeviceAllocator final : AllocatorBase<T, DeviceAllocator<T>> {
   inline static type* alloc(size_t n, BaseAllocator* allocator,
                             cudaStream_t stream = 0) {
     void* ptr;
-    if (stream) {
-      allocator->alloc_async(MemoryType::Device, (void**)&ptr, n * sizeof(T),
-                             stream);
-    } else {
-      allocator->alloc(MemoryType::Device, (void**)&ptr, n * sizeof(T));
-    }
+
+    allocator->alloc_async(MemoryType::Device, (void**)&ptr, n * sizeof(T),
+                            stream);
     return reinterpret_cast<type*>(ptr);
   }
 
   inline static void free(type* ptr, BaseAllocator* allocator,
                           cudaStream_t stream = 0) {
-    if (stream) {
-      allocator->free_async(MemoryType::Device, ptr, stream);
-    } else {
-      allocator->free(MemoryType::Device, ptr);
-    }
+    allocator->free_async(MemoryType::Device, ptr, stream);
   }
 };
 
@@ -536,8 +529,12 @@ class MemoryPool final {
 
     // If the workspace that borrowed a stream was moved out of the RAII scope
     // where it was created, it could happen that the stream was destroyed when
-    // we return the buffer ownershup. This `cudaStreamQuery` will prevent that.
-    if (stream && cudaStreamQuery(stream) != cudaErrorInvalidResourceHandle) {
+    // we return the buffer ownership. This will prevent that.
+    //
+    // Note that `cudaStreamQuery` isn't designed to track stream destruction.
+    // This check is a last resort, and may not work reliably. The recommended
+    // best practice is to simply ensure streams you use are alive and well.
+    if (cudaStreamQuery(stream) != cudaErrorInvalidResourceHandle) {
       for (; first != last; ++first) {
         // Avoid adding already deallocated buffers.
         if (*first == nullptr) {
