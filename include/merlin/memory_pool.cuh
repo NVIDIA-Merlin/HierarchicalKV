@@ -121,22 +121,15 @@ struct DeviceAllocator final : AllocatorBase<T, DeviceAllocator<T>> {
   inline static type* alloc(size_t n, BaseAllocator* allocator,
                             cudaStream_t stream = 0) {
     void* ptr;
-    if (stream) {
-      allocator->alloc_async(MemoryType::Device, (void**)&ptr, n * sizeof(T),
-                             stream);
-    } else {
-      allocator->alloc(MemoryType::Device, (void**)&ptr, n * sizeof(T));
-    }
+
+    allocator->alloc_async(MemoryType::Device, (void**)&ptr, n * sizeof(T),
+                            stream);
     return reinterpret_cast<type*>(ptr);
   }
 
   inline static void free(type* ptr, BaseAllocator* allocator,
                           cudaStream_t stream = 0) {
-    if (stream) {
-      allocator->free_async(MemoryType::Device, ptr, stream);
-    } else {
-      allocator->free(MemoryType::Device, ptr);
-    }
+    allocator->free_async(MemoryType::Device, ptr, stream);
   }
 };
 
