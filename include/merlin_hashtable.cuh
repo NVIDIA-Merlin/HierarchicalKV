@@ -1301,15 +1301,11 @@ class HashTable : public HashTableBase<K, V, S> {
       using Selector =
           SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
                                            evict_strategy>;
-      CUDA_CHECK(cudaStreamSynchronize(stream));
-      std::cout << __FILE__ << " " << __LINE__ << "\n";
       Selector::execute_kernel(
           load_factor, options_.block_size, options_.max_bucket_size,
           table_->buckets_num, options_.dim, stream, n, d_table_,
           table_->buckets, keys, values, scores, tmp_evict_keys,
           tmp_evict_values, tmp_evict_scores, global_epoch_);
-      CUDA_CHECK(cudaStreamSynchronize(stream));
-      std::cout << __FILE__ << " " << __LINE__ << "\n";
       keys_not_empty<K>
           <<<grid_size, block_size, 0, stream>>>(tmp_evict_keys, d_masks, n);
 
