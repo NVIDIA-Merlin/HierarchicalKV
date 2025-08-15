@@ -550,15 +550,18 @@ void test_borrow_return_lost_context() {
 TEST(MemoryPoolTest, standard_allocator) { test_standard_allocator(); }
 TEST(MemoryPoolTest, host_allocator) { test_host_allocator(); }
 TEST(MemoryPoolTest, device_allocator) { test_device_allocator(); }
-TEST(MemoryPoolTest, borrow_return_default_context) { test_borrow_return_with_context(false); }
-TEST(MemoryPoolTest, borrow_return_custom_context) { test_borrow_return_with_context(true); }
+TEST(MemoryPoolTest, borrow_return_default_context) {
+  test_borrow_return_with_context(false);
+}
+TEST(MemoryPoolTest, borrow_return_custom_context) {
+  test_borrow_return_with_context(true);
+}
 
 TEST(MemoryPoolTest, test_borrow_return_lost_context) {
-  std::cout
-    << "Unfortunately, there is currently no reliable way to test safely whether a\n"
-    << "stream is alive. Keeping the test around for manual tests.\n";
+  std::cout << "Unfortunately, there is currently no reliable way to test "
+               "safely whether a\n"
+            << "stream is alive. Keeping the test around for manual tests.\n";
   if (false) {
-    
     test_borrow_return_lost_context();
   }
 }

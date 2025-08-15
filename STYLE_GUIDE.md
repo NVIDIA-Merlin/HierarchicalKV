@@ -22,6 +22,6 @@ sudo apt install clang-format-18
 
 format all with:
 ```bash
-find ./ \( -path ./tests/googletest -prune \) -o \( -iname *.h -o -iname *.cpp -o -iname *.cc -o -iname *.cu -o -iname *.cuh \) -print | xargs clang-format-18 -i --style=file
+find ./ \( -path ./tests/googletest -prune \) -o \( -iname *.h -o -iname *.cpp -o -iname *.cc -o -iname *.cu -o -iname *.cuh -o -iname *.hpp \) -print | xargs clang-format-18 -i --style=file
 
 ```

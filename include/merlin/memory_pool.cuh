@@ -123,7 +123,7 @@ struct DeviceAllocator final : AllocatorBase<T, DeviceAllocator<T>> {
     void* ptr;
 
     allocator->alloc_async(MemoryType::Device, (void**)&ptr, n * sizeof(T),
-                            stream);
+                           stream);
     return reinterpret_cast<type*>(ptr);
   }
 
