@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cub/cub.cuh>
 #include "allocator.cuh"
 #include "core_kernels/accum_or_assign.cuh"
 #include "core_kernels/contains.cuh"
@@ -1344,6 +1345,67 @@ WRITE_BACK:
     succeed[kv_idx] = found_;
   }
 }
+
+template <typename KeyT, typename ValueT>
+struct SortPairOp {
+  SortPairOp() : d_temp_storage(nullptr), temp_storage_bytes(0) {}
+
+  size_t get_storage_bytes(int batch, cudaStream_t stream) {
+    num_items = batch;
+    cub::DeviceRadixSort::SortPairs<KeyT, ValueT>(
+        d_temp_storage, temp_storage_bytes, nullptr, nullptr, nullptr, nullptr,
+        num_items, 0, sizeof(KeyT) * 8, stream);
+
+    return temp_storage_bytes;
+  }
+
+  void set_storage(void* storage) { d_temp_storage = storage; }
+
+  void sort(int batch, KeyT const* d_keys_in, KeyT* d_keys_out,
+            ValueT const* d_values_in, ValueT* d_values_out,
+            cudaStream_t stream) {
+    if (batch != num_items) {
+      throw std::runtime_error("Number of items is not matched when sort.");
+    }
+    cub::DeviceRadixSort::SortPairs(
+        d_temp_storage, temp_storage_bytes, d_keys_in, d_keys_out, d_values_in,
+        d_values_out, num_items, 0, sizeof(KeyT) * 8, stream);
+  }
+
+  void* d_temp_storage{nullptr};
+  size_t temp_storage_bytes{0};
+  int num_items{0};
+};
+
+template <typename InputT, typename OutputT>
+struct SumOp {
+  using InputIteratorT = InputT const*;
+  using OutputIteratorT = OutputT*;
+  SumOp() : d_temp_storage(nullptr), temp_storage_bytes(0) {}
+
+  size_t get_storage_bytes(int batch, cudaStream_t stream) {
+    num_items = batch;
+    cub::DeviceReduce::Reduce<InputIteratorT, OutputIteratorT>(
+        d_temp_storage, temp_storage_bytes, nullptr, nullptr, num_items,
+        cub::Sum(), 0, stream);
+    return temp_storage_bytes;
+  }
+
+  void set_storage(void* storage) { d_temp_storage = storage; }
+
+  void sum(int batch, InputIteratorT d_in, OutputIteratorT d_out,
+           cudaStream_t stream) {
+    if (batch != num_items) {
+      throw std::runtime_error("Number of items is not matched when sum.");
+    }
+    cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, d_in, d_out,
+                              num_items, cub::Sum(), 0, stream);
+  }
+
+  void* d_temp_storage{nullptr};
+  size_t temp_storage_bytes{0};
+  int num_items{0};
+};
 
 }  // namespace merlin
 }  // namespace nv

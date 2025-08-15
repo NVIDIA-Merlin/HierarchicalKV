@@ -34,6 +34,7 @@
 #include "merlin/flexible_buffer.cuh"
 #include "merlin/group_lock.cuh"
 #include "merlin/memory_pool.cuh"
+#include "merlin/multi_vector.hpp"
 #include "merlin/types.cuh"
 #include "merlin/utils.cuh"
 
@@ -1083,12 +1084,21 @@ class HashTable : public HashTableBase<K, V, S> {
             scores, global_epoch_);
       }
     } else {
-      const size_type dev_ws_size{
-          n * (sizeof(value_type*) + sizeof(int) + sizeof(key_type*))};
+      auto sortOp = SortPairOp<uintptr_t, int>();
+      auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
+
+      MultiVector<value_type*, int, value_type*, int, key_type*, uint8_t> mv(
+          n, n, n, n, n, d_sort_bytes);
+      const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto d_dst{dev_ws.get<value_type**>(0)};
-      auto keys_ptr{reinterpret_cast<key_type**>(d_dst + n)};
-      auto d_src_offset{reinterpret_cast<int*>(keys_ptr + n)};
+      auto temp_storage = dev_ws.get<uint8_t*>(0);
+      auto d_dst = get_vector<0>(mv, temp_storage);
+      auto d_src_offset = get_vector<1>(mv, temp_storage);
+      auto d_dst_sorted = get_vector<2>(mv, temp_storage);
+      auto d_src_offset_sorted = get_vector<3>(mv, temp_storage);
+      auto keys_ptr = get_vector<4>(mv, temp_storage);
+      auto d_sort_storage = get_vector<5>(mv, temp_storage);
+      sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
 
@@ -1121,15 +1131,9 @@ class HashTable : public HashTableBase<K, V, S> {
             d_src_offset, global_epoch_, N);
       }
 
-      {
-        thrust::device_ptr<uintptr_t> d_dst_ptr(
-            reinterpret_cast<uintptr_t*>(d_dst));
-        thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
-
-        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), d_dst_ptr,
-                            d_dst_ptr + n, d_src_offset_ptr,
-                            thrust::less<uintptr_t>());
-      }
+      sortOp.sort(n, reinterpret_cast<uintptr_t*>(d_dst),
+                  reinterpret_cast<uintptr_t*>(d_dst_sorted), d_src_offset,
+                  d_src_offset_sorted, stream);
 
       if (filter_condition) {
         const size_t block_size = options_.io_block_size;
@@ -1137,32 +1141,36 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         write_kernel_unlock_key<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
-                                                   dim(), keys, keys_ptr, N);
+            <<<grid_size, block_size, 0, stream>>>(values, d_dst_sorted,
+                                                   d_src_offset_sorted, dim(),
+                                                   keys, keys_ptr, N);
 
       } else if (options_.io_by_cpu) {
-        const size_type host_ws_size{dev_ws_size +
-                                     n * sizeof(value_type) * dim()};
+        MultiVector<value_type*, int, value_type> mv1(n, n, n * dim());
+        const size_type host_ws_size = mv1.total_size();
         auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
-        auto h_dst{host_ws.get<value_type**>(0)};
-        auto h_src_offset{reinterpret_cast<int*>(h_dst + n)};
-        auto h_values{reinterpret_cast<value_type*>(h_src_offset + n)};
+        auto host_temp_storage = host_ws.get<uint8_t*>(0);
+        auto h_dst_sorted = get_vector<0>(mv1, host_temp_storage);
+        auto h_src_offset_sorted = get_vector<1>(mv1, host_temp_storage);
+        auto h_values = get_vector<2>(mv1, host_temp_storage);
 
-        CUDA_CHECK(cudaMemcpyAsync(h_dst, d_dst, dev_ws_size,
+        CUDA_CHECK(cudaMemcpyAsync(h_dst_sorted, d_dst_sorted, mv1.offset(2),
                                    cudaMemcpyDeviceToHost, stream));
-        CUDA_CHECK(cudaMemcpyAsync(h_values, values, host_ws_size - dev_ws_size,
+        CUDA_CHECK(cudaMemcpyAsync(h_values, values,
+                                   n * dim() * sizeof(value_type),
                                    cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        write_by_cpu<value_type>(h_dst, h_values, h_src_offset, dim(), n);
+        write_by_cpu<value_type>(h_dst_sorted, h_values, h_src_offset_sorted,
+                                 dim(), n);
       } else {
         const size_t block_size = options_.io_block_size;
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         write_kernel<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
-                                                   dim(), N);
+            <<<grid_size, block_size, 0, stream>>>(
+                values, d_dst_sorted, d_src_offset_sorted, dim(), N);
       }
     }
 
@@ -1485,12 +1493,21 @@ class HashTable : public HashTableBase<K, V, S> {
           value_or_deltas, scores, accum_or_assigns, global_epoch_);
 
     } else {
-      const size_type dev_ws_size{
-          n * (sizeof(value_type*) + sizeof(int) + sizeof(bool))};
+      auto sortOp = SortPairOp<uintptr_t, int>();
+      auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
+
+      MultiVector<value_type*, int, value_type*, int, bool, uint8_t> mv(
+          n, n, n, n, n, d_sort_bytes);
+      const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto dst{dev_ws.get<value_type**>(0)};
-      auto src_offset{reinterpret_cast<int*>(dst + n)};
-      auto founds{reinterpret_cast<bool*>(src_offset + n)};
+      auto temp_storage = dev_ws.get<uint8_t*>(0);
+      auto dst = get_vector<0>(mv, temp_storage);
+      auto src_offset = get_vector<1>(mv, temp_storage);
+      auto dst_sorted = get_vector<2>(mv, temp_storage);
+      auto src_offset_sorted = get_vector<3>(mv, temp_storage);
+      auto founds = get_vector<4>(mv, temp_storage);
+      auto d_sort_storage = get_vector<5>(mv, temp_storage);
+      sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(dst, 0, dev_ws_size, stream));
 
@@ -1506,15 +1523,9 @@ class HashTable : public HashTableBase<K, V, S> {
             global_epoch_, N);
       }
 
-      {
-        thrust::device_ptr<uintptr_t> dst_ptr(
-            reinterpret_cast<uintptr_t*>(dst));
-        thrust::device_ptr<int> src_offset_ptr(src_offset);
-
-        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), dst_ptr,
-                            dst_ptr + n, src_offset_ptr,
-                            thrust::less<uintptr_t>());
-      }
+      sortOp.sort(n, reinterpret_cast<uintptr_t*>(dst),
+                  reinterpret_cast<uintptr_t*>(dst_sorted), src_offset,
+                  src_offset_sorted, stream);
 
       {
         const size_t block_size = options_.io_block_size;
@@ -1522,9 +1533,9 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         write_with_accum_kernel<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(value_or_deltas, dst,
+            <<<grid_size, block_size, 0, stream>>>(value_or_deltas, dst_sorted,
                                                    accum_or_assigns, founds,
-                                                   src_offset, dim(), N);
+                                                   src_offset_sorted, dim(), N);
       }
     }
     CudaCheckError();
@@ -1601,13 +1612,22 @@ class HashTable : public HashTableBase<K, V, S> {
             table_->buckets, keys, values, scores, global_epoch_);
       }
     } else {
-      const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int) +
-                                       sizeof(bool) + sizeof(key_type*))};
+      auto sortOp = SortPairOp<uintptr_t, int>();
+      auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
+
+      MultiVector<value_type*, int, value_type*, int, bool, key_type*, uint8_t>
+          mv(n, n, n, n, n, n, d_sort_bytes);
+      const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto d_table_value_addrs{dev_ws.get<value_type**>(0)};
-      auto keys_ptr{reinterpret_cast<key_type**>(d_table_value_addrs + n)};
-      auto param_key_index{reinterpret_cast<int*>(keys_ptr + n)};
-      auto founds{reinterpret_cast<bool*>(param_key_index + n)};
+      auto temp_storage = dev_ws.get<uint8_t*>(0);
+      auto d_table_value_addrs = get_vector<0>(mv, temp_storage);
+      auto param_key_index = get_vector<1>(mv, temp_storage);
+      auto d_table_value_addrs_sorted = get_vector<2>(mv, temp_storage);
+      auto param_key_index_sorted = get_vector<3>(mv, temp_storage);
+      auto founds = get_vector<4>(mv, temp_storage);
+      auto keys_ptr = get_vector<5>(mv, temp_storage);
+      auto d_sort_storage = get_vector<6>(mv, temp_storage);
+      sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(d_table_value_addrs, 0, dev_ws_size, stream));
 
@@ -1641,15 +1661,9 @@ class HashTable : public HashTableBase<K, V, S> {
             scores, founds, param_key_index, global_epoch_, N);
       }
 
-      {
-        thrust::device_ptr<uintptr_t> table_value_ptr(
-            reinterpret_cast<uintptr_t*>(d_table_value_addrs));
-        thrust::device_ptr<int> param_key_index_ptr(param_key_index);
-
-        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream),
-                            table_value_ptr, table_value_ptr + n,
-                            param_key_index_ptr, thrust::less<uintptr_t>());
-      }
+      sortOp.sort(n, reinterpret_cast<uintptr_t*>(d_table_value_addrs),
+                  reinterpret_cast<uintptr_t*>(d_table_value_addrs_sorted),
+                  param_key_index, param_key_index_sorted, stream);
 
       if (filter_condition) {
         const size_t block_size = options_.io_block_size;
@@ -1657,31 +1671,31 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         read_or_write_kernel_unlock_key<key_type, value_type, score_type, V>
-            <<<grid_size, block_size, 0, stream>>>(d_table_value_addrs, values,
-                                                   founds, param_key_index,
-                                                   keys_ptr, keys, dim(), N);
+            <<<grid_size, block_size, 0, stream>>>(
+                d_table_value_addrs_sorted, values, founds,
+                param_key_index_sorted, keys_ptr, keys, dim(), N);
 
       } else if (options_.io_by_cpu) {
-        const size_type host_ws_size{
-            dev_ws_size + n * (sizeof(bool) + sizeof(value_type) * dim())};
+        MultiVector<value_type*, int, bool, value_type> mv1(n, n, n, n * dim());
+        const size_type host_ws_size = mv1.total_size();
         auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
-        auto h_table_value_addrs{host_ws.get<value_type**>(0)};
-        auto h_param_key_index{reinterpret_cast<int*>(h_table_value_addrs + n)};
-        auto h_founds{reinterpret_cast<bool*>(h_param_key_index + n)};
-        auto h_param_values{reinterpret_cast<value_type*>(h_founds + n)};
+        auto host_temp_storage = host_ws.get<uint8_t*>(0);
+        auto h_table_value_addrs_sorted = get_vector<0>(mv1, host_temp_storage);
+        auto h_param_key_index_sorted = get_vector<1>(mv1, host_temp_storage);
+        auto h_founds = get_vector<2>(mv1, host_temp_storage);
+        auto h_param_values = get_vector<3>(mv1, host_temp_storage);
 
-        CUDA_CHECK(cudaMemcpyAsync(h_table_value_addrs, d_table_value_addrs,
-                                   dev_ws_size, cudaMemcpyDeviceToHost,
-                                   stream));
-        CUDA_CHECK(cudaMemcpyAsync(h_founds, founds, n * sizeof(bool),
+        CUDA_CHECK(cudaMemcpyAsync(h_table_value_addrs_sorted,
+                                   d_table_value_addrs_sorted, mv1.offset(3),
                                    cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaMemcpyAsync(h_param_values, values,
                                    n * sizeof(value_type) * dim(),
                                    cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        read_or_write_by_cpu<value_type>(h_table_value_addrs, h_param_values,
-                                         h_param_key_index, h_founds, dim(), n);
+        read_or_write_by_cpu<value_type>(
+            h_table_value_addrs_sorted, h_param_values,
+            h_param_key_index_sorted, h_founds, dim(), n);
         CUDA_CHECK(cudaMemcpyAsync(values, h_param_values,
                                    n * sizeof(value_type) * dim(),
                                    cudaMemcpyHostToDevice, stream));
@@ -1692,7 +1706,8 @@ class HashTable : public HashTableBase<K, V, S> {
 
         read_or_write_kernel<key_type, value_type, score_type>
             <<<grid_size, block_size, 0, stream>>>(
-                d_table_value_addrs, values, founds, param_key_index, dim(), N);
+                d_table_value_addrs_sorted, values, founds,
+                param_key_index_sorted, dim(), N);
       }
     }
 
@@ -1949,12 +1964,21 @@ class HashTable : public HashTableBase<K, V, S> {
             table_->buckets, keys, values, scores, global_epoch_);
       }
     } else {
-      const size_type dev_ws_size{
-          n * (sizeof(value_type*) + sizeof(key_type) + sizeof(int))};
+      auto sortOp = SortPairOp<uintptr_t, int>();
+      auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
+
+      MultiVector<value_type*, int, value_type*, int, key_type*, uint8_t> mv(
+          n, n, n, n, n, d_sort_bytes);
+      const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto d_dst{dev_ws.get<value_type**>(0)};
-      auto keys_ptr{reinterpret_cast<key_type**>(d_dst + n)};
-      auto d_src_offset{reinterpret_cast<int*>(keys_ptr + n)};
+      auto temp_storage = dev_ws.get<uint8_t*>(0);
+      auto d_dst = get_vector<0>(mv, temp_storage);
+      auto d_src_offset = get_vector<1>(mv, temp_storage);
+      auto d_dst_sorted = get_vector<2>(mv, temp_storage);
+      auto d_src_offset_sorted = get_vector<3>(mv, temp_storage);
+      auto keys_ptr = get_vector<4>(mv, temp_storage);
+      auto d_sort_storage = get_vector<5>(mv, temp_storage);
+      sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
 
@@ -1987,15 +2011,9 @@ class HashTable : public HashTableBase<K, V, S> {
             d_src_offset, global_epoch_, N);
       }
 
-      {
-        thrust::device_ptr<uintptr_t> d_dst_ptr(
-            reinterpret_cast<uintptr_t*>(d_dst));
-        thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
-
-        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), d_dst_ptr,
-                            d_dst_ptr + n, d_src_offset_ptr,
-                            thrust::less<uintptr_t>());
-      }
+      sortOp.sort(n, reinterpret_cast<uintptr_t*>(d_dst),
+                  reinterpret_cast<uintptr_t*>(d_dst_sorted), d_src_offset,
+                  d_src_offset_sorted, stream);
 
       if (filter_condition) {
         const size_t block_size = options_.io_block_size;
@@ -2003,32 +2021,36 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         write_kernel_unlock_key<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
-                                                   dim(), keys, keys_ptr, N);
+            <<<grid_size, block_size, 0, stream>>>(values, d_dst_sorted,
+                                                   d_src_offset_sorted, dim(),
+                                                   keys, keys_ptr, N);
 
       } else if (options_.io_by_cpu) {
-        const size_type host_ws_size{dev_ws_size +
-                                     n * sizeof(value_type) * dim()};
+        MultiVector<value_type*, int, value_type> mv1(n, n, n * dim());
+        const size_type host_ws_size = mv1.total_size();
         auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
-        auto h_dst{host_ws.get<value_type**>(0)};
-        auto h_src_offset{reinterpret_cast<int*>(h_dst + n)};
-        auto h_values{reinterpret_cast<value_type*>(h_src_offset + n)};
+        auto host_temp_storage = host_ws.get<uint8_t*>(0);
+        auto h_dst_sorted = get_vector<0>(mv1, host_temp_storage);
+        auto h_src_offset_sorted = get_vector<1>(mv1, host_temp_storage);
+        auto h_values = get_vector<2>(mv1, host_temp_storage);
 
-        CUDA_CHECK(cudaMemcpyAsync(h_dst, d_dst, dev_ws_size,
+        CUDA_CHECK(cudaMemcpyAsync(h_dst_sorted, d_dst_sorted, mv1.offset(2),
                                    cudaMemcpyDeviceToHost, stream));
-        CUDA_CHECK(cudaMemcpyAsync(h_values, values, host_ws_size - dev_ws_size,
+        CUDA_CHECK(cudaMemcpyAsync(h_values, values,
+                                   n * dim() * sizeof(value_type),
                                    cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        write_by_cpu<value_type>(h_dst, h_values, h_src_offset, dim(), n);
+        write_by_cpu<value_type>(h_dst_sorted, h_values, h_src_offset_sorted,
+                                 dim(), n);
       } else {
         const size_t block_size = options_.io_block_size;
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         write_kernel<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
-                                                   dim(), N);
+            <<<grid_size, block_size, 0, stream>>>(
+                values, d_dst_sorted, d_src_offset_sorted, dim(), N);
       }
     }
 
@@ -2161,12 +2183,21 @@ class HashTable : public HashTableBase<K, V, S> {
                                  table_->buckets, keys, values);
       }
     } else {
-      const size_type dev_ws_size{
-          n * (sizeof(value_type*) + sizeof(key_type) + sizeof(int))};
+      auto sortOp = SortPairOp<uintptr_t, int>();
+      auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
+
+      MultiVector<value_type*, int, value_type*, int, key_type*, uint8_t> mv(
+          n, n, n, n, n, d_sort_bytes);
+      const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto d_dst{dev_ws.get<value_type**>(0)};
-      auto keys_ptr{reinterpret_cast<key_type**>(d_dst + n)};
-      auto d_src_offset{reinterpret_cast<int*>(keys_ptr + n)};
+      auto temp_storage = dev_ws.get<uint8_t*>(0);
+      auto d_dst = get_vector<0>(mv, temp_storage);
+      auto d_src_offset = get_vector<1>(mv, temp_storage);
+      auto d_dst_sorted = get_vector<2>(mv, temp_storage);
+      auto d_src_offset_sorted = get_vector<3>(mv, temp_storage);
+      auto keys_ptr = get_vector<4>(mv, temp_storage);
+      auto d_sort_storage = get_vector<5>(mv, temp_storage);
+      sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
 
@@ -2197,15 +2228,9 @@ class HashTable : public HashTableBase<K, V, S> {
                 N);
       }
 
-      {
-        thrust::device_ptr<uintptr_t> d_dst_ptr(
-            reinterpret_cast<uintptr_t*>(d_dst));
-        thrust::device_ptr<int> d_src_offset_ptr(d_src_offset);
-
-        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), d_dst_ptr,
-                            d_dst_ptr + n, d_src_offset_ptr,
-                            thrust::less<uintptr_t>());
-      }
+      sortOp.sort(n, reinterpret_cast<uintptr_t*>(d_dst),
+                  reinterpret_cast<uintptr_t*>(d_dst_sorted), d_src_offset,
+                  d_src_offset_sorted, stream);
 
       if (filter_condition) {
         const size_t block_size = options_.io_block_size;
@@ -2219,39 +2244,43 @@ class HashTable : public HashTableBase<K, V, S> {
           write_kernel_unlock_key<key_type, VecV, score_type>
               <<<grid_size, block_size, 0, stream>>>(
                   reinterpret_cast<const VecV*>(values),
-                  reinterpret_cast<VecV**>(d_dst), d_src_offset, vec_dim, keys,
-                  keys_ptr, N);
+                  reinterpret_cast<VecV**>(d_dst_sorted), d_src_offset_sorted,
+                  vec_dim, keys, keys_ptr, N);
         } else {
           const size_t N = n * dim();
           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
           write_kernel_unlock_key<key_type, value_type, score_type>
-              <<<grid_size, block_size, 0, stream>>>(
-                  values, d_dst, d_src_offset, dim(), keys, keys_ptr, N);
+              <<<grid_size, block_size, 0, stream>>>(values, d_dst_sorted,
+                                                     d_src_offset_sorted, dim(),
+                                                     keys, keys_ptr, N);
         }
       } else if (options_.io_by_cpu) {
-        const size_type host_ws_size{dev_ws_size +
-                                     n * sizeof(value_type) * dim()};
+        MultiVector<value_type*, int, value_type> mv1(n, n, n * dim());
+        const size_type host_ws_size = mv1.total_size();
         auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
-        auto h_dst{host_ws.get<value_type**>(0)};
-        auto h_src_offset{reinterpret_cast<int*>(h_dst + n)};
-        auto h_values{reinterpret_cast<value_type*>(h_src_offset + n)};
+        auto host_temp_storage = host_ws.get<uint8_t*>(0);
+        auto h_dst_sorted = get_vector<0>(mv1, host_temp_storage);
+        auto h_src_offset_sorted = get_vector<1>(mv1, host_temp_storage);
+        auto h_values = get_vector<2>(mv1, host_temp_storage);
 
-        CUDA_CHECK(cudaMemcpyAsync(h_dst, d_dst, dev_ws_size,
+        CUDA_CHECK(cudaMemcpyAsync(h_dst_sorted, d_dst_sorted, mv1.offset(2),
                                    cudaMemcpyDeviceToHost, stream));
-        CUDA_CHECK(cudaMemcpyAsync(h_values, values, host_ws_size - dev_ws_size,
+        CUDA_CHECK(cudaMemcpyAsync(h_values, values,
+                                   n * dim() * sizeof(value_type),
                                    cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        write_by_cpu<value_type>(h_dst, h_values, h_src_offset, dim(), n);
+        write_by_cpu<value_type>(h_dst_sorted, h_values, h_src_offset_sorted,
+                                 dim(), n);
       } else {
         const size_t block_size = options_.io_block_size;
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         write_kernel<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(values, d_dst, d_src_offset,
-                                                   dim(), N);
+            <<<grid_size, block_size, 0, stream>>>(
+                values, d_dst_sorted, d_src_offset_sorted, dim(), N);
       }
     }
 
@@ -2319,10 +2348,20 @@ class HashTable : public HashTableBase<K, V, S> {
                                  table_->buckets, keys, values, scores, founds);
       }
     } else {
-      const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
+      auto sortOp = SortPairOp<uintptr_t, int>();
+      auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
+
+      MultiVector<value_type*, int, value_type*, int, uint8_t> mv(n, n, n, n,
+                                                                  d_sort_bytes);
+      const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto src{dev_ws.get<value_type**>(0)};
-      auto dst_offset{reinterpret_cast<int*>(src + n)};
+      auto temp_storage = dev_ws.get<uint8_t*>(0);
+      auto src = get_vector<0>(mv, temp_storage);
+      auto dst_offset = get_vector<1>(mv, temp_storage);
+      auto src_sorted = get_vector<2>(mv, temp_storage);
+      auto dst_offset_sorted = get_vector<3>(mv, temp_storage);
+      auto d_sort_storage = get_vector<4>(mv, temp_storage);
+      sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(src, 0, dev_ws_size, stream));
 
@@ -2352,21 +2391,17 @@ class HashTable : public HashTableBase<K, V, S> {
       }
 
       if (values != nullptr) {
-        thrust::device_ptr<uintptr_t> src_ptr(
-            reinterpret_cast<uintptr_t*>(src));
-        thrust::device_ptr<int> dst_offset_ptr(dst_offset);
-
-        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), src_ptr,
-                            src_ptr + n, dst_offset_ptr,
-                            thrust::less<uintptr_t>());
+        sortOp.sort(n, reinterpret_cast<uintptr_t*>(src),
+                    reinterpret_cast<uintptr_t*>(src_sorted), dst_offset,
+                    dst_offset_sorted, stream);
 
         const size_t block_size = options_.io_block_size;
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         read_kernel<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(src, values, founds,
-                                                   dst_offset, dim(), N);
+            <<<grid_size, block_size, 0, stream>>>(src_sorted, values, founds,
+                                                   dst_offset_sorted, dim(), N);
       }
     }
 
@@ -2440,10 +2475,20 @@ class HashTable : public HashTableBase<K, V, S> {
                                  missed_keys, missed_indices, missed_size);
       }
     } else {
-      const size_type dev_ws_size{n * (sizeof(value_type*) + sizeof(int))};
+      auto sortOp = SortPairOp<uintptr_t, int>();
+      auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
+
+      MultiVector<value_type*, int, value_type*, int, uint8_t> mv(n, n, n, n,
+                                                                  d_sort_bytes);
+      const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-      auto src{dev_ws.get<value_type**>(0)};
-      auto dst_offset{reinterpret_cast<int*>(src + n)};
+      auto temp_storage = dev_ws.get<uint8_t*>(0);
+      auto src = get_vector<0>(mv, temp_storage);
+      auto dst_offset = get_vector<1>(mv, temp_storage);
+      auto src_sorted = get_vector<2>(mv, temp_storage);
+      auto dst_offset_sorted = get_vector<3>(mv, temp_storage);
+      auto d_sort_storage = get_vector<4>(mv, temp_storage);
+      sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(src, 0, dev_ws_size, stream));
 
@@ -2474,21 +2519,17 @@ class HashTable : public HashTableBase<K, V, S> {
       }
 
       if (values != nullptr) {
-        thrust::device_ptr<uintptr_t> src_ptr(
-            reinterpret_cast<uintptr_t*>(src));
-        thrust::device_ptr<int> dst_offset_ptr(dst_offset);
-
-        thrust::sort_by_key(thrust_par(thrust_allocator_).on(stream), src_ptr,
-                            src_ptr + n, dst_offset_ptr,
-                            thrust::less<uintptr_t>());
+        sortOp.sort(n, reinterpret_cast<uintptr_t*>(src),
+                    reinterpret_cast<uintptr_t*>(src_sorted), dst_offset,
+                    dst_offset_sorted, stream);
 
         const size_t block_size = options_.io_block_size;
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
         read_kernel<key_type, value_type, score_type>
-            <<<grid_size, block_size, 0, stream>>>(src, values, dst_offset,
-                                                   dim(), N);
+            <<<grid_size, block_size, 0, stream>>>(src_sorted, values,
+                                                   dst_offset_sorted, dim(), N);
       }
     }
 
@@ -3134,23 +3175,27 @@ class HashTable : public HashTableBase<K, V, S> {
       lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
     }
 
-    size_type h_size = 0;
-
     const size_type N = table_->buckets_num;
-    const size_type step = static_cast<size_type>(
-        std::numeric_limits<int>::max() / options_.max_bucket_size);
 
-    thrust::device_ptr<int> size_ptr(table_->buckets_size);
+    auto sumOp = SumOp<int, int64_t>();
+    auto d_sum_bytes = sumOp.get_storage_bytes(N, stream);
 
-    for (size_type start_i = 0; start_i < N; start_i += step) {
-      size_type end_i = std::min(start_i + step, N);
-      h_size += thrust::reduce(thrust_par(thrust_allocator_).on(stream),
-                               size_ptr + start_i, size_ptr + end_i, 0,
-                               thrust::plus<int>());
-    }
+    MultiVector<int64_t, uint8_t> mv(1, d_sum_bytes);
+    const size_type dev_ws_size = mv.total_size();
+    auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+    auto temp_storage = dev_ws.get<uint8_t*>(0);
+    auto d_total_size = get_vector<0>(mv, temp_storage);
+    auto d_sum_storage = get_vector<1>(mv, temp_storage);
+    sumOp.set_storage(reinterpret_cast<void*>(d_sum_storage));
+    sumOp.sum(N, table_->buckets_size, d_total_size, stream);
+
+    int64_t h_total_size = 0;
+    CUDA_CHECK(cudaMemcpyAsync(&h_total_size, d_total_size, sizeof(int64_t),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
 
     CudaCheckError();
-    return h_size;
+    return static_cast<size_type>(h_total_size);
   }
 
   /**
@@ -3502,14 +3547,25 @@ class HashTable : public HashTableBase<K, V, S> {
 
     size_t N = std::min(table_->buckets_num, 1024UL);
 
-    thrust::device_ptr<int> size_ptr(table_->buckets_size);
+    auto sumOp = SumOp<int, int64_t>();
+    auto d_sum_bytes = sumOp.get_storage_bytes(N, stream);
 
-    int size = thrust::reduce(thrust_par(thrust_allocator_).on(stream),
-                              size_ptr, size_ptr + N, 0, thrust::plus<int>());
+    MultiVector<int64_t, uint8_t> mv(1, d_sum_bytes);
+    const size_type dev_ws_size = mv.total_size();
+    auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
+    auto temp_storage = dev_ws.get<uint8_t*>(0);
+    auto d_total_size = get_vector<0>(mv, temp_storage);
+    auto d_sum_storage = get_vector<1>(mv, temp_storage);
+    sumOp.set_storage(reinterpret_cast<void*>(d_sum_storage));
+    sumOp.sum(N, table_->buckets_size, d_total_size, stream);
 
+    int64_t h_total_size = 0;
+    CUDA_CHECK(cudaMemcpyAsync(&h_total_size, d_total_size, sizeof(int64_t),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
     CudaCheckError();
     return static_cast<float>((delta * 1.0) / (capacity() * 1.0) +
-                              (size * 1.0) /
+                              (h_total_size * 1.0) /
                                   (options_.max_bucket_size * N * 1.0));
   }
 
