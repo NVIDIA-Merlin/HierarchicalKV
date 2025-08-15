@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cub/cub.cuh>
 #include "allocator.cuh"
 #include "core_kernels/accum_or_assign.cuh"
 #include "core_kernels/contains.cuh"
@@ -1229,24 +1230,28 @@ __global__ void compact_key_value_score_kernel(
   }
 }
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, int Strategy = -1>
 __global__ void lock_kernel_with_filter(
     Bucket<K, V, S>* __restrict__ buckets, uint64_t const buckets_num,
     uint32_t bucket_capacity, uint32_t const dim, K const* __restrict__ keys,
-    K** __restrict locked_keys_ptr, bool* __restrict succeed, uint64_t n) {
+    K** __restrict locked_keys_ptr, bool* __restrict succeed,
+    S const* __restrict__ scores, const S global_epoch, uint64_t n) {
   using BUCKET = Bucket<K, V, S>;
+  using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
   // Load `STRIDE` digests every time.
   constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
 
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
   K key{static_cast<K>(EMPTY_KEY)};
+  S score{static_cast<S>(EMPTY_SCORE)};
   OccupyResult occupy_result{OccupyResult::INITIAL};
   VecD_Comp target_digests{0};
   K* bucket_keys_ptr{nullptr};
   uint32_t key_pos = {0};
   if (kv_idx < n) {
     key = keys[kv_idx];
+    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
     if (!IS_RESERVED_KEY<K>(key)) {
       const K hashed_key = Murmur3HashDevice(key);
       target_digests = digests_from_hashed<K>(hashed_key);
@@ -1325,6 +1330,10 @@ WRITE_BACK:
         cuda::std::memory_order_relaxed, cuda::std::memory_order_relaxed);
     if (not result) {
       found_ = false;
+    } else {
+      ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores, kv_idx,
+                                       score, bucket_capacity,
+                                       get_digest<K>(key), false);
     }
   }
   if (found_) {
@@ -1336,6 +1345,67 @@ WRITE_BACK:
     succeed[kv_idx] = found_;
   }
 }
+
+template <typename KeyT, typename ValueT>
+struct SortPairOp {
+  SortPairOp() : d_temp_storage(nullptr), temp_storage_bytes(0) {}
+
+  size_t get_storage_bytes(int batch, cudaStream_t stream) {
+    num_items = batch;
+    cub::DeviceRadixSort::SortPairs<KeyT, ValueT>(
+        d_temp_storage, temp_storage_bytes, nullptr, nullptr, nullptr, nullptr,
+        num_items, 0, sizeof(KeyT) * 8, stream);
+
+    return temp_storage_bytes;
+  }
+
+  void set_storage(void* storage) { d_temp_storage = storage; }
+
+  void sort(int batch, KeyT const* d_keys_in, KeyT* d_keys_out,
+            ValueT const* d_values_in, ValueT* d_values_out,
+            cudaStream_t stream) {
+    if (batch != num_items) {
+      throw std::runtime_error("Number of items is not matched when sort.");
+    }
+    cub::DeviceRadixSort::SortPairs(
+        d_temp_storage, temp_storage_bytes, d_keys_in, d_keys_out, d_values_in,
+        d_values_out, num_items, 0, sizeof(KeyT) * 8, stream);
+  }
+
+  void* d_temp_storage{nullptr};
+  size_t temp_storage_bytes{0};
+  int num_items{0};
+};
+
+template <typename InputT, typename OutputT>
+struct SumOp {
+  using InputIteratorT = InputT const*;
+  using OutputIteratorT = OutputT*;
+  SumOp() : d_temp_storage(nullptr), temp_storage_bytes(0) {}
+
+  size_t get_storage_bytes(int batch, cudaStream_t stream) {
+    num_items = batch;
+    cub::DeviceReduce::Reduce<InputIteratorT, OutputIteratorT>(
+        d_temp_storage, temp_storage_bytes, nullptr, nullptr, num_items,
+        cub::Sum(), 0, stream);
+    return temp_storage_bytes;
+  }
+
+  void set_storage(void* storage) { d_temp_storage = storage; }
+
+  void sum(int batch, InputIteratorT d_in, OutputIteratorT d_out,
+           cudaStream_t stream) {
+    if (batch != num_items) {
+      throw std::runtime_error("Number of items is not matched when sum.");
+    }
+    cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, d_in, d_out,
+                              num_items, cub::Sum(), 0, stream);
+  }
+
+  void* d_temp_storage{nullptr};
+  size_t temp_storage_bytes{0};
+  int num_items{0};
+};
 
 }  // namespace merlin
 }  // namespace nv

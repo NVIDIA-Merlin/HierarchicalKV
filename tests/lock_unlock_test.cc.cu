@@ -74,7 +74,7 @@ void test_lock_and_unlock() {
     CUDA_CHECK(cudaMemsetAsync(d_lock_results, 0, M * sizeof(bool), stream));
     table->contains(M, buffer.keys_ptr(), d_found, stream);
     table->lock_keys(M, buffer.keys_ptr(), lock_keys_ptr, d_lock_results,
-                     stream);
+                     stream, buffer.scores_ptr());
     bool result = test_util::allEqualGpu(d_found, d_lock_results, M, stream);
     ASSERT_EQ(result, true);
     result = test_util::allTrueGpu(d_found, M, stream);
