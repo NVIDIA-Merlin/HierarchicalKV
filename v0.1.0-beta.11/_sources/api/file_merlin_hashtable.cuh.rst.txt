@@ -49,6 +49,8 @@ Includes
 
 - ``merlin/memory_pool.cuh``
 
+- ``merlin/multi_vector.hpp``
+
 - ``merlin/types.cuh``
 
 - ``merlin/utils.cuh``
