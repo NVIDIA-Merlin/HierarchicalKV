@@ -3540,9 +3540,9 @@ class HashTable : public HashTableBase<K, V, S> {
     if (options_.api_lock) {
       lock_ptr =
           std::make_unique<read_shared_lock>(mutex_, std::defer_lock, stream);
-    }
-    if (need_lock) {
-      lock_ptr->lock();
+      if (need_lock) {
+        lock_ptr->lock();
+      }
     }
 
     size_t N = std::min(table_->buckets_num, 1024UL);
