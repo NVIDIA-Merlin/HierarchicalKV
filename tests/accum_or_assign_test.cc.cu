@@ -933,7 +933,8 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 4;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 128;
   constexpr float true_ratio = 0.5;
 
@@ -945,19 +946,19 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
-  std::array<bool, BASE_KEY_NUM> h_accum_or_assigns_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_base(BASE_KEY_NUM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
-  std::array<bool, TEST_KEY_NUM> h_accum_or_assigns_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_test(TEST_KEY_NUM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
@@ -971,13 +972,13 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_base.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
                                     BASE_KEY_NUM, true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_test.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
                                     TEST_KEY_NUM, true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
@@ -1020,7 +1021,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
                             cudaMemcpyHostToDevice));
       CUDA_CHECK(
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
-                     BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
+                     BASE_KEY_NUM * sizeof(uint8_t), cudaMemcpyHostToDevice));
       S start_ts = test_util::host_nano<S>(stream);
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, nullptr, stream);
@@ -1147,7 +1148,8 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start) {
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 4;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 1024;
   constexpr float true_ratio = 0.5;
 
@@ -1159,19 +1161,19 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start) {
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLfu>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
-  std::array<bool, BASE_KEY_NUM> h_accum_or_assigns_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_base(BASE_KEY_NUM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
-  std::array<bool, TEST_KEY_NUM> h_accum_or_assigns_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_test(TEST_KEY_NUM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
@@ -1187,10 +1189,10 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start) {
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_base.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
                                     BASE_KEY_NUM, true_ratio);
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_test.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
                                     TEST_KEY_NUM, true_ratio);
 
   for (int i = 0; i < TEST_TIMES; i++) {
@@ -1245,7 +1247,7 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start) {
                             cudaMemcpyHostToDevice));
       CUDA_CHECK(
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
-                     BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
+                     BASE_KEY_NUM * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
       table->set_global_epoch(global_epoch);
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
@@ -1374,7 +1376,8 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors,
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 4;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 128;
   constexpr float true_ratio = 0.5;
 
@@ -1387,19 +1390,19 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors,
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLru>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
-  std::array<bool, BASE_KEY_NUM> h_accum_or_assigns_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_base(BASE_KEY_NUM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
-  std::array<bool, TEST_KEY_NUM> h_accum_or_assigns_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_test(TEST_KEY_NUM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
@@ -1413,13 +1416,13 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors,
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_base.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
                                     BASE_KEY_NUM, true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_test.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
                                     TEST_KEY_NUM, true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
@@ -1463,7 +1466,7 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors,
                             cudaMemcpyHostToDevice));
       CUDA_CHECK(
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
-                     BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
+                     BASE_KEY_NUM * sizeof(uint8_t), cudaMemcpyHostToDevice));
       S start_ts =
           (test_util::host_nano<S>(stream) >> RSHIFT_ON_NANO) & 0xFFFFFFFF;
       table->set_global_epoch(global_epoch);
@@ -1600,7 +1603,8 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 4;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 1024;
   constexpr float true_ratio = 0.5;
 
@@ -1613,19 +1617,19 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLfu>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
-  std::array<bool, BASE_KEY_NUM> h_accum_or_assigns_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_base(BASE_KEY_NUM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
-  std::array<bool, TEST_KEY_NUM> h_accum_or_assigns_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_test(TEST_KEY_NUM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
@@ -1641,10 +1645,10 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_base.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
                                     BASE_KEY_NUM, true_ratio);
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_test.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
                                     TEST_KEY_NUM, true_ratio);
 
   test_util::create_keys_in_one_buckets_lfu<K, S, V, DIM>(
@@ -1706,7 +1710,7 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
                             cudaMemcpyHostToDevice));
       CUDA_CHECK(
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
-                     BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
+                     BASE_KEY_NUM * sizeof(uint8_t), cudaMemcpyHostToDevice));
 
       table->set_global_epoch(global_epoch);
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
@@ -1866,7 +1870,8 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 128;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 128;
   constexpr float true_ratio = 0.3;
 
@@ -1879,20 +1884,20 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
-  std::array<bool, BASE_KEY_NUM> h_accum_or_assigns_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_base(BASE_KEY_NUM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
-  std::array<bool, TEST_KEY_NUM> h_accum_or_assigns_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_test(TEST_KEY_NUM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
-  std::array<bool, TEMP_KEY_NUM> h_found_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
+  std::vector<uint8_t> h_found_temp(TEMP_KEY_NUM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
@@ -1908,9 +1913,9 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
   CUDA_CHECK(cudaMalloc(&d_found_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_base.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
                                     BASE_KEY_NUM, true_ratio);
-  test_util::create_random_bools<K>(h_accum_or_assigns_test.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
                                     TEST_KEY_NUM, true_ratio);
 
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
@@ -1961,7 +1966,7 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
                             cudaMemcpyHostToDevice));
       CUDA_CHECK(
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
-                     BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
+                     BASE_KEY_NUM * sizeof(uint8_t), cudaMemcpyHostToDevice));
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, d_scores_temp, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -2126,7 +2131,8 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 8;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 256;
   constexpr float base_true_ratio = 0.0f;
   constexpr float test_true_ratio = 0.5f;
@@ -2140,19 +2146,19 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
-  std::array<bool, BASE_KEY_NUM> h_accum_or_assigns_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_base(BASE_KEY_NUM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
-  std::array<bool, TEST_KEY_NUM> h_accum_or_assigns_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
+  std::vector<uint8_t> h_accum_or_assigns_test(TEST_KEY_NUM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
@@ -2165,7 +2171,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
       cudaMalloc(&d_vectors_temp, TEMP_KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_base.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
                                     BASE_KEY_NUM, base_true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
@@ -2176,7 +2182,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
     h_scores_base[i] = base_score_start + i;
   }
 
-  test_util::create_random_bools<K>(h_accum_or_assigns_test.data(),
+  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
                                     TEST_KEY_NUM, test_true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
@@ -2244,7 +2250,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
                             cudaMemcpyHostToDevice));
       CUDA_CHECK(
           cudaMemcpy(d_accum_or_assigns_temp, h_accum_or_assigns_base.data(),
-                     BASE_KEY_NUM * sizeof(bool), cudaMemcpyHostToDevice));
+                     BASE_KEY_NUM * sizeof(uint8_t), cudaMemcpyHostToDevice));
       table->accum_or_assign(BASE_KEY_NUM, d_keys_temp, d_vectors_temp,
                              d_accum_or_assigns_temp, d_scores_temp, stream);
       CUDA_CHECK(cudaStreamSynchronize(stream));
@@ -2271,7 +2277,7 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
-      std::array<S, BASE_KEY_NUM> h_scores_temp_sorted(h_scores_temp);
+      std::vector<S> h_scores_temp_sorted(h_scores_temp);
       std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
       for (int i = 0; i < dump_counter; i++) {
