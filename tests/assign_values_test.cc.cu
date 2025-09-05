@@ -45,7 +45,8 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 4;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 128;
 
   TableOptions options;
@@ -57,17 +58,17 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kLru>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
@@ -139,7 +140,7 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors,
                             BASE_KEY_NUM * sizeof(V) * options.dim,
                             cudaMemcpyDefault));
 
-      std::array<S, BASE_KEY_NUM> h_scores_temp_sorted(h_scores_temp);
+      std::vector<S> h_scores_temp_sorted(h_scores_temp);
       std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
       ASSERT_GE(h_scores_temp_sorted[0], start_ts);
@@ -212,7 +213,8 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
   constexpr uint64_t BASE_KEY_NUM = BUCKET_MAX_SIZE;
   constexpr uint64_t TEST_KEY_NUM = 4;
-  constexpr uint64_t TEMP_KEY_NUM = std::max(BASE_KEY_NUM, TEST_KEY_NUM);
+  constexpr uint64_t TEMP_KEY_NUM =
+      (BASE_KEY_NUM > TEST_KEY_NUM) ? BASE_KEY_NUM : TEST_KEY_NUM;
   constexpr uint64_t TEST_TIMES = 128;
 
   TableOptions options;
@@ -224,17 +226,17 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
   options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kEpochLfu>;
 
-  std::array<K, BASE_KEY_NUM> h_keys_base;
-  std::array<S, BASE_KEY_NUM> h_scores_base;
-  std::array<V, BASE_KEY_NUM * DIM> h_vectors_base;
+  std::vector<K> h_keys_base(BASE_KEY_NUM);
+  std::vector<S> h_scores_base(BASE_KEY_NUM);
+  std::vector<V> h_vectors_base(BASE_KEY_NUM * DIM);
 
-  std::array<K, TEST_KEY_NUM> h_keys_test;
-  std::array<S, TEST_KEY_NUM> h_scores_test;
-  std::array<V, TEST_KEY_NUM * DIM> h_vectors_test;
+  std::vector<K> h_keys_test(TEST_KEY_NUM);
+  std::vector<S> h_scores_test(TEST_KEY_NUM);
+  std::vector<V> h_vectors_test(TEST_KEY_NUM * DIM);
 
-  std::array<K, TEMP_KEY_NUM> h_keys_temp;
-  std::array<S, TEMP_KEY_NUM> h_scores_temp;
-  std::array<V, TEMP_KEY_NUM * DIM> h_vectors_temp;
+  std::vector<K> h_keys_temp(TEMP_KEY_NUM);
+  std::vector<S> h_scores_temp(TEMP_KEY_NUM);
+  std::vector<V> h_vectors_temp(TEMP_KEY_NUM * DIM);
 
   K* d_keys_temp;
   S* d_scores_temp = nullptr;
