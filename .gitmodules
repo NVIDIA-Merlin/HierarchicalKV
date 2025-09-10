@@ -1,4 +1,10 @@
 [submodule "tests/googletest"]
-	path = tests/googletest
+	path = third_party/googletest
 	url = https://github.com/google/googletest.git
 	ignore = dirty
+[submodule "third_party/libcudacxx"]
+	path = third_party/libcudacxx
+	url = https://github.com/NVIDIA/libcudacxx
+[submodule "third_party/thrust"]
+	path = third_party/thrust
+	url = https://github.com/NVIDIA/thrust.git
