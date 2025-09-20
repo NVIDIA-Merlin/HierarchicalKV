@@ -645,13 +645,16 @@ class HashTableBase {
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    * @param unique_key If all keys in the same batch are unique.
+   * @param update_score If true then update the found keys in the table, and
+   * will use scores as input.
    *
    */
   virtual void find(const size_type n, const key_type* keys,  // (n)
                     value_type** values,                      // (n)
                     bool* founds,                             // (n)
                     score_type* scores = nullptr,             // (n)
-                    cudaStream_t stream = 0, bool unique_key = true) const = 0;
+                    cudaStream_t stream = 0, bool unique_key = true,
+                    bool update_score = false) = 0;
 
   /**
    * @brief Checks if there are elements with key equivalent to `keys` in the
@@ -2556,13 +2559,16 @@ class HashTable : public HashTableBase<K, V, S> {
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    * @param unique_key If all keys in the same batch are unique.
+   * @param update_score If true then update the found keys in the table, and
+   * will use scores as input.
    *
    */
   void find(const size_type n, const key_type* keys,  // (n)
             value_type** values,                      // (n)
             bool* founds,                             // (n)
             score_type* scores = nullptr,             // (n)
-            cudaStream_t stream = 0, bool unique_key = true) const {
+            cudaStream_t stream = 0, bool unique_key = true,
+            bool update_score = false) {
     if (n == 0) {
       return;
     }
@@ -2572,13 +2578,19 @@ class HashTable : public HashTableBase<K, V, S> {
       lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
     }
 
+    if (update_score) {
+      check_evict_strategy(scores);
+    }
+
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
     if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
       constexpr uint32_t BLOCK_SIZE = 128U;
-      tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type>
+      tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
+                                        evict_strategy>
           <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               table_->buckets, table_->buckets_num, options_.max_bucket_size,
-              options_.dim, keys, values, scores, founds, n);
+              options_.dim, keys, values, scores, founds, n, update_score,
+              global_epoch_);
     } else {
       using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
       static thread_local int step_counter = 0;
