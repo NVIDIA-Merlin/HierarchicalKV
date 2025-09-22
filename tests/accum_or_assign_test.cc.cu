@@ -972,14 +972,16 @@ void test_evict_strategy_lru_basic(size_t max_hbm_for_vectors) {
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
-                                    BASE_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_base.data()), BASE_KEY_NUM,
+      true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
-                                    TEST_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_test.data()), TEST_KEY_NUM,
+      true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
       TEST_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0x3FFFFFFFFFFFFFFF,
@@ -1189,11 +1191,13 @@ void test_evict_strategy_lfu_basic(size_t max_hbm_for_vectors, int key_start) {
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
-                                    BASE_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_base.data()), BASE_KEY_NUM,
+      true_ratio);
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
-                                    TEST_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_test.data()), TEST_KEY_NUM,
+      true_ratio);
 
   for (int i = 0; i < TEST_TIMES; i++) {
     test_util::create_keys_in_one_buckets_lfu<K, S, V, DIM>(
@@ -1416,14 +1420,16 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors,
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
-                                    BASE_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_base.data()), BASE_KEY_NUM,
+      true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
-                                    TEST_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_test.data()), TEST_KEY_NUM,
+      true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
       TEST_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0x3FFFFFFFFFFFFFFF,
@@ -1645,11 +1651,13 @@ void test_evict_strategy_epochlfu_basic(size_t max_hbm_for_vectors,
 
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
-                                    BASE_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_base.data()), BASE_KEY_NUM,
+      true_ratio);
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
-                                    TEST_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_test.data()), TEST_KEY_NUM,
+      true_ratio);
 
   test_util::create_keys_in_one_buckets_lfu<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
@@ -1913,10 +1921,12 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
   CUDA_CHECK(cudaMalloc(&d_found_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
-                                    BASE_KEY_NUM, true_ratio);
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
-                                    TEST_KEY_NUM, true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_base.data()), BASE_KEY_NUM,
+      true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_test.data()), TEST_KEY_NUM,
+      true_ratio);
 
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
@@ -2171,8 +2181,9 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
       cudaMalloc(&d_vectors_temp, TEMP_KEY_NUM * sizeof(V) * options.dim));
   CUDA_CHECK(cudaMalloc(&d_accum_or_assigns_temp, TEMP_KEY_NUM * sizeof(bool)));
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_base.data()),
-                                    BASE_KEY_NUM, base_true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_base.data()), BASE_KEY_NUM,
+      base_true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_base.data(), h_scores_base.data(), h_vectors_base.data(),
       BASE_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0, 0x3FFFFFFFFFFFFFFF);
@@ -2182,8 +2193,9 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
     h_scores_base[i] = base_score_start + i;
   }
 
-  test_util::create_random_bools<K>(reinterpret_cast<bool*>(h_accum_or_assigns_test.data()),
-                                    TEST_KEY_NUM, test_true_ratio);
+  test_util::create_random_bools<K>(
+      reinterpret_cast<bool*>(h_accum_or_assigns_test.data()), TEST_KEY_NUM,
+      test_true_ratio);
   test_util::create_keys_in_one_buckets<K, S, V, DIM>(
       h_keys_test.data(), h_scores_test.data(), h_vectors_test.data(),
       TEST_KEY_NUM, INIT_CAPACITY, BUCKET_MAX_SIZE, 1, 0x3FFFFFFFFFFFFFFF,

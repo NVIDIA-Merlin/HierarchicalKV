@@ -59,8 +59,8 @@ class BaseAllocator {
 
 class DefaultAllocator : public virtual BaseAllocator {
  public:
-  DefaultAllocator() {};
-  ~DefaultAllocator() override {};
+  DefaultAllocator(){};
+  ~DefaultAllocator() override{};
 
   void alloc(const MemoryType type, void** ptr, size_t size,
              unsigned int pinned_flags = cudaHostAllocDefault) override {

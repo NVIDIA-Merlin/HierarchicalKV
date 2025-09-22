@@ -1810,12 +1810,12 @@ void test_evict_strategy_epochlru_basic(size_t max_hbm_for_vectors,
           ASSERT_LE(h_scores_temp[i], (global_epoch << 32 | start_ts));
         }
       }
-      std::sort(h_scores_temp_sorted.begin(),
-                h_scores_temp_sorted.end());
+      std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
       if (!h_scores_temp_sorted.empty()) {
         ASSERT_GE(h_scores_temp_sorted[0], (global_epoch << 32 | start_ts));
-        ASSERT_LE(h_scores_temp_sorted[h_scores_temp_sorted.size() - 1], (global_epoch << 32 | end_ts));
+        ASSERT_LE(h_scores_temp_sorted[h_scores_temp_sorted.size() - 1],
+                  (global_epoch << 32 | end_ts));
       }
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
@@ -2162,7 +2162,9 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
       std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
       auto expected_range = test_util::range<S, TEMP_KEY_NUM>(base_score_start);
-      ASSERT_TRUE(std::equal(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end(), expected_range.begin()));
+      ASSERT_TRUE(std::equal(h_scores_temp_sorted.begin(),
+                             h_scores_temp_sorted.end(),
+                             expected_range.begin()));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -2204,8 +2206,11 @@ void test_evict_strategy_customized_basic(size_t max_hbm_for_vectors,
       std::vector<S> h_scores_temp_sorted(h_scores_temp);
       std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
-      auto expected_range_test = test_util::range<S, TEST_KEY_NUM>(test_score_start);
-      ASSERT_TRUE(std::equal(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end(), expected_range_test.begin()));
+      auto expected_range_test =
+          test_util::range<S, TEST_KEY_NUM>(test_score_start);
+      ASSERT_TRUE(std::equal(h_scores_temp_sorted.begin(),
+                             h_scores_temp_sorted.end(),
+                             expected_range_test.begin()));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
@@ -2349,7 +2354,9 @@ void test_evict_strategy_customized_advanced(size_t max_hbm_for_vectors,
       std::sort(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end());
 
       auto expected_range = test_util::range<S, TEMP_KEY_NUM>(base_score_start);
-      ASSERT_TRUE(std::equal(h_scores_temp_sorted.begin(), h_scores_temp_sorted.end(), expected_range.begin()));
+      ASSERT_TRUE(std::equal(h_scores_temp_sorted.begin(),
+                             h_scores_temp_sorted.end(),
+                             expected_range.begin()));
       for (int i = 0; i < dump_counter; i++) {
         for (int j = 0; j < options.dim; j++) {
           ASSERT_EQ(h_vectors_temp[i * options.dim + j],
