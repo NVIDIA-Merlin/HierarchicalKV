@@ -645,16 +645,42 @@ class HashTableBase {
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    * @param unique_key If all keys in the same batch are unique.
-   * @param update_score If true then update the found keys in the table, and
-   * will use scores as input.
    *
    */
   virtual void find(const size_type n, const key_type* keys,  // (n)
                     value_type** values,                      // (n)
                     bool* founds,                             // (n)
                     score_type* scores = nullptr,             // (n)
-                    cudaStream_t stream = 0, bool unique_key = true,
-                    bool update_score = false) = 0;
+                    cudaStream_t stream = 0, bool unique_key = true) const = 0;
+
+  /**
+   * @brief Searches the hash table for the specified keys and returns address
+   * of the values, and will update the scores.
+   *
+   * @note When a key is missing, the data in @p values won't change.
+   * @warning This API returns internal addresses for high-performance but
+   * thread-unsafe. The caller is responsible for guaranteeing data consistency.
+   *
+   * @param n The number of key-value-score tuples to search.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param values The addresses of values to search on GPU-accessible memory
+   * with shape (n).
+   * @param founds The status that indicates if the keys are found on
+   * GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p scores is `nullptr`, the score for each key will not be returned.
+   * @endparblock
+   * @param stream The CUDA stream that is used to execute the operation.
+   * @param unique_key If all keys in the same batch are unique.
+   *
+   */
+  virtual void find_and_update(const size_type n, const key_type* keys,  // (n)
+                               value_type** values,                      // (n)
+                               bool* founds,                             // (n)
+                               score_type* scores = nullptr,             // (n)
+                               cudaStream_t stream = 0,
+                               bool unique_key = true) = 0;
 
   /**
    * @brief Checks if there are elements with key equivalent to `keys` in the
@@ -2559,16 +2585,13 @@ class HashTable : public HashTableBase<K, V, S> {
    * @endparblock
    * @param stream The CUDA stream that is used to execute the operation.
    * @param unique_key If all keys in the same batch are unique.
-   * @param update_score If true then update the found keys in the table, and
-   * will use scores as input.
    *
    */
   void find(const size_type n, const key_type* keys,  // (n)
             value_type** values,                      // (n)
             bool* founds,                             // (n)
             score_type* scores = nullptr,             // (n)
-            cudaStream_t stream = 0, bool unique_key = true,
-            bool update_score = false) {
+            cudaStream_t stream = 0, bool unique_key = true) const {
     if (n == 0) {
       return;
     }
@@ -2578,10 +2601,6 @@ class HashTable : public HashTableBase<K, V, S> {
       lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
     }
 
-    if (update_score) {
-      check_evict_strategy(scores);
-    }
-
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
     if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
       constexpr uint32_t BLOCK_SIZE = 128U;
@@ -2589,7 +2608,7 @@ class HashTable : public HashTableBase<K, V, S> {
                                         evict_strategy>
           <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               table_->buckets, table_->buckets_num, options_.max_bucket_size,
-              options_.dim, keys, values, scores, founds, n, update_score,
+              options_.dim, keys, values, scores, founds, n, false,
               global_epoch_);
     } else {
       using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
@@ -2604,6 +2623,62 @@ class HashTable : public HashTableBase<K, V, S> {
                                options_.max_bucket_size, table_->buckets_num,
                                options_.dim, stream, n, d_table_,
                                table_->buckets, keys, values, scores, founds);
+    }
+
+    CudaCheckError();
+  }
+
+  /**
+   * @brief Searches the hash table for the specified keys and returns address
+   * of the values, and will update the scores.
+   *
+   * @note When a key is missing, the data in @p values won't change.
+   * @warning This API returns internal addresses for high-performance but
+   * thread-unsafe. The caller is responsible for guaranteeing data consistency.
+   *
+   * @param n The number of key-value-score tuples to search.
+   * @param keys The keys to search on GPU-accessible memory with shape (n).
+   * @param values The addresses of values to search on GPU-accessible memory
+   * with shape (n).
+   * @param founds The status that indicates if the keys are found on
+   * GPU-accessible memory with shape (n).
+   * @param scores The scores to search on GPU-accessible memory with shape (n).
+   * @parblock
+   * If @p scores is `nullptr`, the score for each key will not be returned.
+   * @endparblock
+   * @param stream The CUDA stream that is used to execute the operation.
+   * @param unique_key If all keys in the same batch are unique.
+   *
+   */
+  void find_and_update(const size_type n, const key_type* keys,  // (n)
+                       value_type** values,                      // (n)
+                       bool* founds,                             // (n)
+                       score_type* scores = nullptr,             // (n)
+                       cudaStream_t stream = 0, bool unique_key = true) {
+    if (n == 0) {
+      return;
+    }
+
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
+
+    check_evict_strategy(scores);
+
+    constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
+    if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
+      constexpr uint32_t BLOCK_SIZE = 128U;
+      tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
+                                        evict_strategy>
+          <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+              table_->buckets, table_->buckets_num, options_.max_bucket_size,
+              options_.dim, keys, values, scores, founds, n, true,
+              global_epoch_);
+    } else {
+      throw std::runtime_error(
+          "Not support update score when keys are not unique or bucket "
+          "capacity is small.");
     }
 
     CudaCheckError();
