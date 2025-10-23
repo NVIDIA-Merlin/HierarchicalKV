@@ -1065,6 +1065,22 @@ class HashTable : public HashTableBase<K, V, S> {
                         const score_type* scores = nullptr,  // (n)
                         cudaStream_t stream = 0, bool unique_key = true,
                         bool ignore_evict_strategy = false) {
+    if (ignore_evict_strategy) {
+      insert_or_assign_impl<EvictStrategy::kCustomized>(
+          n, keys, values, scores, stream, unique_key, ignore_evict_strategy);
+    } else {
+      insert_or_assign_impl<evict_strategy>(n, keys, values, scores, stream,
+                                            unique_key, ignore_evict_strategy);
+    }
+  }
+
+  template <int evict_strategy_>
+  void insert_or_assign_impl(const size_type n,
+                             const key_type* keys,      // (n)
+                             const value_type* values,  // (n, DIM)
+                             const score_type* scores,  // (n)
+                             cudaStream_t stream, bool unique_key,
+                             bool ignore_evict_strategy) {
     if (n == 0) {
       return;
     }
@@ -1092,7 +1108,7 @@ class HashTable : public HashTableBase<K, V, S> {
       }
 
       using Selector = KernelSelector_Upsert<key_type, value_type, score_type,
-                                             evict_strategy, ArchTag>;
+                                             evict_strategy_, ArchTag>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size),
                              static_cast<uint32_t>(options_.dim))) {
@@ -1105,7 +1121,7 @@ class HashTable : public HashTableBase<K, V, S> {
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpsertKernelWithIO<key_type, value_type,
-                                                  score_type, evict_strategy>;
+                                                  score_type, evict_strategy_>;
         Selector::execute_kernel(
             load_factor, options_.block_size, options_.max_bucket_size,
             table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -1142,7 +1158,7 @@ class HashTable : public HashTableBase<K, V, S> {
         constexpr uint32_t BLOCK_SIZE = 128;
 
         upsert_kernel_lock_key_hybrid<key_type, value_type, score_type,
-                                      BLOCK_SIZE, evict_strategy>
+                                      BLOCK_SIZE, evict_strategy_>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_size, table_->buckets_num,
                 options_.max_bucket_size, options_.dim, keys, d_dst, scores,
@@ -1153,7 +1169,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        upsert_kernel<key_type, value_type, score_type, evict_strategy,
+        upsert_kernel<key_type, value_type, score_type, evict_strategy_,
                       TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_dst, scores,
