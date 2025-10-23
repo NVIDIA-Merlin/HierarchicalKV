@@ -430,7 +430,7 @@ Program Listing for File merlin_hashtable.cuh
        }
      }
    
-     template <typename evict_strategy_>
+     template <int evict_strategy_>
      void insert_or_assign_impl(const size_type n,
                                 const key_type* keys,                // (n)
                                 const value_type* values,            // (n, DIM)
@@ -620,7 +620,7 @@ Program Listing for File merlin_hashtable.cuh
    
        using Selector =
            KernelSelector_UpsertAndEvict<key_type, value_type, score_type,
-                                         evict_strategy_, ArchTag>;
+                                         evict_strategy, ArchTag>;
        if (Selector::callable(unique_key,
                               static_cast<uint32_t>(options_.max_bucket_size),
                               static_cast<uint32_t>(options_.dim))) {
@@ -634,7 +634,7 @@ Program Listing for File merlin_hashtable.cuh
        } else if (unique_key and options_.max_bucket_size % 16 == 0) {
          using KernelLauncher =
              InsertAndEvictKernelLauncher<key_type, value_type, score_type,
-                                          evict_strategy_>;
+                                          evict_strategy>;
          typename KernelLauncher::Params kernelParams(
              load_factor, table_->buckets, table_->buckets_size,
              table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
@@ -668,7 +668,7 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(memset64Async(tmp_evict_keys, EMPTY_KEY_CPU, n, stream));
          using Selector =
              SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
-                                              evict_strategy_>;
+                                              evict_strategy>;
          Selector::execute_kernel(
              load_factor, options_.block_size, options_.max_bucket_size,
              table_->buckets_num, options_.dim, stream, n, d_table_,
