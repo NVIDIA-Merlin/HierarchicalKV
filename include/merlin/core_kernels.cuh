@@ -758,7 +758,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
         if (pred(current_key, current_score, pattern, threshold)) {
           atomicAdd(count, 1);
           key_pos = key_offset;
-          bucket->digests(key_pos)[0] = empty_digest<K>();
+          bucket->digests(key_pos)[0] = reclaim_digest<K>();
           (bucket->keys(key_pos))
               ->store(static_cast<K>(RECLAIM_KEY),
                       cuda::std::memory_order_relaxed);
@@ -815,7 +815,7 @@ __global__ void remove_kernel_v2(const uint64_t search_length,
     }
     // Only matched threads need to erase.
     if (match) {
-      bucket->digests(key_idx)[0] = empty_digest<K>();
+      bucket->digests(key_idx)[0] = reclaim_digest<K>();
       bucket->keys(key_idx)->store(static_cast<K>(RECLAIM_KEY),
                                    cuda::std::memory_order_relaxed);
       bucket->scores(key_idx)->store(static_cast<S>(EMPTY_SCORE),
