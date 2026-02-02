@@ -148,9 +148,6 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
       }
     }
   }
-  if (occupy_result == OccupyResult::INITIAL) {
-    evict_idx = atomicAdd(evicted_counter, 1);
-  }
   while (occupy_result == OccupyResult::INITIAL) {
     S* bucket_scores_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, 0);
     S min_score = MAX_SCORE;
@@ -191,6 +188,7 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
     score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
     if (score < min_score) {
       occupy_result = OccupyResult::REFUSED;
+      evict_idx = atomicAdd(evicted_counter, 1);
       evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx, key,
                             score);
       break;
@@ -220,6 +218,7 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
             atomicAdd(bucket_size_ptr, 1);
           } else {
             occupy_result = OccupyResult::EVICT;
+            evict_idx = atomicAdd(evicted_counter, 1);
             evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx,
                                   expected_key, min_score);
           }
