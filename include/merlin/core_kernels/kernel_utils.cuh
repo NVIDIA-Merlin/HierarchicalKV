@@ -668,8 +668,8 @@ __device__ __inline__ OccupyResult find_and_lock_when_vacant(
 
   K local_min_score_key = static_cast<K>(EMPTY_KEY);
 
-  S local_min_score_val = MAX_SCORE;
-  S temp_min_score_val = MAX_SCORE;
+  S local_min_score_val = static_cast<S>(MAX_SCORE);
+  S temp_min_score_val = static_cast<S>(MAX_SCORE);
   int local_min_score_pos = -1;
 
   unsigned vote = 0;
@@ -796,8 +796,8 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_full(
 
   K local_min_score_key = static_cast<K>(EMPTY_KEY);
 
-  S local_min_score_val = MAX_SCORE;
-  S temp_min_score_val = MAX_SCORE;
+  S local_min_score_val = static_cast<S>(MAX_SCORE);
+  S temp_min_score_val = static_cast<S>(MAX_SCORE);
   int local_min_score_pos = -1;
 
   unsigned vote = 0;
