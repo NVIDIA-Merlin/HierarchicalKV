@@ -148,7 +148,7 @@ __global__ void tlp_v1_find_or_insert_kernel_with_io(
   }
   while (occupy_result == OccupyResult::INITIAL) {
     S* bucket_scores_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, 0);
-    S min_score = MAX_SCORE;
+    S min_score = static_cast<S>(MAX_SCORE);
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
@@ -366,7 +366,7 @@ __global__ void tlp_v2_find_or_insert_kernel_with_io(
   }
   while (occupy_result == OccupyResult::INITIAL) {
     S* bucket_scores_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, 0);
-    S min_score = MAX_SCORE;
+    S min_score = static_cast<S>(MAX_SCORE);
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
@@ -785,7 +785,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
       S* src = SMM::bucket_scores(smem, groupID, diff_buf(i));
       while (occupy_result_cur == OccupyResult::INITIAL) {
         int min_pos_local = -1;
-        S min_score_local = MAX_SCORE;
+        S min_score_local = static_cast<S>(MAX_SCORE);
 #pragma unroll
         for (int j = 0; j < BUCKET_SIZE; j += GROUP_SIZE * Load_LEN_S) {
           S temp_scores[Load_LEN_S];
@@ -939,7 +939,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
       int src_lane = __ffs(vote) - 1;
       int min_pos_global = g.shfl(min_pos_local, src_lane);
       if (rank == GROUP_SIZE - 1) {
-        src[min_pos_global] = MAX_SCORE;  // Mark visited.
+        src[min_pos_global] = static_cast<S>(MAX_SCORE);  // Mark visited.
         auto min_score_key = BUCKET::keys(bucket_keys_ptr, min_pos_global);
         auto expected_key =
             min_score_key->load(cuda::std::memory_order_relaxed);
@@ -1547,7 +1547,7 @@ __global__ void find_or_insert_kernel_lock_key_hybrid(
 
   while (occupy_result == OccupyResult::INITIAL) {
     S* bucket_scores_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, 0);
-    S min_score = MAX_SCORE;
+    S min_score = static_cast<S>(MAX_SCORE);
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {

@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <cub/cub.cuh>
+#include <cuda/std/functional>
 #include "allocator.cuh"
 #include "core_kernels/accum_or_assign.cuh"
 #include "core_kernels/contains.cuh"
@@ -1387,7 +1388,7 @@ struct SumOp {
     num_items = batch;
     cub::DeviceReduce::Reduce<InputIteratorT, OutputIteratorT>(
         d_temp_storage, temp_storage_bytes, nullptr, nullptr, num_items,
-        cub::Sum(), 0, stream);
+        cuda::std::plus<>(), 0, stream);
     return temp_storage_bytes;
   }
 
@@ -1399,7 +1400,7 @@ struct SumOp {
       throw std::runtime_error("Number of items is not matched when sum.");
     }
     cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, d_in, d_out,
-                              num_items, cub::Sum(), 0, stream);
+                              num_items, cuda::std::plus<>(), 0, stream);
   }
 
   void* d_temp_storage{nullptr};

@@ -106,8 +106,8 @@ struct ExportIfPredFunctor {
 
 class CustomizedAllocator : public virtual BaseAllocator {
  public:
-  CustomizedAllocator(){};
-  ~CustomizedAllocator() override{};
+  CustomizedAllocator() {};
+  ~CustomizedAllocator() override {};
 
   void alloc(const MemoryType type, void** ptr, size_t size,
              unsigned int pinned_flags = cudaHostAllocDefault) override {

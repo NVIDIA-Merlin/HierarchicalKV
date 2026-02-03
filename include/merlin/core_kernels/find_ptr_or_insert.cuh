@@ -150,7 +150,7 @@ __global__ void find_or_insert_ptr_kernel_lock_key(
 
   while (occupy_result == OccupyResult::INITIAL) {
     S* bucket_scores_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, 0);
-    S min_score = MAX_SCORE;
+    S min_score = static_cast<S>(MAX_SCORE);
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
