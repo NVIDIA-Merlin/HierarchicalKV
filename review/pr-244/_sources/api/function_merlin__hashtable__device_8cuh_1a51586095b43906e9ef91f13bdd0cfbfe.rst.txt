@@ -1,0 +1,14 @@
+.. _exhale_function_merlin__hashtable__device_8cuh_1a51586095b43906e9ef91f13bdd0cfbfe:
+
+Template Function nv::merlin::device::make_device_view
+======================================================
+
+- Defined in :ref:`file_merlin_hashtable_device.cuh`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nv::merlin::device::make_device_view(const HashTable<K, V, S, Strategy, ArchTag>&)
+   :project: HierarchicalKV

@@ -1,0 +1,14 @@
+.. _exhale_function_merlin__hashtable__device_8cuh_1aa394cf3b58546192ee3c2be2690a0ad1:
+
+Template Function nv::merlin::device::calc_bucket_and_start
+===========================================================
+
+- Defined in :ref:`file_merlin_hashtable_device.cuh`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nv::merlin::device::calc_bucket_and_start(const HashTableDeviceView<K, V, S>&, const typename HashTableDeviceView<K, V, S>::key_type, uint32_t *, uint32_t *)
+   :project: HierarchicalKV

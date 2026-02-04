@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Template Struct HashTableDeviceView &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/banner.css" type="text/css" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/structnv_1_1merlin_1_1device_1_1HashTableDeviceView.html" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="../_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Struct EvictStrategy" href="structnv_1_1merlin_1_1EvictStrategy.html" />
+    <link rel="prev" title="Namespace nv::merlin::device" href="namespace_nv__merlin__device.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Documentation</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#class-hierarchy">Class Hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#file-hierarchy">File Hierarchy</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#complete-hierarchicalkv-api">Complete HierarchicalKV API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">HierarchicalKV C++ API Documentation</a></li>
+      <li class="breadcrumb-item active">Template Struct HashTableDeviceView</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="template-struct-hashtabledeviceview">
+<span id="exhale-struct-structnv-1-1merlin-1-1device-1-1hashtabledeviceview"></span><h1>Template Struct HashTableDeviceView<a class="headerlink" href="#template-struct-hashtabledeviceview" title="Permalink to this headline"></a></h1>
+<ul class="simple">
+<li><p>Defined in <a class="reference internal" href="file_merlin_hashtable_device.cuh.html#file-merlin-hashtable-device-cuh"><span class="std std-ref">File merlin_hashtable_device.cuh</span></a></p></li>
+</ul>
+<div class="section" id="struct-documentation">
+<h2>Struct Documentation<a class="headerlink" href="#struct-documentation" title="Permalink to this headline"></a></h2>
+<dl class="cpp struct">
+<dt id="_CPPv4I000EN2nv6merlin6device19HashTableDeviceViewE">
+<span id="_CPPv3I000EN2nv6merlin6device19HashTableDeviceViewE"></span><span id="_CPPv2I000EN2nv6merlin6device19HashTableDeviceViewE"></span><span class="pre">template&lt;</span><span class="pre">typename</span> <code class="sig-name descname"><span class="pre">K</span></code><span class="pre">,</span> <span class="pre">typename</span> <code class="sig-name descname"><span class="pre">V</span></code><span class="pre">,</span> <span class="pre">typename</span> <code class="sig-name descname"><span class="pre">S</span></code><span class="pre">&gt;</span><br /><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView"></span><em class="property"><span class="pre">struct</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><span class="pre">::</span><span class="pre">device</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">HashTableDeviceView</span></code><a class="headerlink" href="#_CPPv4I000EN2nv6merlin6device19HashTableDeviceViewE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Lightweight device-side view of a hash table. </p>
+<p>This view exposes only the metadata and bucket pointer needed by device read-only APIs. </p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView9base_typeE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView9base_typeE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView9base_typeE"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1ab2120730f2379cb31d7c5aaedf4848ca"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">base_type</span></code> <span class="pre">=</span> <span class="pre">HashTableBase</span><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4I000EN2nv6merlin6device19HashTableDeviceViewE" title="nv::merlin::device::HashTableDeviceView::K"><span class="pre">K</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin6device19HashTableDeviceViewE" title="nv::merlin::device::HashTableDeviceView::V"><span class="pre">V</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin6device19HashTableDeviceViewE" title="nv::merlin::device::HashTableDeviceView::S"><span class="pre">S</span></a><span class="pre">&gt;</span><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView9base_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView8key_typeE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView8key_typeE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView8key_typeE"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1a1a2b0dc52760e1250940decae9b5f04d"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">key_type</span></code> <span class="pre">=</span> <em class="property"><span class="pre">typename</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView9base_typeE" title="nv::merlin::device::HashTableDeviceView::base_type"><span class="pre">base_type</span></a><span class="pre">::</span><span class="pre">key_type</span><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView8key_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView10value_typeE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView10value_typeE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView10value_typeE"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1a7fcbf064e3da3d9d5c567e2f472a203f"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">value_type</span></code> <span class="pre">=</span> <em class="property"><span class="pre">typename</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView9base_typeE" title="nv::merlin::device::HashTableDeviceView::base_type"><span class="pre">base_type</span></a><span class="pre">::</span><span class="pre">value_type</span><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView10value_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView10score_typeE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView10score_typeE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView10score_typeE"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1aeaef325f1a1e54abdd47365e3ad3609b"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">score_type</span></code> <span class="pre">=</span> <em class="property"><span class="pre">typename</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView9base_typeE" title="nv::merlin::device::HashTableDeviceView::base_type"><span class="pre">base_type</span></a><span class="pre">::</span><span class="pre">score_type</span><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView10score_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView11bucket_typeE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView11bucket_typeE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView11bucket_typeE"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1aa39e3aca7ed4b6a66118771e5317d8c9"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">bucket_type</span></code> <span class="pre">=</span> <em class="property"><span class="pre">typename</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView9base_typeE" title="nv::merlin::device::HashTableDeviceView::base_type"><span class="pre">base_type</span></a><span class="pre">::</span><span class="pre">bucket_type</span><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView11bucket_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-members">Public Members</p>
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView7bucketsE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView7bucketsE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView7bucketsE"></span><span id="nv::merlin::device::HashTableDeviceView::buckets__bucket_typeP"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1ac724405dc0cdfc29b7d3ab2389848fa9"></span><a class="reference internal" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView11bucket_typeE" title="nv::merlin::device::HashTableDeviceView::bucket_type"><span class="pre">bucket_type</span></a> <span class="pre">*</span><code class="sig-name descname"><span class="pre">buckets</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView7bucketsE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView12bucket_countE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView12bucket_countE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView12bucket_countE"></span><span id="nv::merlin::device::HashTableDeviceView::bucket_count__s"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1a657f8103da3159c424c91624af3f82eb"></span><span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">bucket_count</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView12bucket_countE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp var">
+<dt id="_CPPv4N2nv6merlin6device19HashTableDeviceView15bucket_max_sizeE">
+<span id="_CPPv3N2nv6merlin6device19HashTableDeviceView15bucket_max_sizeE"></span><span id="_CPPv2N2nv6merlin6device19HashTableDeviceView15bucket_max_sizeE"></span><span id="nv::merlin::device::HashTableDeviceView::bucket_max_size__s"></span><span class="target" id="structnv_1_1merlin_1_1device_1_1HashTableDeviceView_1a2e8e4be8c60e9d0eb9567dcc7285e215"></span><span class="pre">size_t</span> <code class="sig-name descname"><span class="pre">bucket_max_size</span></code><a class="headerlink" href="#_CPPv4N2nv6merlin6device19HashTableDeviceView15bucket_max_sizeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="namespace_nv__merlin__device.html" class="btn btn-neutral float-left" title="Namespace nv::merlin::device" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="structnv_1_1merlin_1_1EvictStrategy.html" class="btn btn-neutral float-right" title="Struct EvictStrategy" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+
+    <p>&#169; Copyright 2022–2026, NVIDIA.</p>
+<p>
+<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/" target="_blank">Privacy Policy</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/" target="_blank">Manage My Privacy</a> |
+<a href="https://www.nvidia.com/en-us/preferences/start/" target="_blank">Do Not Sell or Share My Data</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/" target="_blank">Terms of Service</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/accessibility/" target="_blank">Accessibility</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/company-policies/" target="_blank">Corporate Policies</a> |
+<a href="https://www.nvidia.com/en-us/product-security/" target="_blank">Product Security</a> |
+<a href="https://www.nvidia.com/en-us/contact/" target="_blank">Contact</a>
+</p>
+
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+    <!-- Theme Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-NVJ1Y1YJHK"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-NVJ1Y1YJHK', {
+          'anonymize_ip': false,
+      });
+    </script> 
+
+</body>
+</html>

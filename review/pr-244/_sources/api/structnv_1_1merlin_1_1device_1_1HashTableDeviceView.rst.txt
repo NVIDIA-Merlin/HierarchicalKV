@@ -1,0 +1,17 @@
+.. _exhale_struct_structnv_1_1merlin_1_1device_1_1HashTableDeviceView:
+
+Template Struct HashTableDeviceView
+===================================
+
+- Defined in :ref:`file_merlin_hashtable_device.cuh`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nv::merlin::device::HashTableDeviceView
+   :project: HierarchicalKV
+   :members:
+   :protected-members:
+   :undoc-members:

@@ -1,0 +1,19 @@
+:orphan:
+
+
+Complete HierarchicalKV API
+===========================
+
+Files
+*****
+
+
+.. toctree::
+   :maxdepth: 5
+
+   file_merlin_hashtable.cuh.rst
+
+.. toctree::
+   :maxdepth: 5
+
+   file_merlin_hashtable_device.cuh.rst
