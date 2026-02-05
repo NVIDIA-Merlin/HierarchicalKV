@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Template Function nv::merlin::device::readonly_lookup_no_sync &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <title>Template Function nv::merlin::device::find_readonly_no_sync &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
       <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/banner.css" type="text/css" />
-    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/function_merlin__hashtable__device_8cuh_1a88aa8c7ab703ec0dfed6105d6574814d.html" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/function_merlin__hashtable__device_8cuh_1a3b8c8a08655e4efe7a2d093f3e067102.html" />
   <!--[if lt IE 9]>
     <script src="../_static/js/html5shiv.min.js"></script>
   <![endif]-->
@@ -25,8 +25,8 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Variable nv::merlin::thrust_par" href="variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html" />
-    <link rel="prev" title="Template Function nv::merlin::device::make_device_view" href="function_merlin__hashtable__device_8cuh_1a51586095b43906e9ef91f13bdd0cfbfe.html" /> 
+    <link rel="next" title="Template Function nv::merlin::device::find_readonly_no_sync_in_bucket" href="function_merlin__hashtable__device_8cuh_1a93ae13a0241879d27d6749196fd641b8.html" />
+    <link rel="prev" title="Template Function nv::merlin::device::compute_bucket_index_and_aligned_start" href="function_merlin__hashtable__device_8cuh_1a47d88c7aafab12d8226cc6fac7e9fd3c.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -75,7 +75,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="index.html">HierarchicalKV C++ API Documentation</a></li>
-      <li class="breadcrumb-item active">Template Function nv::merlin::device::readonly_lookup_no_sync</li>
+      <li class="breadcrumb-item active">Template Function nv::merlin::device::find_readonly_no_sync</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -84,8 +84,8 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <div class="section" id="template-function-nv-merlin-device-readonly-lookup-no-sync">
-<span id="exhale-function-merlin-hashtable-device-8cuh-1a88aa8c7ab703ec0dfed6105d6574814d"></span><h1>Template Function nv::merlin::device::readonly_lookup_no_sync<a class="headerlink" href="#template-function-nv-merlin-device-readonly-lookup-no-sync" title="Permalink to this headline"></a></h1>
+  <div class="section" id="template-function-nv-merlin-device-find-readonly-no-sync">
+<span id="exhale-function-merlin-hashtable-device-8cuh-1a3b8c8a08655e4efe7a2d093f3e067102"></span><h1>Template Function nv::merlin::device::find_readonly_no_sync<a class="headerlink" href="#template-function-nv-merlin-device-find-readonly-no-sync" title="Permalink to this headline"></a></h1>
 <ul class="simple">
 <li><p>Defined in <a class="reference internal" href="file_merlin_hashtable_device.cuh.html#file-merlin-hashtable-device-cuh"><span class="std std-ref">File merlin_hashtable_device.cuh</span></a></p></li>
 </ul>
@@ -93,23 +93,23 @@
 <h2>Function Documentation<a class="headerlink" href="#function-documentation" title="Permalink to this headline"></a></h2>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
-<p>doxygenfunction: Unable to resolve function “nv::merlin::device::readonly_lookup_no_sync” with arguments “(const HashTableDeviceView&lt;K, V, S&gt;&amp;, const typename HashTableDeviceView&lt;K, V, S&gt;::key_type, const uint32_t)”.
+<p>doxygenfunction: Unable to resolve function “nv::merlin::device::find_readonly_no_sync” with arguments “(const HashTableDeviceView&lt;K, V, S&gt;&amp;, const typename HashTableDeviceView&lt;K, V, S&gt;::key_type, const uint32_t)”.
 Candidate function could not be parsed. Parsing error is
 Error when parsing function declaration.
 If the function has no return type:
   Error in declarator or parameters-and-qualifiers
   Invalid C++ declaration: Expecting “(” in parameters-and-qualifiers. [error at 80]
-    template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ int readonly_lookup_no_sync (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, const uint32_t rank)
+    template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ int find_readonly_no_sync (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, const uint32_t rank)
     ——————————————————————————–^
 If the function has a return type:
   Error in declarator or parameters-and-qualifiers
   If pointer to member declarator:
     Invalid C++ declaration: Expected ‘::’ in pointer to member (function). [error at 96]
-      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ int readonly_lookup_no_sync (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, const uint32_t rank)
+      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ int find_readonly_no_sync (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, const uint32_t rank)
       ————————————————————————————————^
   If declarator-id:
     Invalid C++ declaration: Expecting “(” in parameters-and-qualifiers. [error at 96]
-      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ int readonly_lookup_no_sync (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, const uint32_t rank)
+      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ int find_readonly_no_sync (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, const uint32_t rank)
       ————————————————————————————————^
 </p>
 </div>
@@ -120,8 +120,8 @@ If the function has a return type:
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="function_merlin__hashtable__device_8cuh_1a51586095b43906e9ef91f13bdd0cfbfe.html" class="btn btn-neutral float-left" title="Template Function nv::merlin::device::make_device_view" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html" class="btn btn-neutral float-right" title="Variable nv::merlin::thrust_par" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="function_merlin__hashtable__device_8cuh_1a47d88c7aafab12d8226cc6fac7e9fd3c.html" class="btn btn-neutral float-left" title="Template Function nv::merlin::device::compute_bucket_index_and_aligned_start" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="function_merlin__hashtable__device_8cuh_1a93ae13a0241879d27d6749196fd641b8.html" class="btn btn-neutral float-right" title="Template Function nv::merlin::device::find_readonly_no_sync_in_bucket" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Template Function nv::merlin::device::calc_bucket_and_start &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+  <title>Template Function nv::merlin::device::compute_bucket_index_and_aligned_start &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
       <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
       <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
       <link rel="stylesheet" href="../_static/css/banner.css" type="text/css" />
-    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/function_merlin__hashtable__device_8cuh_1aa394cf3b58546192ee3c2be2690a0ad1.html" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/function_merlin__hashtable__device_8cuh_1a47d88c7aafab12d8226cc6fac7e9fd3c.html" />
   <!--[if lt IE 9]>
     <script src="../_static/js/html5shiv.min.js"></script>
   <![endif]-->
@@ -25,7 +25,7 @@
     <script src="../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
-    <link rel="next" title="Template Function nv::merlin::device::make_device_view" href="function_merlin__hashtable__device_8cuh_1a51586095b43906e9ef91f13bdd0cfbfe.html" />
+    <link rel="next" title="Template Function nv::merlin::device::find_readonly_no_sync" href="function_merlin__hashtable__device_8cuh_1a3b8c8a08655e4efe7a2d093f3e067102.html" />
     <link rel="prev" title="Template Class HashTable" href="classnv_1_1merlin_1_1HashTable.html" /> 
 </head>
 
@@ -75,7 +75,7 @@
   <ul class="wy-breadcrumbs">
       <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="index.html">HierarchicalKV C++ API Documentation</a></li>
-      <li class="breadcrumb-item active">Template Function nv::merlin::device::calc_bucket_and_start</li>
+      <li class="breadcrumb-item active">Template Function nv::merlin::device::compute_bucket_index_and_aligned_start</li>
       <li class="wy-breadcrumbs-aside">
       </li>
   </ul>
@@ -84,8 +84,8 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <div class="section" id="template-function-nv-merlin-device-calc-bucket-and-start">
-<span id="exhale-function-merlin-hashtable-device-8cuh-1aa394cf3b58546192ee3c2be2690a0ad1"></span><h1>Template Function nv::merlin::device::calc_bucket_and_start<a class="headerlink" href="#template-function-nv-merlin-device-calc-bucket-and-start" title="Permalink to this headline"></a></h1>
+  <div class="section" id="template-function-nv-merlin-device-compute-bucket-index-and-aligned-start">
+<span id="exhale-function-merlin-hashtable-device-8cuh-1a47d88c7aafab12d8226cc6fac7e9fd3c"></span><h1>Template Function nv::merlin::device::compute_bucket_index_and_aligned_start<a class="headerlink" href="#template-function-nv-merlin-device-compute-bucket-index-and-aligned-start" title="Permalink to this headline"></a></h1>
 <ul class="simple">
 <li><p>Defined in <a class="reference internal" href="file_merlin_hashtable_device.cuh.html#file-merlin-hashtable-device-cuh"><span class="std std-ref">File merlin_hashtable_device.cuh</span></a></p></li>
 </ul>
@@ -93,23 +93,23 @@
 <h2>Function Documentation<a class="headerlink" href="#function-documentation" title="Permalink to this headline"></a></h2>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
-<p>doxygenfunction: Unable to resolve function “nv::merlin::device::calc_bucket_and_start” with arguments “(const HashTableDeviceView&lt;K, V, S&gt;&amp;, const typename HashTableDeviceView&lt;K, V, S&gt;::key_type, uint32_t*, uint32_t*)”.
+<p>doxygenfunction: Unable to resolve function “nv::merlin::device::compute_bucket_index_and_aligned_start” with arguments “(const HashTableDeviceView&lt;K, V, S&gt;&amp;, const typename HashTableDeviceView&lt;K, V, S&gt;::key_type, uint32_t*, uint32_t*)”.
 Candidate function could not be parsed. Parsing error is
 Error when parsing function declaration.
 If the function has no return type:
   Error in declarator or parameters-and-qualifiers
   Invalid C++ declaration: Expecting “(” in parameters-and-qualifiers. [error at 80]
-    template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ bool calc_bucket_and_start (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, uint32_t *bucket_idx, uint32_t *aligned_start)
+    template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ bool compute_bucket_index_and_aligned_start (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, uint32_t *bucket_idx, uint32_t *aligned_start)
     ——————————————————————————–^
 If the function has a return type:
   Error in declarator or parameters-and-qualifiers
   If pointer to member declarator:
     Invalid C++ declaration: Expected ‘::’ in pointer to member (function). [error at 96]
-      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ bool calc_bucket_and_start (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, uint32_t *bucket_idx, uint32_t *aligned_start)
+      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ bool compute_bucket_index_and_aligned_start (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, uint32_t *bucket_idx, uint32_t *aligned_start)
       ————————————————————————————————^
   If declarator-id:
     Invalid C++ declaration: Expecting “(” in parameters-and-qualifiers. [error at 96]
-      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ bool calc_bucket_and_start (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, uint32_t *bucket_idx, uint32_t *aligned_start)
+      template&lt;typename K, typename V, typename S, uint32_t TILE_SIZE = 4&gt; __device__ __forceinline__ bool compute_bucket_index_and_aligned_start (const HashTableDeviceView&lt; K, V, S &gt; &amp;view, const typename HashTableDeviceView&lt; K, V, S &gt;::key_type key, uint32_t *bucket_idx, uint32_t *aligned_start)
       ————————————————————————————————^
 </p>
 </div>
@@ -121,7 +121,7 @@ If the function has a return type:
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="classnv_1_1merlin_1_1HashTable.html" class="btn btn-neutral float-left" title="Template Class HashTable" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="function_merlin__hashtable__device_8cuh_1a51586095b43906e9ef91f13bdd0cfbfe.html" class="btn btn-neutral float-right" title="Template Function nv::merlin::device::make_device_view" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="function_merlin__hashtable__device_8cuh_1a3b8c8a08655e4efe7a2d093f3e067102.html" class="btn btn-neutral float-right" title="Template Function nv::merlin::device::find_readonly_no_sync" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

@@ -53,15 +53,14 @@ Program Listing for File merlin_hashtable_device.cuh
    };
    
    template <typename K, typename V, typename S, uint32_t TILE_SIZE = 4>
-   __device__ __forceinline__ bool calc_bucket_and_start(
+   __device__ __forceinline__ bool compute_bucket_index_and_aligned_start(
        const HashTableDeviceView<K, V, S>& view,
        const typename HashTableDeviceView<K, V, S>::key_type key,
        uint32_t* bucket_idx, uint32_t* aligned_start) {
      static_assert((TILE_SIZE & (TILE_SIZE - 1)) == 0,
                    "TILE_SIZE must be power of two.");
-         // bucket_max_size is guaranteed to be power-of-two.
-         const uint32_t bucket_capacity =
-             static_cast<uint32_t>(view.bucket_max_size);
+     // bucket_max_size is guaranteed to be power-of-two.
+     const uint32_t bucket_capacity = static_cast<uint32_t>(view.bucket_max_size);
      const uint64_t total_slots =
          static_cast<uint64_t>(view.bucket_count) * bucket_capacity;
      const uint64_t hashed_key = static_cast<uint64_t>(Murmur3HashDevice(key));
@@ -76,17 +75,27 @@ Program Listing for File merlin_hashtable_device.cuh
    }
    
    template <typename K, typename V, typename S, uint32_t TILE_SIZE = 4>
-   __device__ __forceinline__ int readonly_lookup_no_sync(
+   __device__ __forceinline__ int find_readonly_no_sync_in_bucket(
+       typename HashTableDeviceView<K, V, S>::bucket_type* bucket,
+       const typename HashTableDeviceView<K, V, S>::key_type key,
+       const uint32_t aligned_start, const uint32_t bucket_max_size,
+       const uint32_t rank) {
+     return find_without_lock_readonly_no_sync<K, V, S, TILE_SIZE>(
+         bucket, key, aligned_start, bucket_max_size, rank);
+   }
+   
+   template <typename K, typename V, typename S, uint32_t TILE_SIZE = 4>
+   __device__ __forceinline__ int find_readonly_no_sync(
        const HashTableDeviceView<K, V, S>& view,
        const typename HashTableDeviceView<K, V, S>::key_type key,
        const uint32_t rank) {
      uint32_t bucket_idx = 0;
      uint32_t aligned_start = 0;
-     if (!calc_bucket_and_start<K, V, S, TILE_SIZE>(view, key, &bucket_idx,
-                                                    &aligned_start)) {
+     if (!compute_bucket_index_and_aligned_start<K, V, S, TILE_SIZE>(
+             view, key, &bucket_idx, &aligned_start)) {
        return -1;
      }
-     return find_without_lock_readonly_no_sync<K, V, S, TILE_SIZE>(
+     return find_readonly_no_sync_in_bucket<K, V, S, TILE_SIZE>(
          view.buckets + bucket_idx, key, aligned_start,
          static_cast<uint32_t>(view.bucket_max_size), rank);
    }

@@ -24,8 +24,10 @@ Functions
 ---------
 
 
-- :ref:`exhale_function_merlin__hashtable__device_8cuh_1aa394cf3b58546192ee3c2be2690a0ad1`
+- :ref:`exhale_function_merlin__hashtable__device_8cuh_1a47d88c7aafab12d8226cc6fac7e9fd3c`
+
+- :ref:`exhale_function_merlin__hashtable__device_8cuh_1a3b8c8a08655e4efe7a2d093f3e067102`
+
+- :ref:`exhale_function_merlin__hashtable__device_8cuh_1a93ae13a0241879d27d6749196fd641b8`
 
 - :ref:`exhale_function_merlin__hashtable__device_8cuh_1a51586095b43906e9ef91f13bdd0cfbfe`
-
-- :ref:`exhale_function_merlin__hashtable__device_8cuh_1a88aa8c7ab703ec0dfed6105d6574814d`

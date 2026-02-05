@@ -1,0 +1,14 @@
+.. _exhale_function_merlin__hashtable__device_8cuh_1a47d88c7aafab12d8226cc6fac7e9fd3c:
+
+Template Function nv::merlin::device::compute_bucket_index_and_aligned_start
+============================================================================
+
+- Defined in :ref:`file_merlin_hashtable_device.cuh`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nv::merlin::device::compute_bucket_index_and_aligned_start(const HashTableDeviceView<K, V, S>&, const typename HashTableDeviceView<K, V, S>::key_type, uint32_t *, uint32_t *)
+   :project: HierarchicalKV

@@ -1,0 +1,14 @@
+.. _exhale_function_merlin__hashtable__device_8cuh_1a3b8c8a08655e4efe7a2d093f3e067102:
+
+Template Function nv::merlin::device::find_readonly_no_sync
+===========================================================
+
+- Defined in :ref:`file_merlin_hashtable_device.cuh`
+
+
+Function Documentation
+----------------------
+
+
+.. doxygenfunction:: nv::merlin::device::find_readonly_no_sync(const HashTableDeviceView<K, V, S>&, const typename HashTableDeviceView<K, V, S>::key_type, const uint32_t)
+   :project: HierarchicalKV
