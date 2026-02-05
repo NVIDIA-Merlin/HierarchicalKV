@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Template Class HashTableBase &mdash; Merlin Key-Value Storage  documentation</title><link rel="stylesheet" href="../_static/css/theme.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/mystnb.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/togglebutton.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/custom.css" type="text/css" />
+      <link rel="stylesheet" href="../_static/css/banner.css" type="text/css" />
+    <link rel="canonical" href="https://nvidia-merlin.github.io/HierarchicalKV/master/api/classnv_1_1merlin_1_1HashTableBase.html" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  <script id="documentation_options" data-url_root="../" src="../_static/documentation_options.js"></script>
+        <script src="../_static/jquery.js"></script>
+        <script src="../_static/underscore.js"></script>
+        <script src="../_static/doctools.js"></script>
+        <script >let toggleHintShow = 'Click to show';</script>
+        <script >let toggleHintHide = 'Click to hide';</script>
+        <script >let toggleOpenOnPrint = 'true';</script>
+        <script src="../_static/togglebutton.js"></script>
+        <script >var togglebuttonSelector = '.toggle, .admonition.dropdown, .tag_hide_input div.cell_input, .tag_hide-input div.cell_input, .tag_hide_output div.cell_output, .tag_hide-output div.cell_output, .tag_hide_cell.cell, .tag_hide-cell.cell';</script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Variable nv::merlin::thrust_par" href="variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html" />
+    <link rel="prev" title="Template Class HashTable" href="classnv_1_1merlin_1_1HashTable.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            Merlin Key-Value Storage
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption"><span class="caption-text">Contents</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../README.html">Introduction</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">API Documentation</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="index.html#class-hierarchy">Class Hierarchy</a></li>
+<li class="toctree-l2"><a class="reference internal" href="index.html#file-hierarchy">File Hierarchy</a></li>
+<li class="toctree-l2 current"><a class="reference internal" href="index.html#complete-hierarchicalkv-api">Complete HierarchicalKV API</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="../CONTRIBUTING.html">Contributing to HierarchicalKV</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">Merlin Key-Value Storage</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">HierarchicalKV C++ API Documentation</a></li>
+      <li class="breadcrumb-item active">Template Class HashTableBase</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <div class="section" id="template-class-hashtablebase">
+<span id="exhale-class-classnv-1-1merlin-1-1hashtablebase"></span><h1>Template Class HashTableBase<a class="headerlink" href="#template-class-hashtablebase" title="Permalink to this headline"></a></h1>
+<ul class="simple">
+<li><p>Defined in <a class="reference internal" href="file_merlin_hashtable.cuh.html#file-merlin-hashtable-cuh"><span class="std std-ref">File merlin_hashtable.cuh</span></a></p></li>
+</ul>
+<div class="section" id="inheritance-relationships">
+<h2>Inheritance Relationships<a class="headerlink" href="#inheritance-relationships" title="Permalink to this headline"></a></h2>
+<div class="section" id="derived-type">
+<h3>Derived Type<a class="headerlink" href="#derived-type" title="Permalink to this headline"></a></h3>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">public</span> <span class="pre">nv::merlin::HashTable&lt;</span> <span class="pre">K,</span> <span class="pre">V,</span> <span class="pre">S,</span> <span class="pre">Strategy,</span> <span class="pre">ArchTag</span> <span class="pre">&gt;</span></code> (<a class="reference internal" href="classnv_1_1merlin_1_1HashTable.html#exhale-class-classnv-1-1merlin-1-1hashtable"><span class="std std-ref">Template Class HashTable</span></a>)</p></li>
+</ul>
+</div>
+</div>
+<div class="section" id="class-documentation">
+<h2>Class Documentation<a class="headerlink" href="#class-documentation" title="Permalink to this headline"></a></h2>
+<dl class="cpp class">
+<dt id="_CPPv4I000EN2nv6merlin13HashTableBaseE">
+<span id="_CPPv3I000EN2nv6merlin13HashTableBaseE"></span><span id="_CPPv2I000EN2nv6merlin13HashTableBaseE"></span><span class="pre">template&lt;</span><span class="pre">typename</span> <code class="sig-name descname"><span class="pre">K</span></code><span class="pre">,</span> <span class="pre">typename</span> <code class="sig-name descname"><span class="pre">V</span></code><span class="pre">,</span> <span class="pre">typename</span> <code class="sig-name descname"><span class="pre">S</span></code> <span class="pre">=</span> <span class="pre">uint64_t</span><span class="pre">&gt;</span><br /><span class="target" id="classnv_1_1merlin_1_1HashTableBase"></span><em class="property"><span class="pre">class</span> </em><code class="sig-prename descclassname"><span class="pre">nv</span><span class="pre">::</span><span class="pre">merlin</span><code class="sig-prename descclassname"><span class="pre">::</span></code></code><code class="sig-name descname"><span class="pre">HashTableBase</span></code><a class="headerlink" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Subclassed by <a class="reference internal" href="classnv_1_1merlin_1_1HashTable.html#classnv_1_1merlin_1_1HashTable"><span class="std std-ref">nv::merlin::HashTable&lt; K, V, S, Strategy, ArchTag &gt;</span></a></p>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-types">Public Types</p>
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin13HashTableBase9size_typeE">
+<span id="_CPPv3N2nv6merlin13HashTableBase9size_typeE"></span><span id="_CPPv2N2nv6merlin13HashTableBase9size_typeE"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a0cbec462e4960863102ca93182414bc6"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">size_type</span></code> <span class="pre">=</span> <span class="pre">size_t</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin13HashTableBase8key_typeE">
+<span id="_CPPv3N2nv6merlin13HashTableBase8key_typeE"></span><span id="_CPPv2N2nv6merlin13HashTableBase8key_typeE"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a8a1be0e292da369d0d81e627008be975"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">key_type</span></code> <span class="pre">=</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::K"><span class="pre">K</span></a><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin13HashTableBase10value_typeE">
+<span id="_CPPv3N2nv6merlin13HashTableBase10value_typeE"></span><span id="_CPPv2N2nv6merlin13HashTableBase10value_typeE"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ad9b1b3f8ba96ce69b1dcc9173d2b0f93"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">value_type</span></code> <span class="pre">=</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::V"><span class="pre">V</span></a><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin13HashTableBase10score_typeE">
+<span id="_CPPv3N2nv6merlin13HashTableBase10score_typeE"></span><span id="_CPPv2N2nv6merlin13HashTableBase10score_typeE"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a578b709cf197b6c0f14546156234acc1"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">score_type</span></code> <span class="pre">=</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::S"><span class="pre">S</span></a><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp type">
+<dt id="_CPPv4N2nv6merlin13HashTableBase14allocator_typeE">
+<span id="_CPPv3N2nv6merlin13HashTableBase14allocator_typeE"></span><span id="_CPPv2N2nv6merlin13HashTableBase14allocator_typeE"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a9bf044efefd18d78ed5fe953b1e578e3"></span><em class="property"><span class="pre">using</span> </em><code class="sig-name descname"><span class="pre">allocator_type</span></code> <span class="pre">=</span> <span class="pre">BaseAllocator</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase14allocator_typeE" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+<div class="breathe-sectiondef docutils container">
+<p class="breathe-sectiondef-title rubric" id="breathe-section-title-public-functions">Public Functions</p>
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBaseD0Ev">
+<span id="_CPPv3N2nv6merlin13HashTableBaseD0Ev"></span><span id="_CPPv2N2nv6merlin13HashTableBaseD0Ev"></span><span id="nv::merlin::HashTableBase::~HashTableBase"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a5e57513b6d7bfc0f0faaa124a19343c1"></span><em class="property"><span class="pre">inline</span></em> <em class="property"><span class="pre">virtual</span></em> <code class="sig-name descname"><span class="pre">~HashTableBase</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBaseD0Ev" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase4initERK16HashTableOptionsP14allocator_type">
+<span id="_CPPv3N2nv6merlin13HashTableBase4initERK16HashTableOptionsP14allocator_type"></span><span id="_CPPv2N2nv6merlin13HashTableBase4initERK16HashTableOptionsP14allocator_type"></span><span id="nv::merlin::HashTableBase::init__HashTableOptionsCR.allocator_typeP"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a3cfe450a3a10cecb267d513849d414fe"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">init</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="structnv_1_1merlin_1_1HashTableOptions.html#_CPPv4N2nv6merlin16HashTableOptionsE" title="nv::merlin::HashTableOptions"><span class="pre">HashTableOptions</span></a> <span class="pre">&amp;</span><em><span class="pre">options</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase14allocator_typeE" title="nv::merlin::HashTableBase::allocator_type"><span class="pre">allocator_type</span></a> <span class="pre">*</span><em><span class="pre">allocator</span></em> <span class="pre">=</span> <span class="pre">nullptr</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase4initERK16HashTableOptionsP14allocator_type" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Initialize a <a class="reference internal" href="classnv_1_1merlin_1_1HashTable.html#classnv_1_1merlin_1_1HashTable"><span class="std std-ref">merlin::HashTable</span></a>. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>options</strong> – The configuration options. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase16insert_or_assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tbb">
+<span id="_CPPv3N2nv6merlin13HashTableBase16insert_or_assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tbb"></span><span id="_CPPv2N2nv6merlin13HashTableBase16insert_or_assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tbb"></span><span id="nv::merlin::HashTableBase::insert_or_assign__size_typeC.key_typeCP.value_typeCP.score_typeCP.cudaStream_t.b.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a05ed4dfbc0cc1d3ffa0973af44ca0ec2"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">insert_or_assign</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span>, <span class="pre">bool</span> <em><span class="pre">ignore_evict_strategy</span></em> <span class="pre">=</span> <span class="pre">false</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase16insert_or_assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tbb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Insert new key-value-score tuples into the hash table. If the key already exists, the values and scores are assigned new values. </p>
+<p>If the target bucket is full, the keys with minimum score will be overwritten by new key unless the score of the new key is even less than minimum score of the target bucket.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – Number of key-value-score tuples to insert or assign. </p></li>
+<li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to insert on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value for built-in strategies. For <code class="docutils literal notranslate"><a class="reference internal" href="structnv_1_1merlin_1_1EvictStrategy.html#structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a3c01fa9b631029bcfbe17e171d4d3978"><span class="std std-ref"><span class="pre">EvictStrategy::kCustomized</span></span></a></code>, <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> scores are also supported. You can specify a value such as the timestamp of the key insertion or number of key occurrences to perform a customized eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique.</p></li>
+<li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores conforms to the evict strategy. If false, it requires the scores follow the evict strategy of table. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_typeP9size_type12cudaStream_tbb">
+<span id="_CPPv3N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_typeP9size_type12cudaStream_tbb"></span><span id="_CPPv2N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_typeP9size_type12cudaStream_tbb"></span><span id="nv::merlin::HashTableBase::insert_and_evict__size_typeC.key_typeCP.value_typeCP.score_typeCP.key_typeP.value_typeP.score_typeP.size_typeP.cudaStream_t.b.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ae2936292e50f893ddf5e4e5bb1ea2c99"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">insert_and_evict</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">evicted_keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">evicted_values</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">evicted_scores</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <span class="pre">*</span><em><span class="pre">d_evicted_counter</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span>, <span class="pre">bool</span> <em><span class="pre">ignore_evict_strategy</span></em> <span class="pre">=</span> <span class="pre">false</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_typeP9size_type12cudaStream_tbb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Insert new key-value-score tuples into the hash table. If the key already exists, the values and scores are assigned new values. </p>
+<p>If the target bucket is full, the keys with minimum score will be overwritten by new key unless the score of the new key is even less than minimum score of the target bucket. The overwritten key with minimum score will be evicted, with its values and score, to evicted_keys, evicted_values, evcted_scores seperately in compact format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – Number of key-value-score tuples to insert or assign. </p></li>
+<li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to insert on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). &#64;params evicted_keys The output of keys replaced with minimum score. &#64;params evicted_values The output of values replaced with minimum score on keys. &#64;params evicted_scores The output of scores replaced with minimum score on keys. <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value for built-in strategies. For <code class="docutils literal notranslate"><a class="reference internal" href="structnv_1_1merlin_1_1EvictStrategy.html#structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a3c01fa9b631029bcfbe17e171d4d3978"><span class="std std-ref"><span class="pre">EvictStrategy::kCustomized</span></span></a></code>, <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> scores are also supported. You can specify a value such as the timestamp of the key insertion or number of key occurrences to perform a customized eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
+</p></li>
+<li><p><strong>d_evicted_counter</strong> – The number of elements evicted on GPU-accessible memory. &#64;notice The caller should guarantee it is set to <code class="docutils literal notranslate"><span class="pre">0</span></code> before calling. </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique.</p></li>
+<li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_type12cudaStream_tbb">
+<span id="_CPPv3N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_type12cudaStream_tbb"></span><span id="_CPPv2N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_type12cudaStream_tbb"></span><span id="nv::merlin::HashTableBase::insert_and_evict__size_typeC.key_typeCP.value_typeCP.score_typeCP.key_typeP.value_typeP.score_typeP.cudaStream_t.b.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a234b38aead8170fa8f82a8d12f5e93a3"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">insert_and_evict</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">evicted_keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">evicted_values</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">evicted_scores</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span>, <span class="pre">bool</span> <em><span class="pre">ignore_evict_strategy</span></em> <span class="pre">=</span> <span class="pre">false</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase16insert_and_evictEK9size_typePK8key_typePK10value_typePK10score_typeP8key_typeP10value_typeP10score_type12cudaStream_tbb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Insert new key-value-score tuples into the hash table. If the key already exists, the values and scores are assigned new values. </p>
+<p>If the target bucket is full, the keys with minimum score will be overwritten by new key unless the score of the new key is even less than minimum score of the target bucket. The overwritten key with minimum score will be evicted, with its values and score, to evicted_keys, evicted_values, evcted_scores seperately in compact format.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – Number of key-value-score tuples to insert or assign. </p></li>
+<li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to insert on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). &#64;params evicted_keys The output of keys replaced with minimum score. &#64;params evicted_values The output of values replaced with minimum score on keys. &#64;params evicted_scores The output of scores replaced with minimum score on keys. <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value for built-in strategies. For <code class="docutils literal notranslate"><a class="reference internal" href="structnv_1_1merlin_1_1EvictStrategy.html#structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a3c01fa9b631029bcfbe17e171d4d3978"><span class="std std-ref"><span class="pre">EvictStrategy::kCustomized</span></span></a></code>, <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> scores are also supported. You can specify a value such as the timestamp of the key insertion or number of key occurrences to perform a customized eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique.</p></li>
+<li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the insert_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of elements evicted. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase15accum_or_assignEK9size_typePK8key_typePK10value_typePKbPK10score_type12cudaStream_tb">
+<span id="_CPPv3N2nv6merlin13HashTableBase15accum_or_assignEK9size_typePK8key_typePK10value_typePKbPK10score_type12cudaStream_tb"></span><span id="_CPPv2N2nv6merlin13HashTableBase15accum_or_assignEK9size_typePK8key_typePK10value_typePKbPK10score_type12cudaStream_tb"></span><span id="nv::merlin::HashTableBase::accum_or_assign__size_typeC.key_typeCP.value_typeCP.bCP.score_typeCP.cudaStream_t.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ab6240391a3aed11d52d7042119dbd6df"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">accum_or_assign</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">value_or_deltas</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">accum_or_assigns</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">ignore_evict_strategy</span></em> <span class="pre">=</span> <span class="pre">false</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase15accum_or_assignEK9size_typePK8key_typePK10value_typePKbPK10score_type12cudaStream_tb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Searches for each key in <code class="docutils literal notranslate"><span class="pre">keys</span></code> in the hash table. If the key is found and the corresponding value in <code class="docutils literal notranslate"><span class="pre">accum_or_assigns</span></code> is <code class="docutils literal notranslate"><span class="pre">true</span></code>, the <code class="docutils literal notranslate"><span class="pre">vectors_or_deltas</span></code> is treated as a delta to the old value, and the delta is added to the old value of the key.</p>
+<p>If the key is not found and the corresponding value in <code class="docutils literal notranslate"><span class="pre">accum_or_assigns</span></code> is <code class="docutils literal notranslate"><span class="pre">false</span></code>, the <code class="docutils literal notranslate"><span class="pre">vectors_or_deltas</span></code> is treated as a new value and the key-value pair is updated in the table directly.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When the key is found and the value of <code class="docutils literal notranslate"><span class="pre">accum_or_assigns</span></code> is <code class="docutils literal notranslate"><span class="pre">false</span></code>, or when the key is not found and the value of <code class="docutils literal notranslate"><span class="pre">accum_or_assigns</span></code> is <code class="docutils literal notranslate"><span class="pre">true</span></code>, nothing is changed and this operation is ignored. The algorithm assumes these situations occur while the key was modified or removed by other processes just now.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of key-value-score tuples to process. </p></li>
+<li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>value_or_deltas</strong> – The values or deltas to insert on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>accum_or_assigns</strong> – The operation type with shape (n). A value of <code class="docutils literal notranslate"><span class="pre">true</span></code> indicates to accum and <code class="docutils literal notranslate"><span class="pre">false</span></code> indicates to assign. </p></li>
+<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value for built-in strategies. For <code class="docutils literal notranslate"><a class="reference internal" href="structnv_1_1merlin_1_1EvictStrategy.html#structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a3c01fa9b631029bcfbe17e171d4d3978"><span class="std std-ref"><span class="pre">EvictStrategy::kCustomized</span></span></a></code>, <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> scores are also supported. You can specify a value such as the timestamp of the key insertion or number of key occurrences to perform a customized eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+<li><p><strong>ignore_evict_strategy</strong> – A boolean option indicating whether if the accum_or_assign ignores the evict strategy of table with current scores anyway. If true, it does not check whether the scores confroms to the evict strategy. If false, it requires the scores follow the evict strategy of table. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typeP10value_typeP10score_type12cudaStream_tbb">
+<span id="_CPPv3N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typeP10value_typeP10score_type12cudaStream_tbb"></span><span id="_CPPv2N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typeP10value_typeP10score_type12cudaStream_tbb"></span><span id="nv::merlin::HashTableBase::find_or_insert__size_typeC.key_typeCP.value_typeP.score_typeP.cudaStream_t.b.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a2649962634e854b0e3cf2d805bbe2ca2"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">find_or_insert</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span>, <span class="pre">bool</span> <em><span class="pre">ignore_evict_strategy</span></em> <span class="pre">=</span> <span class="pre">false</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typeP10value_typeP10score_type12cudaStream_tbb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Searches the hash table for the specified keys. When a key is missing, the value in <code class="docutils literal notranslate"><span class="pre">values</span></code> and <code class="docutils literal notranslate"><span class="pre">scores</span></code> will be inserted. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of key-value-score tuples to search or insert. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to search on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tbbPP8key_type">
+<span id="_CPPv3N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tbbPP8key_type"></span><span id="_CPPv2N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tbbPP8key_type"></span><span id="nv::merlin::HashTableBase::find_or_insert__size_typeC.key_typeCP.value_typePP.bP.score_typeP.cudaStream_t.b.b.key_typePP"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ab5d0663d1d57f9e9ac49fef073460cf0"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">find_or_insert</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><span class="pre">*</span><em><span class="pre">values</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">founds</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span>, <span class="pre">bool</span> <em><span class="pre">ignore_evict_strategy</span></em> <span class="pre">=</span> <span class="pre">false</span>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><span class="pre">*</span><em><span class="pre">locked_key_ptrs</span></em> <span class="pre">=</span> <span class="pre">nullptr</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase14find_or_insertEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tbbPP8key_type" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Searches the hash table for the specified keys and returns address of the values. When a key is missing, the value in <code class="docutils literal notranslate"><span class="pre">values</span></code> and <code class="docutils literal notranslate"><span class="pre">scores</span></code> will be inserted. </p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This API returns internal addresses for high-performance but thread-unsafe. The caller is responsible for guaranteeing data consistency.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of key-value-score tuples to search or insert. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The addresses of values to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>founds</strong> – The status that indicates if the keys are found on </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique. </p></li>
+<li><p><strong>locked_key_ptrs</strong> – If it isn’t nullptr then the keys in the table will be locked, and key’s address will write to locked_key_ptrs. Using unlock_keys to unlock these keys. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase9lock_keysEK9size_typePK8key_typePP8key_typePb12cudaStream_tPK10score_type">
+<span id="_CPPv3N2nv6merlin13HashTableBase9lock_keysEK9size_typePK8key_typePP8key_typePb12cudaStream_tPK10score_type"></span><span id="_CPPv2N2nv6merlin13HashTableBase9lock_keysEK9size_typePK8key_typePP8key_typePb12cudaStream_tPK10score_type"></span><span id="nv::merlin::HashTableBase::lock_keys__size_typeC.key_typeCP.key_typePP.bP.cudaStream_t.score_typeCP"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a053b0e78f6fad1fa76c27f382da27bc4"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">lock_keys</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <em class="property"><span class="pre">const</span></em> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><span class="pre">*</span><em><span class="pre">locked_key_ptrs</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">succeededs</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <em class="property"><span class="pre">const</span></em> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase9lock_keysEK9size_typePK8key_typePP8key_typePb12cudaStream_tPK10score_type" title="Permalink to this definition"></a><br /></dt>
+<dd><p>This function will lock the keys in the table and unexisted keys will be ignored. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of keys in the table to be locked. </p></li>
+<li><p><strong>locked_key_ptrs</strong> – The pointers of locked keys in the table with shape (n). </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>succeededs</strong> – The status that indicates if the lock operation is succeed. </p></li>
+<li><p><strong>scores</strong> – The scores of the input keys will set to scores if provided. </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase11unlock_keysEK9size_typePP8key_typePK8key_typePb12cudaStream_t">
+<span id="_CPPv3N2nv6merlin13HashTableBase11unlock_keysEK9size_typePP8key_typePK8key_typePb12cudaStream_t"></span><span id="_CPPv2N2nv6merlin13HashTableBase11unlock_keysEK9size_typePP8key_typePK8key_typePb12cudaStream_t"></span><span id="nv::merlin::HashTableBase::unlock_keys__size_typeC.key_typePP.key_typeCP.bP.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ac8437dfd6ef194ddd8de7d6bdea779ba"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">unlock_keys</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><span class="pre">*</span><em><span class="pre">locked_key_ptrs</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">succeededs</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase11unlock_keysEK9size_typePP8key_typePK8key_typePb12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Using pointers to address the keys in the hash table and set them to target keys. This function will unlock the keys in the table which are locked by the previous call to find_or_insert. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of keys in the table to be unlocked. </p></li>
+<li><p><strong>locked_key_ptrs</strong> – The pointers of locked keys in the table with shape (n). </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>succeededs</strong> – The status that indicates if the unlock operation is succeed. </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tb">
+<span id="_CPPv3N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tb"></span><span id="_CPPv2N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tb"></span><span id="nv::merlin::HashTableBase::assign__size_typeC.key_typeCP.value_typeCP.score_typeCP.cudaStream_t.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ab7bb4f01da36348f26186206aeaba064"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">assign</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10value_typePK10score_type12cudaStream_tb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Assign new key-value-score tuples into the hash table. If the key doesn’t exist, the operation on the key will be ignored. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – Number of key-value-score tuples to insert or assign. </p></li>
+<li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to insert on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>scores</strong> – The scores to insert on GPU-accessible memory with shape (n). <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value for built-in strategies. For <code class="docutils literal notranslate"><a class="reference internal" href="structnv_1_1merlin_1_1EvictStrategy.html#structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a3c01fa9b631029bcfbe17e171d4d3978"><span class="std std-ref"><span class="pre">EvictStrategy::kCustomized</span></span></a></code>, <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> scores are also supported. You can specify a value such as the timestamp of the key insertion or number of key occurrences to perform a customized eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase13assign_scoresEK9size_typePK8key_typePK10score_type12cudaStream_tb">
+<span id="_CPPv3N2nv6merlin13HashTableBase13assign_scoresEK9size_typePK8key_typePK10score_type12cudaStream_tb"></span><span id="_CPPv2N2nv6merlin13HashTableBase13assign_scoresEK9size_typePK8key_typePK10score_type12cudaStream_tb"></span><span id="nv::merlin::HashTableBase::assign_scores__size_typeC.key_typeCP.score_typeCP.cudaStream_t.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a4d27b129ff7fa5e648cc2cf450d73d22"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">assign_scores</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase13assign_scoresEK9size_typePK8key_typePK10score_type12cudaStream_tb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Assign new scores for keys. If the key doesn’t exist, the operation on the key will be ignored. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – Number of key-score pairs to assign. </p></li>
+<li><p><strong>keys</strong> – The keys to insert on GPU-accessible memory with shape (n). <p>The scores should be a <code class="docutils literal notranslate"><span class="pre">uint64_t</span></code> value for built-in strategies. For <code class="docutils literal notranslate"><a class="reference internal" href="structnv_1_1merlin_1_1EvictStrategy.html#structnv_1_1merlin_1_1EvictStrategy_1a85bf7c67af68a787f6691897a281ec11a3c01fa9b631029bcfbe17e171d4d3978"><span class="std std-ref"><span class="pre">EvictStrategy::kCustomized</span></span></a></code>, <code class="docutils literal notranslate"><span class="pre">uint32_t</span></code> scores are also supported. You can specify a value such as the timestamp of the key insertion or number of key occurrences to perform a customized eviction strategy.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">scores</span></code> should be <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, when the LRU eviction strategy is applied. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10score_type12cudaStream_tb">
+<span id="_CPPv3N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10score_type12cudaStream_tb"></span><span id="_CPPv2N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10score_type12cudaStream_tb"></span><span id="nv::merlin::HashTableBase::assign__size_typeC.key_typeCP.score_typeCP.cudaStream_t.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a31bede2d4946a14e54b9e1f73fcc9f57"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">assign</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase6assignEK9size_typePK8key_typePK10score_type12cudaStream_tb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Alias of <code class="docutils literal notranslate"><span class="pre">assign_scores</span></code>. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase13assign_valuesEK9size_typePK8key_typePK10value_type12cudaStream_tb">
+<span id="_CPPv3N2nv6merlin13HashTableBase13assign_valuesEK9size_typePK8key_typePK10value_type12cudaStream_tb"></span><span id="_CPPv2N2nv6merlin13HashTableBase13assign_valuesEK9size_typePK8key_typePK10value_type12cudaStream_tb"></span><span id="nv::merlin::HashTableBase::assign_values__size_typeC.key_typeCP.value_typeCP.cudaStream_t.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a59b2fc4d8787a8276a2f77103a91bc50"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">assign_values</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase13assign_valuesEK9size_typePK8key_typePK10value_type12cudaStream_tb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Assign new values for each keys . If the key doesn’t exist, the operation on the key will be ignored. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – Number of key-value pairs to assign. </p></li>
+<li><p><strong>keys</strong> – The keys need to be operated, which must be on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values need to be updated, which must be on GPU-accessible memory with shape (n, DIM).</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typePbP10score_type12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typePbP10score_type12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typePbP10score_type12cudaStream_t"></span><span id="nv::merlin::HashTableBase::find__size_typeC.key_typeCP.value_typeP.bP.score_typeP.cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1af74cddb6272acf5813edfb2dc07be062"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">find</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">founds</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typePbP10score_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Searches the hash table for the specified keys. </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When a key is missing, the value in <code class="docutils literal notranslate"><span class="pre">values</span></code> is not changed.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of key-value-score tuples to search. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to search on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>founds</strong> – The status that indicates if the keys are found on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typeP8key_typePiPiP10score_type12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typeP8key_typePiPiP10score_type12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typeP8key_typePiPiP10score_type12cudaStream_t"></span><span id="nv::merlin::HashTableBase::find__size_typeC.key_typeCP.value_typeP.key_typeP.iP.iP.score_typeP.cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a21adcceee8930bfdb063bc1bb5b9d210"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">find</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">missed_keys</span></em>, <span class="pre">int</span> <span class="pre">*</span><em><span class="pre">missed_indices</span></em>, <span class="pre">int</span> <span class="pre">*</span><em><span class="pre">missed_size</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typeP10value_typeP8key_typePiPiP10score_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Searches the hash table for the specified keys. </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When the searched keys are not hit, missed keys/indices/size can be obtained.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of key-value-score tuples to search. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to search on GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>missed_keys</strong> – The missed keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>missed_indices</strong> – The missed indices to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>missed_size</strong> – The size of <code class="docutils literal notranslate"><span class="pre">missed_keys</span></code> and <code class="docutils literal notranslate"><span class="pre">missed_indices</span></code>. </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb">
+<span id="_CPPv3NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb"></span><span id="_CPPv2NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb"></span><span id="nv::merlin::HashTableBase::find__size_typeC.key_typeCP.value_typePP.bP.score_typeP.cudaStream_t.bC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ae078fec084e673c3203d13c8b8847449"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">find</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><span class="pre">*</span><em><span class="pre">values</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">founds</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase4findEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Searches the hash table for the specified keys and returns address of the values. </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When a key is missing, the data in <code class="docutils literal notranslate"><span class="pre">values</span></code> won’t change. </p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This API returns internal addresses for high-performance but thread-unsafe. The caller is responsible for guaranteeing data consistency.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of key-value-score tuples to search. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The addresses of values to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>founds</strong> – The status that indicates if the keys are found on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase15find_and_updateEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb">
+<span id="_CPPv3N2nv6merlin13HashTableBase15find_and_updateEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb"></span><span id="_CPPv2N2nv6merlin13HashTableBase15find_and_updateEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb"></span><span id="nv::merlin::HashTableBase::find_and_update__size_typeC.key_typeCP.value_typePP.bP.score_typeP.cudaStream_t.b"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a60572161b6c1019c7b4918931f112663"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">find_and_update</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><span class="pre">*</span><em><span class="pre">values</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">founds</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span>, <span class="pre">bool</span> <em><span class="pre">unique_key</span></em> <span class="pre">=</span> <span class="pre">true</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase15find_and_updateEK9size_typePK8key_typePP10value_typePbP10score_type12cudaStream_tb" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Searches the hash table for the specified keys and returns address of the values, and will update the scores. </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>When a key is missing, the data in <code class="docutils literal notranslate"><span class="pre">values</span></code> won’t change. </p>
+</div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>This API returns internal addresses for high-performance but thread-unsafe. The caller is responsible for guaranteeing data consistency.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of key-value-score tuples to search. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The addresses of values to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>founds</strong> – The status that indicates if the keys are found on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+<li><p><strong>unique_key</strong> – If all keys in the same batch are unique. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase8containsEK9size_typePK8key_typePb12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase8containsEK9size_typePK8key_typePb12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase8containsEK9size_typePK8key_typePb12cudaStream_t"></span><span id="nv::merlin::HashTableBase::contains__size_typeC.key_typeCP.bP.cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a2d253bf973aa8217b0a2038a19f1fa84"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">contains</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <span class="pre">bool</span> <span class="pre">*</span><em><span class="pre">founds</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase8containsEK9size_typePK8key_typePb12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Checks if there are elements with key equivalent to <code class="docutils literal notranslate"><span class="pre">keys</span></code> in the table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of <code class="docutils literal notranslate"><span class="pre">keys</span></code> to check. </p></li>
+<li><p><strong>keys</strong> – The keys to search on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>founds</strong> – The result that indicates if the keys are found, and should be allocated by caller on GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase5eraseEK9size_typePK8key_type12cudaStream_t">
+<span id="_CPPv3N2nv6merlin13HashTableBase5eraseEK9size_typePK8key_type12cudaStream_t"></span><span id="_CPPv2N2nv6merlin13HashTableBase5eraseEK9size_typePK8key_type12cudaStream_t"></span><span id="nv::merlin::HashTableBase::erase__size_typeC.key_typeCP.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a26c2c0b399f0087ae3603f7ea7b77246"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">erase</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase5eraseEK9size_typePK8key_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Removes specified elements from the hash table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The number of keys to remove. </p></li>
+<li><p><strong>keys</strong> – The keys to remove on GPU-accessible memory. </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase5clearE12cudaStream_t">
+<span id="_CPPv3N2nv6merlin13HashTableBase5clearE12cudaStream_t"></span><span id="_CPPv2N2nv6merlin13HashTableBase5clearE12cudaStream_t"></span><span id="nv::merlin::HashTableBase::clear__cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a56b3a95664aebbc20fca08e16286e774"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">clear</span></code><span class="sig-paren">(</span><span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase5clearE12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Removes all of the elements in the hash table with no release object. </p>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase12export_batchE9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase12export_batchE9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase12export_batchE9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t"></span><span id="nv::merlin::HashTableBase::export_batch__size_type.size_typeC.size_typeP.key_typeP.value_typeP.score_typeP.cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a1e9f794dc8ea60f7af90eed14f959d48"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">export_batch</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">offset</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <span class="pre">*</span><em><span class="pre">d_counter</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase12export_batchE9size_typeK9size_typeP9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Exports a certain number of the key-value-score tuples from the hash table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n</strong> – The maximum number of exported pairs. </p></li>
+<li><p><strong>offset</strong> – The position of the key to search. </p></li>
+<li><p><strong>d_counter</strong> – Accumulates amount of successfully exported values. </p></li>
+<li><p><strong>keys</strong> – The keys to dump from GPU-accessible memory with shape (n). </p></li>
+<li><p><strong>values</strong> – The values to dump from GPU-accessible memory with shape (n, DIM). </p></li>
+<li><p><strong>scores</strong> – The scores to search on GPU-accessible memory with shape (n). <p>If <code class="docutils literal notranslate"><span class="pre">scores</span></code> is <code class="docutils literal notranslate"><span class="pre">nullptr</span></code>, the score for each key will not be returned. </p>
+</p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Throws</dt>
+<dd class="field-even"><p><strong>CudaException</strong> – If the key-value size is too large for GPU shared memory. Reducing the value for <code class="docutils literal notranslate"><span class="pre">n</span></code> is currently required if this exception occurs. </p>
+</dd>
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>The number of elements dumped.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase12export_batchEK9size_typeK9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase12export_batchEK9size_typeK9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase12export_batchEK9size_typeK9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t"></span><span id="nv::merlin::HashTableBase::export_batch__size_typeC.size_typeC.key_typeP.value_typeP.score_typeP.cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a5ad19f092ee5cca044bbe754c2de4830"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">export_batch</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">n</span></em>, <em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">offset</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase8key_typeE" title="nv::merlin::HashTableBase::key_type"><span class="pre">key_type</span></a> <span class="pre">*</span><em><span class="pre">keys</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10value_typeE" title="nv::merlin::HashTableBase::value_type"><span class="pre">value_type</span></a> <span class="pre">*</span><em><span class="pre">values</span></em>, <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase10score_typeE" title="nv::merlin::HashTableBase::score_type"><span class="pre">score_type</span></a> <span class="pre">*</span><em><span class="pre">scores</span></em> <span class="pre">=</span> <span class="pre">nullptr</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase12export_batchEK9size_typeK9size_typeP8key_typeP10value_typeP10score_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase5emptyE12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase5emptyE12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase5emptyE12cudaStream_t"></span><span id="nv::merlin::HashTableBase::empty__cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a4ea0a4062349595e6001b8c42013aca4"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">bool</span> <code class="sig-name descname"><span class="pre">empty</span></code><span class="sig-paren">(</span><span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase5emptyE12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Indicates if the hash table has no elements. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><code class="docutils literal notranslate"><span class="pre">true</span></code> if the table is empty and <code class="docutils literal notranslate"><span class="pre">false</span></code> otherwise. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase4sizeE12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase4sizeE12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase4sizeE12cudaStream_t"></span><span id="nv::merlin::HashTableBase::size__cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1aad44ba6808cf0834b433a5ae5a126a65"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">size</span></code><span class="sig-paren">(</span><span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase4sizeE12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns the hash table size. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The table size. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase8capacityEv">
+<span id="_CPPv3NK2nv6merlin13HashTableBase8capacityEv"></span><span id="_CPPv2NK2nv6merlin13HashTableBase8capacityEv"></span><span id="nv::merlin::HashTableBase::capacityC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1af2afdcfa4aa038c0074f327f0c325611"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">capacity</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase8capacityEv" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns the hash table capacity. </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The value that is returned might be less than the actual capacity of the hash table because the hash table currently keeps the capacity to be a power of 2 for performance considerations.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>The table capacity. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase7reserveEK9size_type12cudaStream_t">
+<span id="_CPPv3N2nv6merlin13HashTableBase7reserveEK9size_type12cudaStream_t"></span><span id="_CPPv2N2nv6merlin13HashTableBase7reserveEK9size_type12cudaStream_t"></span><span id="nv::merlin::HashTableBase::reserve__size_typeC.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1ac3f85db1da456e3b46fd59f87afa8f22"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">reserve</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">new_capacity</span></em>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase7reserveEK9size_type12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Sets the number of buckets to the number that is needed to accommodate at least <code class="docutils literal notranslate"><span class="pre">new_capacity</span></code> elements without exceeding the maximum load factor. This method rehashes the hash table. Rehashing puts the elements into the appropriate buckets considering that total number of buckets has changed. </p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>If the value of <code class="docutils literal notranslate"><span class="pre">new_capacity</span></code> or double of <code class="docutils literal notranslate"><span class="pre">new_capacity</span></code> is greater or equal than <code class="docutils literal notranslate"><span class="pre">options_.max_capacity</span></code>, the reserve does not perform any change to the hash table.</p>
+</div>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>new_capacity</strong> – The requested capacity for the hash table. </p></li>
+<li><p><strong>stream</strong> – The CUDA stream that is used to execute the operation. </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase11load_factorE12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase11load_factorE12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase11load_factorE12cudaStream_t"></span><span id="nv::merlin::HashTableBase::load_factor__cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a540e4e198ffea465471933554bf40730"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">float</span> <code class="sig-name descname"><span class="pre">load_factor</span></code><span class="sig-paren">(</span><span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase11load_factorE12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns the average number of elements per slot, that is, size() divided by capacity(). </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>stream</strong> – The CUDA stream that is used to execute the operation.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The load factor </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase16set_max_capacityE9size_type">
+<span id="_CPPv3N2nv6merlin13HashTableBase16set_max_capacityE9size_type"></span><span id="_CPPv2N2nv6merlin13HashTableBase16set_max_capacityE9size_type"></span><span id="nv::merlin::HashTableBase::set_max_capacity__size_type"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a82953b1aaf2065a02d7fa62c3b1c1504"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">set_max_capacity</span></code><span class="sig-paren">(</span><a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <em><span class="pre">new_max_capacity</span></em><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase16set_max_capacityE9size_type" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Set max_capacity of the table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>new_max_capacity</strong> – The new expecting max_capacity. It must be power of 2. Otherwise it will raise an error. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase3dimEv">
+<span id="_CPPv3NK2nv6merlin13HashTableBase3dimEv"></span><span id="_CPPv2NK2nv6merlin13HashTableBase3dimEv"></span><span id="nv::merlin::HashTableBase::dimC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a9867e79233f260cd23826a9b20edd95b"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">dim</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <em class="property"><span class="pre">noexcept</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase3dimEv" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns the dimension of the vectors. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>The dimension of the vectors. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase15max_bucket_sizeEv">
+<span id="_CPPv3NK2nv6merlin13HashTableBase15max_bucket_sizeEv"></span><span id="_CPPv2NK2nv6merlin13HashTableBase15max_bucket_sizeEv"></span><span id="nv::merlin::HashTableBase::max_bucket_sizeC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a44a714cc6c618e52bbc9279a82f2f744"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">max_bucket_size</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <em class="property"><span class="pre">noexcept</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase15max_bucket_sizeEv" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns The length of each bucket. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>The length of each bucket. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase12bucket_countEv">
+<span id="_CPPv3NK2nv6merlin13HashTableBase12bucket_countEv"></span><span id="_CPPv2NK2nv6merlin13HashTableBase12bucket_countEv"></span><span id="nv::merlin::HashTableBase::bucket_countC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a7db0c65df4f2f638c63e98935652b646"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">bucket_count</span></code><span class="sig-paren">(</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <em class="property"><span class="pre">noexcept</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase12bucket_countEv" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Returns the number of buckets in the table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p>The number of buckets in the table. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4NK2nv6merlin13HashTableBase4saveEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t">
+<span id="_CPPv3NK2nv6merlin13HashTableBase4saveEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t"></span><span id="_CPPv2NK2nv6merlin13HashTableBase4saveEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t"></span><span id="nv::merlin::HashTableBase::save__BaseKVFile:K.V.S:P.sC.cudaStream_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a80a0b3793fd17d0c8d836482b919edfa"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">save</span></code><span class="sig-paren">(</span><span class="pre">BaseKVFile</span><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::K"><span class="pre">K</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::V"><span class="pre">V</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::S"><span class="pre">S</span></a><span class="pre">&gt;</span> <span class="pre">*</span><em><span class="pre">file</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">size_t</span> <em><span class="pre">max_workspace_size</span></em> <span class="pre">=</span> <span class="pre">1L</span> <span class="pre">*</span> <span class="pre">1024</span> <span class="pre">*</span> <span class="pre">1024</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <em class="property"><span class="pre">const</span></em> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4NK2nv6merlin13HashTableBase4saveEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Save keys, vectors, scores in table to file or files. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file</strong> – A BaseKVFile object defined the file format on host filesystem. </p></li>
+<li><p><strong>max_workspace_size</strong> – Saving is conducted in chunks. This value denotes the maximum amount of temporary memory to use when dumping the table. Larger values <em>can</em> lead to higher performance. </p></li>
+<li><p><strong>stream</strong> – The CUDA stream used to execute the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Number of KV pairs saved to file. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase4loadEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t">
+<span id="_CPPv3N2nv6merlin13HashTableBase4loadEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t"></span><span id="_CPPv2N2nv6merlin13HashTableBase4loadEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t"></span><span id="nv::merlin::HashTableBase::load__BaseKVFile:K.V.S:P.sC.cudaStream_t"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a55e210199f055a05dc9a21ffb0440352"></span><em class="property"><span class="pre">virtual</span></em> <a class="reference internal" href="#_CPPv4N2nv6merlin13HashTableBase9size_typeE" title="nv::merlin::HashTableBase::size_type"><span class="pre">size_type</span></a> <code class="sig-name descname"><span class="pre">load</span></code><span class="sig-paren">(</span><span class="pre">BaseKVFile</span><span class="pre">&lt;</span><a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::K"><span class="pre">K</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::V"><span class="pre">V</span></a><span class="pre">,</span> <a class="reference internal" href="#_CPPv4I000EN2nv6merlin13HashTableBaseE" title="nv::merlin::HashTableBase::S"><span class="pre">S</span></a><span class="pre">&gt;</span> <span class="pre">*</span><em><span class="pre">file</span></em>, <em class="property"><span class="pre">const</span></em> <span class="pre">size_t</span> <em><span class="pre">max_workspace_size</span></em> <span class="pre">=</span> <span class="pre">1L</span> <span class="pre">*</span> <span class="pre">1024</span> <span class="pre">*</span> <span class="pre">1024</span>, <span class="pre">cudaStream_t</span> <em><span class="pre">stream</span></em> <span class="pre">=</span> <span class="pre">0</span><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase4loadEP10BaseKVFileI1K1V1SEK6size_t12cudaStream_t" title="Permalink to this definition"></a><br /></dt>
+<dd><p>Load keys, vectors, scores from file to table. </p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>file</strong> – An BaseKVFile defined the file format within filesystem. </p></li>
+<li><p><strong>max_workspace_size</strong> – Loading is conducted in chunks. This value denotes the maximum size of such chunks. Larger values <em>can</em> lead to higher performance. </p></li>
+<li><p><strong>stream</strong> – The CUDA stream used to execute the operation.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>Number of keys loaded from file. </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="cpp function">
+<dt id="_CPPv4N2nv6merlin13HashTableBase16set_global_epochEK8uint64_t">
+<span id="_CPPv3N2nv6merlin13HashTableBase16set_global_epochEK8uint64_t"></span><span id="_CPPv2N2nv6merlin13HashTableBase16set_global_epochEK8uint64_t"></span><span id="nv::merlin::HashTableBase::set_global_epoch__uint64_tC"></span><span class="target" id="classnv_1_1merlin_1_1HashTableBase_1a779454458d6a3d4252b17e25fb9d37ee"></span><em class="property"><span class="pre">virtual</span></em> <span class="pre">void</span> <code class="sig-name descname"><span class="pre">set_global_epoch</span></code><span class="sig-paren">(</span><em class="property"><span class="pre">const</span></em> <span class="pre">uint64_t</span> <em><span class="pre">epoch</span></em><span class="sig-paren">)</span> <span class="pre">=</span> <span class="pre">0</span><a class="headerlink" href="#_CPPv4N2nv6merlin13HashTableBase16set_global_epochEK8uint64_t" title="Permalink to this definition"></a><br /></dt>
+<dd></dd></dl>
+
+</div>
+</dd></dl>
+
+</div>
+</div>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="classnv_1_1merlin_1_1HashTable.html" class="btn btn-neutral float-left" title="Template Class HashTable" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="variable_merlin__hashtable_8cuh_1a359fe56354918308560f46cb3136a3da.html" class="btn btn-neutral float-right" title="Variable nv::merlin::thrust_par" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+
+    <p>&#169; Copyright 2022–2026, NVIDIA.</p>
+<p>
+<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-policy/" target="_blank">Privacy Policy</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/privacy-center/" target="_blank">Manage My Privacy</a> |
+<a href="https://www.nvidia.com/en-us/preferences/start/" target="_blank">Do Not Sell or Share My Data</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/terms-of-service/" target="_blank">Terms of Service</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/accessibility/" target="_blank">Accessibility</a> |
+<a href="https://www.nvidia.com/en-us/about-nvidia/company-policies/" target="_blank">Corporate Policies</a> |
+<a href="https://www.nvidia.com/en-us/product-security/" target="_blank">Product Security</a> |
+<a href="https://www.nvidia.com/en-us/contact/" target="_blank">Contact</a>
+</p>
+
+  </div>
+
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+    <!-- Theme Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-NVJ1Y1YJHK"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-NVJ1Y1YJHK', {
+          'anonymize_ip': false,
+      });
+    </script> 
+
+</body>
+</html>
