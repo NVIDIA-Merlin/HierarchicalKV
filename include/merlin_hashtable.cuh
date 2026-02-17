@@ -87,6 +87,17 @@ struct EvictStrategy {
 };
 
 /**
+ * @brief Table operation mode.
+ *
+ * kThroughput: Default mode, single-bucket addressing, throughput-optimized.
+ * kMemory: Dual-bucket addressing, memory-efficiency-optimized (higher LF).
+ */
+enum class TableMode {
+  kThroughput = 0,  ///< Default: single-bucket, max throughput.
+  kMemory = 1,      ///< Dual-bucket, higher load factor.
+};
+
+/**
  * @brief The options struct of HierarchicalKV.
  */
 struct HashTableOptions {
@@ -117,6 +128,7 @@ struct HashTableOptions {
                                         ///< HBM allocation, must be power of 2.
   bool api_lock = true;  ///<  The flag indicating whether to lock the table
                          ///<  once enters the API.
+  TableMode table_mode = TableMode::kThroughput;  ///< Table operation mode.
   MemoryPoolOptions
       device_memory_pool;  ///< Configuration options for device memory pool.
   MemoryPoolOptions
@@ -960,6 +972,32 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
     options_ = options;
+
+    // MEMORY_MODE (dual-bucket) specific initialization.
+    if (options_.table_mode == TableMode::kMemory) {
+      // Note: dual-bucket mode does not use max_load_factor for rehash
+      // triggering.  The effective load factor is governed entirely by the
+      // score-based eviction mechanism.  We intentionally leave
+      // max_load_factor at its default value and never consult it.
+      MERLIN_CHECK(options_.init_capacity == options_.max_capacity,
+                   "[MEMORY_MODE] init_capacity must equal max_capacity. "
+                   "Auto-rehash is not supported in dual-bucket mode.");
+      MERLIN_CHECK(options_.max_hbm_for_vectors == 0,
+                   "[MEMORY_MODE] Only pure HBM (fast mode) is supported. "
+                   "Set max_hbm_for_vectors = 0.");
+      MERLIN_CHECK(
+          options_.dim * sizeof(value_type) <= 224 * sizeof(float),
+          "[MEMORY_MODE] dim * sizeof(V) must not exceed 896 bytes "
+          "(i.e. dim <= 224 for float). The dual-bucket lookup kernel uses a "
+          "fixed-size shared memory buffer that cannot accommodate larger "
+          "value vectors.");
+      MERLIN_CHECK(
+          options_.init_capacity / options_.max_bucket_size >= 2,
+          "[MEMORY_MODE] capacity must provide at least 2 buckets "
+          "(capacity >= 2 * max_bucket_size). Dual-bucket addressing "
+          "requires b1 != b2, which is impossible with a single bucket.");
+    }
+
     MERLIN_CHECK(options.reserved_key_start_bit >= 0 &&
                      options.reserved_key_start_bit <= MAX_RESERVED_KEY_BIT,
                  "options.reserved_key_start_bit should >= 0 and <= 62.");
@@ -1000,12 +1038,21 @@ class HashTable : public HashTableBase<K, V, S> {
     shared_mem_size_ = deviceProp.sharedMemPerBlock;
     sm_cnt_ = deviceProp.multiProcessorCount;
     max_threads_per_block_ = deviceProp.maxThreadsPerBlock;
+    const bool is_memory_mode = (options_.table_mode == TableMode::kMemory);
     create_table<key_type, value_type, score_type>(
         &table_, allocator_, options_.dim, options_.init_capacity,
         options_.max_capacity, options_.max_hbm_for_vectors,
-        options_.max_bucket_size, options_.num_of_buckets_per_alloc);
+        options_.max_bucket_size, options_.num_of_buckets_per_alloc,
+        /*tile_size=*/32, /*primary=*/true,
+        /*dual_bucket_mode=*/is_memory_mode);
     options_.block_size = SAFE_GET_BLOCK_SIZE(options_.block_size);
     reach_max_capacity_ = (options_.init_capacity * 2 > options_.max_capacity);
+
+    // MEMORY_MODE: force disable auto-rehash.
+    if (is_memory_mode) {
+      reach_max_capacity_ = true;  // Disable auto-rehash.
+    }
+
     MERLIN_CHECK((!(options_.io_by_cpu && options_.max_hbm_for_vectors != 0)),
                  "[HierarchicalKV] `io_by_cpu` should not be true when "
                  "`max_hbm_for_vectors` is not 0!");
@@ -1097,6 +1144,25 @@ class HashTable : public HashTableBase<K, V, S> {
     std::unique_ptr<insert_unique_lock> lock_ptr;
     if (options_.api_lock) {
       lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
+
+    // MEMORY_MODE: dual-bucket upsert.
+    if (is_memory_mode()) {
+      MERLIN_CHECK(unique_key,
+                   "[MEMORY_MODE] insert_or_assign requires unique_key=true "
+                   "in dual-bucket mode.");
+
+      using DualSelector =
+          KernelSelector_DualBucketUpsert<key_type, value_type, score_type,
+                                          evict_strategy_, ArchTag>;
+      typename DualSelector::Params kernelParams(
+          /*load_factor=*/0.0f, table_->buckets, table_->buckets_size,
+          table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
+          static_cast<uint32_t>(options_.dim), keys, values, scores, n,
+          global_epoch_);
+      DualSelector::select_kernel(kernelParams, stream);
+      CudaCheckError();
+      return;
     }
 
     if (is_fast_mode()) {
@@ -1275,6 +1341,10 @@ class HashTable : public HashTableBase<K, V, S> {
                         size_type* d_evicted_counter,  // (1)
                         cudaStream_t stream = 0, bool unique_key = true,
                         bool ignore_evict_strategy = false) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] insert_and_evict() is not supported in dual-bucket "
+        "mode. Use insert_or_assign() instead.");
     if (n == 0) {
       return;
     }
@@ -1504,6 +1574,10 @@ class HashTable : public HashTableBase<K, V, S> {
                        const score_type* scores = nullptr,  // (n)
                        cudaStream_t stream = 0,
                        bool ignore_evict_strategy = false) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] accum_or_assign() is not supported in dual-bucket "
+        "mode. Use insert_or_assign() instead.");
     if (n == 0) {
       return;
     }
@@ -1608,6 +1682,10 @@ class HashTable : public HashTableBase<K, V, S> {
                       score_type* scores = nullptr,             // (n)
                       cudaStream_t stream = 0, bool unique_key = true,
                       bool ignore_evict_strategy = false) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] find_or_insert() is not supported in dual-bucket mode. "
+        "Use insert_or_assign() and find() separately.");
     if (n == 0) {
       return;
     }
@@ -1790,6 +1868,10 @@ class HashTable : public HashTableBase<K, V, S> {
                       cudaStream_t stream = 0, bool unique_key = true,
                       bool ignore_evict_strategy = false,
                       key_type** locked_key_ptrs = nullptr) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] find_or_insert() is not supported in dual-bucket mode. "
+        "Use insert_or_assign() and find() separately.");
     if (n == 0) {
       return;
     }
@@ -2126,6 +2208,10 @@ class HashTable : public HashTableBase<K, V, S> {
                      const key_type* keys,                // (n)
                      const score_type* scores = nullptr,  // (n)
                      cudaStream_t stream = 0, bool unique_key = true) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] assign_scores() is not supported in dual-bucket mode. "
+        "Scores are managed by insert_or_assign() in MEMORY_MODE.");
     if (n == 0) {
       return;
     }
@@ -2193,6 +2279,10 @@ class HashTable : public HashTableBase<K, V, S> {
                      const key_type* keys,      // (n)
                      const value_type* values,  // (n, DIM)
                      cudaStream_t stream = 0, bool unique_key = true) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] assign_values() is not supported in dual-bucket mode. "
+        "Use insert_or_assign() to update values in MEMORY_MODE.");
     if (n == 0) {
       return;
     }
@@ -2367,6 +2457,18 @@ class HashTable : public HashTableBase<K, V, S> {
     }
 
     const uint32_t value_size = dim() * sizeof(V);
+
+    // MEMORY_MODE: dual-bucket find (sequential b1 then b2).
+    if (is_memory_mode()) {
+      using DualSelector = SelectDualBucketLookupKernel<key_type, value_type,
+                                                        score_type, ArchTag>;
+      LookupKernelParams<key_type, value_type, score_type> lookupParams(
+          table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
+          keys, values, scores, founds, n);
+      DualSelector::select_kernel(lookupParams, table_->buckets_size, stream);
+      CudaCheckError();
+      return;
+    }
 
     if (is_fast_mode()) {
       using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
@@ -2714,6 +2816,10 @@ class HashTable : public HashTableBase<K, V, S> {
   void contains(const size_type n, const key_type* keys,  // (n)
                 bool* founds,                             // (n)
                 cudaStream_t stream = 0) const {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] contains() is not supported in dual-bucket mode. "
+        "Key may reside in either bucket.");
     if (n == 0) {
       return;
     }
@@ -2756,6 +2862,9 @@ class HashTable : public HashTableBase<K, V, S> {
    *
    */
   void erase(const size_type n, const key_type* keys, cudaStream_t stream = 0) {
+    MERLIN_CHECK(!is_memory_mode(),
+                 "[MEMORY_MODE] erase() is not supported in dual-bucket mode. "
+                 "Key may reside in either bucket.");
     if (n == 0) {
       return;
     }
@@ -3352,6 +3461,10 @@ class HashTable : public HashTableBase<K, V, S> {
    * @param stream The CUDA stream that is used to execute the operation.
    */
   void reserve(const size_type new_capacity, cudaStream_t stream = 0) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] reserve() is not supported in dual-bucket mode. "
+        "Rehash does not preserve dual-bucket mapping.");
     if (reach_max_capacity_ || new_capacity > options_.max_capacity) {
       reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
       return;
@@ -3622,6 +3735,10 @@ class HashTable : public HashTableBase<K, V, S> {
 
  private:
   inline bool is_fast_mode() const noexcept { return table_->is_pure_hbm; }
+
+  inline bool is_memory_mode() const noexcept {
+    return options_.table_mode == TableMode::kMemory;
+  }
 
   /**
    * @brief Returns the load factor by sampling up to 1024 buckets.
