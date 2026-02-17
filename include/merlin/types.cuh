@@ -212,6 +212,7 @@ struct Table {
                                          // HBM allocation, must be power of 2.
   bool is_pure_hbm = true;               // unused
   bool primary = true;                   // unused
+  bool dual_bucket_mode = false;         // Enable dual-bucket addressing
   int slots_offset = 0;                  // unused
   int slots_number = 0;                  // unused
   int device_id = 0;                     // Device id
