@@ -625,6 +625,34 @@ __forceinline__ __device__ uint32_t get_start_position(
   return start_idx;
 }
 
+// Read-only, no-tile-sync fast path lookup for static tables.
+// Assumptions:
+// - Table is immutable during lookup (static), keys are non-overlapping per
+// query batch.
+// - No atomic ops or tile-wide ballots; each thread scans positions with stride
+// TILE_SIZE.
+// - Whoever finds the key may directly write results; others can return early
+// on EMPTY_KEY.
+template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+__device__ __forceinline__ int find_without_lock_readonly_no_sync(
+    Bucket<K, V, S>* __restrict__ bucket, const K desired_key,
+    const uint32_t start_idx, const uint32_t bucket_max_size,
+    const uint32_t rank) {
+  const uint32_t mask = bucket_max_size - 1;
+  for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+       tile_offset += TILE_SIZE) {
+    const uint32_t pos = (start_idx + rank + tile_offset) & mask;
+    const K current_key = *reinterpret_cast<const K*>(bucket->keys(pos));
+    if (current_key == desired_key) {
+      return static_cast<int>(pos);
+    }
+    if (current_key == static_cast<K>(EMPTY_KEY)) {
+      return -1;
+    }
+  }
+  return -1;
+}
+
 template <class K, class V, class S, uint32_t TILE_SIZE = 4>
 __device__ __forceinline__ OccupyResult find_without_lock(
     cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S>* __restrict__ bucket,
