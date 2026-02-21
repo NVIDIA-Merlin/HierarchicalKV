@@ -52,6 +52,23 @@ __forceinline__ __device__ int same_buf(int i) { return (i & 0x01) ^ 0; }
 // If i % 2 == 0, select buffer 1, else buffer 0.
 __forceinline__ __device__ int diff_buf(int i) { return (i & 0x01) ^ 1; }
 
+/**
+ * Digest functions for single-bucket mode.
+ *
+ * A digest is a 1-byte fingerprint (bits [32:39] of the Murmur3 hash) stored
+ * alongside each key in the bucket.  During lookup, the warp first performs a
+ * SIMD comparison (`__vcmpeq4`) of the target digest against all 128 stored
+ * digests.  Only slots whose digest matches proceed to full 8-byte key
+ * comparison.  With a random 8-bit digest, the expected false-positive rate
+ * is 1/256 per occupied slot, reducing full-key comparisons from O(bucket_size)
+ * to ~0.5 per lookup miss.
+ *
+ * NOTE: Some pipeline kernels (lookup.cuh, contains.cuh) compute the target
+ * digest inline as `hashed_key >> 32` for performance, bypassing
+ * `get_digest()`. Any change to the digest derivation must be reflected in
+ * those locations too.
+ */
+
 template <typename K>
 __forceinline__ __device__ D empty_digest() {
   const K hashed_key = Murmur3HashDevice(static_cast<K>(EMPTY_KEY));
@@ -64,24 +81,24 @@ __forceinline__ __device__ D reclaim_digest() {
   return static_cast<D>(hashed_key >> 32);
 }
 
+// Target digest for a given key (bits [32:39] of Murmur3 hash).
 template <typename K>
 __forceinline__ __device__ D get_digest(const K& key) {
   const K hashed_key = Murmur3HashDevice(key);
   return static_cast<D>(hashed_key >> 32);
 }
 
-// Get vector of digests for computation.
+// Pack digest into all 4 bytes for SIMD `__vcmpeq4` comparison.
 template <typename K>
 __forceinline__ __device__ VecD_Comp digests_from_hashed(const K& hashed_key) {
   D digest = static_cast<D>(hashed_key >> 32);
-  // Set every byte in VecD_Comp to `digest`.
   return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
 }
 
+// Pack empty-key digest into all 4 bytes for SIMD comparison.
 template <typename K>
 __forceinline__ __device__ VecD_Comp empty_digests() {
   D digest = empty_digest<K>();
-  // Set every byte in VecD_Comp to `digest`.
   return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
 }
 
