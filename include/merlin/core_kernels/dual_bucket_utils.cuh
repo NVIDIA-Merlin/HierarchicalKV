@@ -45,28 +45,36 @@ __device__ __forceinline__ void get_dual_bucket_indices(
 }
 
 /**
- * Digest extraction for dual-bucket mode.
- * Uses bit[56:63] (highest 8 bits) of the hash to avoid collision
- * with b2 addressing (which uses high 32 bits' low log2(buckets_num) bits).
+ * Digest functions for dual-bucket mode.
+ *
+ * Dual-bucket digests use bits [56:63] (highest 8 bits) of the Murmur3 hash,
+ * whereas single-bucket digests use bits [32:39].  The different bit range
+ * avoids collision with the b2 bucket address, which is derived from the high
+ * 32 bits (bits [32:63]).  Using [56:63] ensures that two keys mapping to the
+ * same b2 bucket can still have distinct digests.
+ *
+ * INVARIANT: `dual_bucket_empty_digest()` must ALWAYS return the true
+ * hash-derived value for EMPTY_KEY.  Kernels rely on this sentinel to
+ * distinguish empty slots from occupied ones during the SIMD scan pass.
+ * Returning a constant would cause every occupied slot to match the empty
+ * digest, breaking the probing logic.
  */
+
+// Target digest for a given key (bits [56:63] of Murmur3 hash).
 template <class K>
 __device__ __forceinline__ D get_dual_bucket_digest(const K& key) {
   const K hashed_key = Murmur3HashDevice(key);
   return static_cast<D>(static_cast<uint64_t>(hashed_key) >> 56);
 }
 
-/**
- * Digest extraction from pre-computed hash for dual-bucket mode.
- */
+// Target digest from a pre-computed hash.
 template <class K>
 __device__ __forceinline__ D
 get_dual_bucket_digest_from_hash(const K& hashed_key) {
   return static_cast<D>(static_cast<uint64_t>(hashed_key) >> 56);
 }
 
-/**
- * Get vector of digests for SIMD comparison in dual-bucket mode.
- */
+// Pack dual-bucket digest into all 4 bytes for SIMD `__vcmpeq4` comparison.
 template <class K>
 __device__ __forceinline__ VecD_Comp
 dual_bucket_digests_from_hashed(const K& hashed_key) {
@@ -74,18 +82,15 @@ dual_bucket_digests_from_hashed(const K& hashed_key) {
   return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
 }
 
-/**
- * Empty digest value for dual-bucket mode (bit[56:63] of hash(EMPTY_KEY)).
- */
+// Sentinel digest for EMPTY_KEY in dual-bucket mode — must always use real
+// hash value (bits [56:63]).
 template <class K>
 __device__ __forceinline__ D dual_bucket_empty_digest() {
   const K hashed_key = Murmur3HashDevice(static_cast<K>(EMPTY_KEY));
   return static_cast<D>(static_cast<uint64_t>(hashed_key) >> 56);
 }
 
-/**
- * Empty digests vector for dual-bucket SIMD comparison.
- */
+// Pack empty-key digest into all 4 bytes for SIMD comparison.
 template <class K>
 __device__ __forceinline__ VecD_Comp dual_bucket_empty_digests() {
   D digest = dual_bucket_empty_digest<K>();
