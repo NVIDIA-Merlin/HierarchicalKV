@@ -1,0 +1,17 @@
+.. _exhale_struct_structnv_1_1merlin_1_1EvictStrategy:
+
+Struct EvictStrategy
+====================
+
+- Defined in :ref:`file_merlin_hashtable.cuh`
+
+
+Struct Documentation
+--------------------
+
+
+.. doxygenstruct:: nv::merlin::EvictStrategy
+   :project: HierarchicalKV
+   :members:
+   :protected-members:
+   :undoc-members:
