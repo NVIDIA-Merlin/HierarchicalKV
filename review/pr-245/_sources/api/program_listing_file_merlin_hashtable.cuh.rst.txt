@@ -303,15 +303,8 @@ Program Listing for File merlin_hashtable.cuh
      using allocator_type = BaseAllocator;
    
     private:
-     using ScoreStore = typename std::conditional<
-         (Strategy == static_cast<int>(EvictStrategy::kCustomized)),
-         score_type, AtomicScore<score_type>>::type;
-     using TableCore =
-         nv::merlin::Table<key_type, value_type, score_type, ScoreStore>;
+     using TableCore = nv::merlin::Table<key_type, value_type, score_type>;
      static constexpr unsigned int TILE_SIZE = 4;
-     static constexpr bool is_customized_ =
-         (evict_strategy ==
-          static_cast<int>(EvictStrategy::kCustomized));
    
      using DeviceMemoryPool = MemoryPool<DeviceAllocator<char>>;
      using HostMemoryPool = MemoryPool<HostAllocator<char>>;
@@ -322,17 +315,16 @@ Program Listing for File merlin_hashtable.cuh
                       std::is_same<key_type, uint64_t>::value),
                      "The key_type must be int64_t or uint64_t.");
    
-       // Built-in strategies require uint64_t scores (for epoch/timestamp
-       // encoding). kCustomized mode allows any trivially-copyable score type.
-       static_assert(
-           evict_strategy == EvictStrategy::kCustomized ||
-               std::is_same<score_type, uint64_t>::value,
-           "Built-in eviction strategies (kLru, kLfu, kEpochLru, kEpochLfu) "
-           "require score_type to be uint64_t. Use kCustomized for other types.");
+       static_assert((std::is_same<score_type, uint64_t>::value ||
+                      std::is_same<score_type, uint32_t>::value),
+                     "The score_type must be uint64_t or uint32_t.");
    
-       static_assert(
-           std::is_trivially_copyable<score_type>::value,
-           "The score_type must be trivially copyable.");
+       // Incompatible: Epoch-based strategies encode epoch(hi32)|score(lo32),
+       // require 64-bit score
+       static_assert(!(std::is_same<score_type, uint32_t>::value &&
+                       (evict_strategy != EvictStrategy::kCustomized)),
+                     "score_type uint32_t is only compatible with Customized; "
+                     "use uint64_t.");
      };
    
      ~HashTable() {
@@ -340,8 +332,7 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(cudaDeviceSynchronize());
    
          initialized_ = false;
-         destroy_table<key_type, value_type, score_type, ScoreStore>(
-             &table_, allocator_);
+         destroy_table<key_type, value_type, score_type>(&table_, allocator_);
          allocator_->free(MemoryType::Device, d_table_);
          dev_mem_pool_.reset();
          host_mem_pool_.reset();
@@ -406,7 +397,7 @@ Program Listing for File merlin_hashtable.cuh
        shared_mem_size_ = deviceProp.sharedMemPerBlock;
        sm_cnt_ = deviceProp.multiProcessorCount;
        max_threads_per_block_ = deviceProp.maxThreadsPerBlock;
-       create_table<key_type, value_type, score_type, ScoreStore>(
+       create_table<key_type, value_type, score_type>(
            &table_, allocator_, options_.dim, options_.init_capacity,
            options_.max_capacity, options_.max_hbm_for_vectors,
            options_.max_bucket_size, options_.num_of_buckets_per_alloc);
@@ -481,7 +472,7 @@ Program Listing for File merlin_hashtable.cuh
          }
    
          using Selector = KernelSelector_Upsert<key_type, value_type, score_type,
-                                                ScoreStore, evict_strategy_, ArchTag>;
+                                                evict_strategy_, ArchTag>;
          if (Selector::callable(unique_key,
                                 static_cast<uint32_t>(options_.max_bucket_size),
                                 static_cast<uint32_t>(options_.dim))) {
@@ -494,7 +485,7 @@ Program Listing for File merlin_hashtable.cuh
            Selector::select_kernel(kernelParams, stream);
          } else {
            using Selector = SelectUpsertKernelWithIO<key_type, value_type,
-                                                     score_type, ScoreStore, evict_strategy_>;
+                                                     score_type, evict_strategy_>;
            Selector::execute_kernel(
                load_factor, options_.block_size, options_.max_bucket_size,
                table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -531,7 +522,7 @@ Program Listing for File merlin_hashtable.cuh
            constexpr uint32_t BLOCK_SIZE = 128;
    
            upsert_kernel_lock_key_hybrid<key_type, value_type, score_type,
-                                         ScoreStore, BLOCK_SIZE, evict_strategy_>
+                                         BLOCK_SIZE, evict_strategy_>
                <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                    table_->buckets, table_->buckets_size, table_->buckets_num,
                    options_.max_bucket_size, options_.dim, keys, d_dst, scores,
@@ -542,7 +533,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           upsert_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy_,
+           upsert_kernel<key_type, value_type, score_type, evict_strategy_,
                          TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
                d_table_, table_->buckets, options_.max_bucket_size,
                table_->buckets_num, options_.dim, keys, d_dst, scores,
@@ -637,7 +628,7 @@ Program Listing for File merlin_hashtable.cuh
    
        using Selector =
            KernelSelector_UpsertAndEvict<key_type, value_type, score_type,
-                                         ScoreStore, evict_strategy, ArchTag>;
+                                         evict_strategy, ArchTag>;
        if (Selector::callable(unique_key,
                               static_cast<uint32_t>(options_.max_bucket_size),
                               static_cast<uint32_t>(options_.dim))) {
@@ -651,7 +642,7 @@ Program Listing for File merlin_hashtable.cuh
        } else if (unique_key and options_.max_bucket_size % 16 == 0) {
          using KernelLauncher =
              InsertAndEvictKernelLauncher<key_type, value_type, score_type,
-                                          ScoreStore, evict_strategy>;
+                                          evict_strategy>;
          typename KernelLauncher::Params kernelParams(
              load_factor, table_->buckets, table_->buckets_size,
              table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
@@ -685,7 +676,7 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(memset64Async(tmp_evict_keys, EMPTY_KEY_CPU, n, stream));
          using Selector =
              SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
-                                              ScoreStore, evict_strategy>;
+                                              evict_strategy>;
          Selector::execute_kernel(
              load_factor, options_.block_size, options_.max_bucket_size,
              table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -773,7 +764,7 @@ Program Listing for File merlin_hashtable.cuh
        if (is_fast_mode()) {
          using Selector =
              SelectAccumOrAssignKernelWithIO<key_type, value_type, score_type,
-                                             ScoreStore, evict_strategy>;
+                                             evict_strategy>;
          static thread_local int step_counter = 0;
          static thread_local float load_factor = 0.0;
    
@@ -809,7 +800,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           accum_or_assign_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy,
+           accum_or_assign_kernel<key_type, value_type, score_type, evict_strategy,
                                   TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
                d_table_, options_.max_bucket_size, table_->buckets_num, dim(),
                keys, dst, scores, accum_or_assigns, src_offset, founds,
@@ -867,7 +858,7 @@ Program Listing for File merlin_hashtable.cuh
    
          using Selector =
              KernelSelector_FindOrInsert<key_type, value_type, score_type,
-                                         ScoreStore, evict_strategy, ArchTag>;
+                                         evict_strategy, ArchTag>;
          if (Selector::callable(unique_key,
                                 static_cast<uint32_t>(options_.max_bucket_size),
                                 static_cast<uint32_t>(options_.dim))) {
@@ -881,7 +872,7 @@ Program Listing for File merlin_hashtable.cuh
          } else {
            using Selector =
                SelectFindOrInsertKernelWithIO<key_type, value_type, score_type,
-                                              ScoreStore, evict_strategy>;
+                                              evict_strategy>;
            Selector::execute_kernel(
                load_factor, options_.block_size, options_.max_bucket_size,
                table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -918,7 +909,7 @@ Program Listing for File merlin_hashtable.cuh
            constexpr uint32_t BLOCK_SIZE = 128;
    
            find_or_insert_kernel_lock_key_hybrid<key_type, value_type, score_type,
-                                                 ScoreStore, BLOCK_SIZE, evict_strategy>
+                                                 BLOCK_SIZE, evict_strategy>
                <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                    table_->buckets, table_->buckets_size, table_->buckets_num,
                    options_.max_bucket_size, options_.dim, keys,
@@ -930,7 +921,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           find_or_insert_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy,
+           find_or_insert_kernel<key_type, value_type, score_type, evict_strategy,
                                  TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
                d_table_, table_->buckets, options_.max_bucket_size,
                table_->buckets_num, options_.dim, keys, d_table_value_addrs,
@@ -1025,7 +1016,7 @@ Program Listing for File merlin_hashtable.cuh
    
          constexpr uint32_t BLOCK_SIZE = 128U;
          find_or_insert_ptr_kernel_lock_key<key_type, value_type, score_type,
-                                            ScoreStore, BLOCK_SIZE, evict_strategy>
+                                            BLOCK_SIZE, evict_strategy>
              <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                  table_->buckets, table_->buckets_size, table_->buckets_num,
                  options_.max_bucket_size, options_.dim, keys, values, scores,
@@ -1043,7 +1034,7 @@ Program Listing for File merlin_hashtable.cuh
          CUDA_CHECK(cudaMemsetAsync(keys_ptr, 0, dev_ws_size, stream));
    
          find_or_insert_ptr_kernel_lock_key<key_type, value_type, score_type,
-                                            ScoreStore, BLOCK_SIZE, evict_strategy>
+                                            BLOCK_SIZE, evict_strategy>
              <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                  table_->buckets, table_->buckets_size, table_->buckets_num,
                  options_.max_bucket_size, options_.dim, keys, values, scores,
@@ -1054,7 +1045,7 @@ Program Listing for File merlin_hashtable.cuh
                  keys, keys_ptr, n);
        } else {
          using Selector = SelectFindOrInsertPtrKernel<key_type, value_type,
-                                                      score_type, ScoreStore, evict_strategy>;
+                                                      score_type, evict_strategy>;
          static thread_local int step_counter = 0;
          static thread_local float load_factor = 0.0;
    
@@ -1091,7 +1082,7 @@ Program Listing for File merlin_hashtable.cuh
              "small.");
        }
        constexpr uint32_t BLOCK_SIZE = 128U;
-       lock_kernel_with_filter<key_type, value_type, score_type, ScoreStore, evict_strategy>
+       lock_kernel_with_filter<key_type, value_type, score_type, evict_strategy>
            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                table_->buckets, table_->buckets_num, options_.max_bucket_size,
                options_.dim, keys, locked_key_ptrs, success, scores, global_epoch_,
@@ -1142,7 +1133,7 @@ Program Listing for File merlin_hashtable.cuh
            load_factor = fast_load_factor(0, stream, false);
          }
          using Selector = KernelSelector_Update<key_type, value_type, score_type,
-                                                ScoreStore, evict_strategy, ArchTag>;
+                                                evict_strategy, ArchTag>;
          if (Selector::callable(unique_key,
                                 static_cast<uint32_t>(options_.max_bucket_size),
                                 static_cast<uint32_t>(options_.dim))) {
@@ -1154,7 +1145,7 @@ Program Listing for File merlin_hashtable.cuh
            Selector::select_kernel(kernelParams, stream);
          } else {
            using Selector = SelectUpdateKernelWithIO<key_type, value_type,
-                                                     score_type, ScoreStore, evict_strategy>;
+                                                     score_type, evict_strategy>;
            Selector::execute_kernel(
                load_factor, options_.block_size, options_.max_bucket_size,
                table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -1190,7 +1181,7 @@ Program Listing for File merlin_hashtable.cuh
            constexpr uint32_t BLOCK_SIZE = 128U;
    
            tlp_update_kernel_hybrid<key_type, value_type, score_type,
-                                    ScoreStore, evict_strategy>
+                                    evict_strategy>
                <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                    table_->buckets, table_->buckets_num, options_.max_bucket_size,
                    options_.dim, keys, d_dst, scores, keys_ptr, d_src_offset,
@@ -1201,7 +1192,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           update_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy,
+           update_kernel<key_type, value_type, score_type, evict_strategy,
                          TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
                d_table_, table_->buckets, options_.max_bucket_size,
                table_->buckets_num, options_.dim, keys, d_dst, scores,
@@ -1276,7 +1267,7 @@ Program Listing for File merlin_hashtable.cuh
            load_factor = fast_load_factor(0, stream, false);
          }
          using Selector = KernelSelector_UpdateScore<key_type, value_type,
-                                                     score_type, ScoreStore, evict_strategy>;
+                                                     score_type, evict_strategy>;
          if (Selector::callable(unique_key,
                                 static_cast<uint32_t>(options_.max_bucket_size))) {
            typename Selector::Params kernelParams(
@@ -1286,7 +1277,7 @@ Program Listing for File merlin_hashtable.cuh
            Selector::select_kernel(kernelParams, stream);
          } else {
            using Selector = SelectUpdateScoreKernel<key_type, value_type,
-                                                    score_type, ScoreStore, evict_strategy>;
+                                                    score_type, evict_strategy>;
            Selector::execute_kernel(load_factor, options_.block_size,
                                     options_.max_bucket_size, table_->buckets_num,
                                     stream, n, d_table_, table_->buckets, keys,
@@ -1325,7 +1316,7 @@ Program Listing for File merlin_hashtable.cuh
            load_factor = fast_load_factor(0, stream, false);
          }
          using Selector = KernelSelector_UpdateValues<key_type, value_type,
-                                                      score_type, ScoreStore, ArchTag>;
+                                                      score_type, ArchTag>;
          if (Selector::callable(unique_key,
                                 static_cast<uint32_t>(options_.max_bucket_size),
                                 static_cast<uint32_t>(options_.dim))) {
@@ -1336,7 +1327,7 @@ Program Listing for File merlin_hashtable.cuh
            Selector::select_kernel(kernelParams, stream);
          } else {
            using Selector =
-               SelectUpdateValuesKernelWithIO<key_type, value_type, score_type, ScoreStore>;
+               SelectUpdateValuesKernelWithIO<key_type, value_type, score_type>;
            Selector::execute_kernel(load_factor, options_.block_size,
                                     options_.max_bucket_size, table_->buckets_num,
                                     options_.dim, stream, n, d_table_,
@@ -1371,7 +1362,7 @@ Program Listing for File merlin_hashtable.cuh
          if (filter_condition) {
            constexpr uint32_t BLOCK_SIZE = 128U;
    
-           tlp_update_values_kernel_hybrid<key_type, value_type, score_type, ScoreStore>
+           tlp_update_values_kernel_hybrid<key_type, value_type, score_type>
                <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                    table_->buckets, table_->buckets_num, options_.max_bucket_size,
                    options_.dim, keys, d_dst, keys_ptr, d_src_offset, n);
@@ -1381,7 +1372,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           update_values_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
+           update_values_kernel<key_type, value_type, score_type, TILE_SIZE>
                <<<grid_size, block_size, 0, stream>>>(
                    d_table_, table_->buckets, options_.max_bucket_size,
                    table_->buckets_num, options_.dim, keys, d_dst, d_src_offset,
@@ -1467,17 +1458,17 @@ Program Listing for File merlin_hashtable.cuh
    
        if (is_fast_mode()) {
          using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
-                                                           score_type, ScoreStore, ArchTag>;
+                                                           score_type, ArchTag>;
          const uint32_t pipeline_max_size = Selector::max_value_size();
          // Pipeline lookup kernel only supports "bucket_size = 128".
          if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
-           LookupKernelParams<key_type, value_type, score_type, ScoreStore> lookupParams(
+           LookupKernelParams<key_type, value_type, score_type> lookupParams(
                table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
                keys, values, scores, founds, n);
            Selector::select_kernel(lookupParams, stream);
          } else {
            using Selector =
-               SelectLookupKernelWithIO<key_type, value_type, score_type, ScoreStore>;
+               SelectLookupKernelWithIO<key_type, value_type, score_type>;
            static thread_local int step_counter = 0;
            static thread_local float load_factor = 0.0;
    
@@ -1516,7 +1507,7 @@ Program Listing for File merlin_hashtable.cuh
          if (filter_condition) {
            constexpr uint32_t BLOCK_SIZE = 128U;
    
-           tlp_lookup_kernel_hybrid<key_type, value_type, score_type, ScoreStore>
+           tlp_lookup_kernel_hybrid<key_type, value_type, score_type>
                <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                    table_->buckets, table_->buckets_num, options_.max_bucket_size,
                    options_.dim, keys, src, scores, dst_offset, founds, n);
@@ -1525,7 +1516,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           lookup_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
+           lookup_kernel<key_type, value_type, score_type, TILE_SIZE>
                <<<grid_size, block_size, 0, stream>>>(
                    d_table_, table_->buckets, options_.max_bucket_size,
                    table_->buckets_num, options_.dim, keys, src, scores, founds,
@@ -1572,17 +1563,17 @@ Program Listing for File merlin_hashtable.cuh
    
        if (is_fast_mode()) {
          using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
-                                                           score_type, ScoreStore, ArchTag>;
+                                                           score_type, ArchTag>;
          const uint32_t pipeline_max_size = Selector::max_value_size();
          // Pipeline lookup kernel only supports "bucket_size = 128".
          if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
-           LookupKernelParamsV2<key_type, value_type, score_type, ScoreStore> lookupParams(
+           LookupKernelParamsV2<key_type, value_type, score_type> lookupParams(
                table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
                keys, values, scores, missed_keys, missed_indices, missed_size, n);
            Selector::select_kernel(lookupParams, stream);
          } else {
            using Selector =
-               SelectLookupKernelWithIOV2<key_type, value_type, score_type, ScoreStore>;
+               SelectLookupKernelWithIOV2<key_type, value_type, score_type>;
            static thread_local int step_counter = 0;
            static thread_local float load_factor = 0.0;
    
@@ -1622,7 +1613,7 @@ Program Listing for File merlin_hashtable.cuh
          if (filter_condition) {
            constexpr uint32_t BLOCK_SIZE = 128U;
    
-           tlp_lookup_kernel_hybrid<key_type, value_type, score_type, ScoreStore>
+           tlp_lookup_kernel_hybrid<key_type, value_type, score_type>
                <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                    table_->buckets, table_->buckets_num, options_.max_bucket_size,
                    options_.dim, keys, src, scores, dst_offset, missed_keys,
@@ -1632,7 +1623,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = n * TILE_SIZE;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           lookup_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
+           lookup_kernel<key_type, value_type, score_type, TILE_SIZE>
                <<<grid_size, block_size, 0, stream>>>(
                    d_table_, table_->buckets, options_.max_bucket_size,
                    table_->buckets_num, options_.dim, keys, src, scores,
@@ -1675,13 +1666,13 @@ Program Listing for File merlin_hashtable.cuh
        if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
          constexpr uint32_t BLOCK_SIZE = 128U;
          tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
-                                           ScoreStore, evict_strategy>
+                                           evict_strategy>
              <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                  table_->buckets, table_->buckets_num, options_.max_bucket_size,
                  options_.dim, keys, values, scores, founds, n, false,
                  global_epoch_);
        } else {
-         using Selector = SelectLookupPtrKernel<key_type, value_type, score_type, ScoreStore>;
+         using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
          static thread_local int step_counter = 0;
          static thread_local float load_factor = 0.0;
    
@@ -1718,7 +1709,7 @@ Program Listing for File merlin_hashtable.cuh
        if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
          constexpr uint32_t BLOCK_SIZE = 128U;
          tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
-                                           ScoreStore, evict_strategy>
+                                           evict_strategy>
              <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                  table_->buckets, table_->buckets_num, options_.max_bucket_size,
                  options_.dim, keys, values, scores, founds, n, true,
@@ -1747,13 +1738,13 @@ Program Listing for File merlin_hashtable.cuh
        if (options_.max_bucket_size == 128) {
          // Pipeline lookup kernel only supports "bucket_size = 128".
          using Selector = SelectPipelineContainsKernel<key_type, value_type,
-                                                       score_type, ScoreStore, ArchTag>;
-         ContainsKernelParams<key_type, value_type, score_type, ScoreStore> containsParams(
+                                                       score_type, ArchTag>;
+         ContainsKernelParams<key_type, value_type, score_type> containsParams(
              table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
              keys, founds, n);
          Selector::select_kernel(containsParams, stream);
        } else {
-         using Selector = SelectContainsKernel<key_type, value_type, score_type, ScoreStore>;
+         using Selector = SelectContainsKernel<key_type, value_type, score_type>;
          static thread_local int step_counter = 0;
          static thread_local float load_factor = 0.0;
    
@@ -1783,7 +1774,7 @@ Program Listing for File merlin_hashtable.cuh
          const size_t N = n * TILE_SIZE;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         remove_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
+         remove_kernel<key_type, value_type, score_type, TILE_SIZE>
              <<<grid_size, block_size, 0, stream>>>(
                  d_table_, keys, table_->buckets, table_->buckets_size,
                  table_->bucket_max_size, table_->buckets_num, N);
@@ -1811,7 +1802,7 @@ Program Listing for File merlin_hashtable.cuh
          const size_t N = table_->buckets_num;
          const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-         remove_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor>
+         remove_kernel<key_type, value_type, score_type, PredFunctor>
              <<<grid_size, block_size, 0, stream>>>(
                  d_table_, pattern, threshold, d_count, table_->buckets,
                  table_->buckets_size, table_->bucket_max_size,
@@ -1844,16 +1835,16 @@ Program Listing for File merlin_hashtable.cuh
          uint64_t n = options_.max_capacity;
          auto kernel = [&] {
            if (dim >= 32 && n % 32 == 0) {
-             return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
+             return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
                                      32>;
            } else if (dim >= 16 && n % 16 == 0) {
-             return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
+             return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
                                      16>;
            } else if (dim >= 8 && n % 8 == 0) {
-             return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
+             return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
                                      8>;
            }
-           return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
+           return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
                                    1>;
          }();
          uint64_t block_size = 128UL;
@@ -1884,7 +1875,7 @@ Program Listing for File merlin_hashtable.cuh
        const size_t N = table_->buckets_num * table_->bucket_max_size;
        const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-       clear_kernel<key_type, value_type, score_type, ScoreStore>
+       clear_kernel<key_type, value_type, score_type>
            <<<grid_size, block_size, 0, stream>>>(d_table_, table_->buckets, N);
    
        CudaCheckError();
@@ -1915,7 +1906,7 @@ Program Listing for File merlin_hashtable.cuh
    
        const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
    
-       dump_kernel<key_type, value_type, score_type, ScoreStore>
+       dump_kernel<key_type, value_type, score_type>
            <<<grid_size, block_size, shared_size, stream>>>(
                d_table_, table_->buckets, keys, values, scores, offset, n,
                d_counter);
@@ -1974,17 +1965,17 @@ Program Listing for File merlin_hashtable.cuh
          using VecV = decltype(vec);
          size_t vec_dim = value_size / sizeof(VecV);
          if (vec_dim >= 32 && check_tile_size(32)) {
-           return dump_kernel_v2<key_type, value_type, score_type, ScoreStore, VecV,
+           return dump_kernel_v2<key_type, value_type, score_type, VecV,
                                  PredFunctor, 32>;
          } else if (vec_dim >= 16 && check_tile_size(16)) {
-           return dump_kernel_v2<key_type, value_type, score_type, ScoreStore, VecV,
+           return dump_kernel_v2<key_type, value_type, score_type, VecV,
                                  PredFunctor, 16>;
          } else if (vec_dim >= 8 && check_tile_size(8)) {
-           return dump_kernel_v2<key_type, value_type, score_type, ScoreStore, VecV,
+           return dump_kernel_v2<key_type, value_type, score_type, VecV,
                                  PredFunctor, 8>;
          }
          match_fast_cond = false;
-         return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor>;
+         return dump_kernel<key_type, value_type, score_type, PredFunctor>;
        };
        auto kernel = [&] {
          if (value_size >= sizeof(float4) * 8 &&
@@ -2050,13 +2041,13 @@ Program Listing for File merlin_hashtable.cuh
        uint64_t dim = table_->dim;
        auto kernel = [&] {
          if (dim >= 32 && n % 32 == 0) {
-           return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 32>;
+           return dump_kernel<key_type, value_type, score_type, PredFunctor, 32>;
          } else if (dim >= 16 && n % 16 == 0) {
-           return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 16>;
+           return dump_kernel<key_type, value_type, score_type, PredFunctor, 16>;
          } else if (dim >= 8 && n % 8 == 0) {
-           return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 8>;
+           return dump_kernel<key_type, value_type, score_type, PredFunctor, 8>;
          }
-         return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 1>;
+         return dump_kernel<key_type, value_type, score_type, PredFunctor, 1>;
        }();
        uint64_t block_size = 128UL;
        uint64_t grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
@@ -2084,16 +2075,16 @@ Program Listing for File merlin_hashtable.cuh
        uint64_t dim = table_->dim;
        auto kernel = [&] {
          if (dim >= 32 && n % 32 == 0) {
-           return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
+           return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
                                   32>;
          } else if (dim >= 16 && n % 16 == 0) {
-           return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
+           return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
                                   16>;
          } else if (dim >= 8 && n % 8 == 0) {
-           return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
+           return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
                                   8>;
          }
-         return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
+         return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
                                 1>;
        }();
        uint64_t block_size = 128UL;
@@ -2150,7 +2141,7 @@ Program Listing for File merlin_hashtable.cuh
        grid_size = std::min(grid_size,
                             static_cast<size_t>(sm_cnt_ * max_threads_per_block_ /
                                                 options_.block_size));
-       size_if_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor>
+       size_if_kernel<key_type, value_type, score_type, PredFunctor>
            <<<grid_size, options_.block_size, 0, stream>>>(
                d_table_, table_->buckets, pattern, threshold, d_counter);
        CudaCheckError();
@@ -2176,8 +2167,7 @@ Program Listing for File merlin_hashtable.cuh
    
          while (capacity() < new_capacity &&
                 capacity() * 2 <= options_.max_capacity) {
-           double_capacity<key_type, value_type, score_type, ScoreStore>(
-               &table_, allocator_);
+           double_capacity<key_type, value_type, score_type>(&table_, allocator_);
            CUDA_CHECK(cudaDeviceSynchronize());
            sync_table_configuration();
    
@@ -2185,8 +2175,7 @@ Program Listing for File merlin_hashtable.cuh
            const size_t N = TILE_SIZE * table_->buckets_num / 2;
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
-           rehash_kernel_for_fast_mode<key_type, value_type, score_type,
-                                       ScoreStore, TILE_SIZE>
+           rehash_kernel_for_fast_mode<key_type, value_type, score_type, TILE_SIZE>
                <<<grid_size, block_size, 0, stream>>>(d_table_, table_->buckets,
                                                       N);
          }
@@ -2272,7 +2261,7 @@ Program Listing for File merlin_hashtable.cuh
          // Dump the next batch to workspace, and then write it to the file.
          CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
    
-         dump_kernel<key_type, value_type, score_type, ScoreStore>
+         dump_kernel<key_type, value_type, score_type>
              <<<grid_size, block_size, shared_size, stream>>>(
                  d_table_, table_->buckets, d_keys, d_values, d_scores, i,
                  std::min(total_size - i, n), d_count);
