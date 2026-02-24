@@ -59,12 +59,14 @@ struct FoundFunctorV2 {
   int* __restrict missed_size;
 };
 
-template <typename K = uint64_t, typename V = float, typename S = uint64_t>
+template <typename K = uint64_t, typename V = float, typename S = uint64_t,
+          typename SS = AtomicScore<S>>
 struct LookupKernelParams {
-  LookupKernelParams(Bucket<K, V, S>* __restrict buckets_, size_t buckets_num_,
-                     uint32_t dim_, const K* __restrict keys_,
-                     V* __restrict values_, S* __restrict scores_,
-                     bool* __restrict founds_, size_t n_)
+  LookupKernelParams(Bucket<K, V, S, SS>* __restrict buckets_,
+                     size_t buckets_num_, uint32_t dim_,
+                     const K* __restrict keys_, V* __restrict values_,
+                     S* __restrict scores_, bool* __restrict founds_,
+                     size_t n_)
       : buckets(buckets_),
         buckets_num(buckets_num_),
         dim(dim_),
@@ -73,7 +75,7 @@ struct LookupKernelParams {
         scores(scores_),
         found_functor(founds_),
         n(n_) {}
-  Bucket<K, V, S>* __restrict buckets;
+  Bucket<K, V, S, SS>* __restrict buckets;
   size_t buckets_num;
   uint32_t dim;
   const K* __restrict keys;
@@ -83,9 +85,10 @@ struct LookupKernelParams {
   size_t n;
 };
 
-template <typename K = uint64_t, typename V = float, typename S = uint64_t>
+template <typename K = uint64_t, typename V = float, typename S = uint64_t,
+          typename SS = AtomicScore<S>>
 struct LookupKernelParamsV2 {
-  LookupKernelParamsV2(Bucket<K, V, S>* __restrict buckets_,
+  LookupKernelParamsV2(Bucket<K, V, S, SS>* __restrict buckets_,
                        size_t buckets_num_, uint32_t dim_,
                        const K* __restrict keys_, V* __restrict values_,
                        S* __restrict scores_, K* __restrict missed_keys_,
@@ -100,7 +103,7 @@ struct LookupKernelParamsV2 {
         found_functor(missed_keys_, missed_indices_, missed_size_),
         n(n_) {}
 
-  Bucket<K, V, S>* __restrict buckets;
+  Bucket<K, V, S, SS>* __restrict buckets;
   size_t buckets_num;
   uint32_t dim;
   const K* __restrict keys;
@@ -112,12 +115,12 @@ struct LookupKernelParamsV2 {
 
 // Using 32 threads to deal with one key
 template <typename K = uint64_t, typename V = float, typename S = uint64_t,
-          typename VecV = float4,
+          typename SS = AtomicScore<S>, typename VecV = float4,
           typename CopyScore = CopyScoreEmpty<S, K, 128>,
           typename CopyValue = CopyValueTwoGroup<VecV, 32>,
           typename FoundFunctor = FoundFunctorV1<K>, int VALUE_BUF = 56>
 __global__ void lookup_kernel_with_io_pipeline_v1(
-    Bucket<K, V, S>* buckets, const size_t buckets_num, const int dim,
+    Bucket<K, V, S, SS>* buckets, const size_t buckets_num, const int dim,
     const K* __restrict keys, VecV* __restrict values, S* __restrict scores,
     FoundFunctor found_functor, size_t n) {
   constexpr int GROUP_SIZE = 32;
@@ -158,7 +161,7 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
     sm_target_digests[idx_block] = static_cast<uint32_t>(target_digest);
     int global_idx = hashed_key % (buckets_num * BUCKET_SIZE);
     int bkt_idx = global_idx / BUCKET_SIZE;
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
     __pipeline_memcpy_async(sm_keys_ptr + idx_block, bucket->keys_addr(),
                             sizeof(K*));
     __pipeline_commit();
@@ -379,12 +382,12 @@ __global__ void lookup_kernel_with_io_pipeline_v1(
 
 // Using 16 threads to deal with one key
 template <typename K = uint64_t, typename V = float, typename S = uint64_t,
-          typename VecV = float4,
+          typename SS = AtomicScore<S>, typename VecV = float4,
           typename CopyScore = CopyScoreEmpty<S, K, 128>,
           typename CopyValue = CopyValueTwoGroup<VecV, 16>,
           typename FoundFunctor = FoundFunctorV1<K>, int VALUE_BUF = 32>
 __global__ void lookup_kernel_with_io_pipeline_v2(
-    Bucket<K, V, S>* buckets, const size_t buckets_num, const int dim,
+    Bucket<K, V, S, SS>* buckets, const size_t buckets_num, const int dim,
     const K* __restrict keys, VecV* __restrict values, S* __restrict scores,
     FoundFunctor found_functor, size_t n) {
   constexpr int GROUP_SIZE = 16;
@@ -425,7 +428,7 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
     sm_target_digests[idx_block] = static_cast<uint32_t>(target_digest);
     int global_idx = hashed_key % (buckets_num * BUCKET_SIZE);
     int bkt_idx = global_idx / BUCKET_SIZE;
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
     __pipeline_memcpy_async(sm_keys_ptr + idx_block, bucket->keys_addr(),
                             sizeof(K*));
     __pipeline_commit();
@@ -656,11 +659,12 @@ __global__ void lookup_kernel_with_io_pipeline_v2(
   }
 }  // End function
 
-template <typename K, typename V, typename S, typename CopyScore, typename VecV,
-          uint32_t ValueBufSize>
+template <typename K, typename V, typename S, typename SS, typename CopyScore,
+          typename VecV, uint32_t ValueBufSize>
 struct LaunchPipelineLookupV1 {
-  template <template <typename, typename, typename> typename LookupKernelParams>
-  static void launch_kernel(LookupKernelParams<K, V, S>& params,
+  template <template <typename, typename, typename, typename>
+            typename LookupKernelParams>
+  static void launch_kernel(LookupKernelParams<K, V, S, SS>& params,
                             cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     // Using 32 threads to deal with one key
@@ -669,7 +673,8 @@ struct LaunchPipelineLookupV1 {
     constexpr uint32_t VecSize = ValueBufSize / sizeof(VecV);
     if (params.dim > (GROUP_SIZE * 2)) {
       using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue,
+      lookup_kernel_with_io_pipeline_v1<K, V, S, SS, VecV, CopyScore,
+                                        CopyValue,
                                         decltype(params.found_functor), VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
@@ -677,7 +682,8 @@ struct LaunchPipelineLookupV1 {
               params.found_functor, params.n);
     } else if (params.dim > GROUP_SIZE) {
       using CopyValue = CopyValueTwoGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue,
+      lookup_kernel_with_io_pipeline_v1<K, V, S, SS, VecV, CopyScore,
+                                        CopyValue,
                                         decltype(params.found_functor), VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
@@ -685,7 +691,8 @@ struct LaunchPipelineLookupV1 {
               params.found_functor, params.n);
     } else {
       using CopyValue = CopyValueOneGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v1<K, V, S, VecV, CopyScore, CopyValue,
+      lookup_kernel_with_io_pipeline_v1<K, V, S, SS, VecV, CopyScore,
+                                        CopyValue,
                                         decltype(params.found_functor), VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
@@ -695,11 +702,12 @@ struct LaunchPipelineLookupV1 {
   }
 };
 
-template <typename K, typename V, typename S, typename CopyScore, typename VecV,
-          uint32_t ValueBufSize>
+template <typename K, typename V, typename S, typename SS, typename CopyScore,
+          typename VecV, uint32_t ValueBufSize>
 struct LaunchPipelineLookupV2 {
-  template <template <typename, typename, typename> typename LookupKernelParams>
-  static void launch_kernel(LookupKernelParams<K, V, S>& params,
+  template <template <typename, typename, typename, typename>
+            typename LookupKernelParams>
+  static void launch_kernel(LookupKernelParams<K, V, S, SS>& params,
                             cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     // Using 16 threads to deal with one key
@@ -708,7 +716,8 @@ struct LaunchPipelineLookupV2 {
     constexpr uint32_t VecSize = ValueBufSize / sizeof(VecV);
     if (params.dim > (GROUP_SIZE * 2)) {
       using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue,
+      lookup_kernel_with_io_pipeline_v2<K, V, S, SS, VecV, CopyScore,
+                                        CopyValue,
                                         decltype(params.found_functor), VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
@@ -716,7 +725,8 @@ struct LaunchPipelineLookupV2 {
               params.found_functor, params.n);
     } else if (params.dim > GROUP_SIZE) {
       using CopyValue = CopyValueTwoGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue,
+      lookup_kernel_with_io_pipeline_v2<K, V, S, SS, VecV, CopyScore,
+                                        CopyValue,
                                         decltype(params.found_functor), VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
@@ -724,7 +734,8 @@ struct LaunchPipelineLookupV2 {
               params.found_functor, params.n);
     } else {
       using CopyValue = CopyValueOneGroup<VecV, GROUP_SIZE>;
-      lookup_kernel_with_io_pipeline_v2<K, V, S, VecV, CopyScore, CopyValue,
+      lookup_kernel_with_io_pipeline_v2<K, V, S, SS, VecV, CopyScore,
+                                        CopyValue,
                                         decltype(params.found_functor), VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_num, params.dim, params.keys,
@@ -751,7 +762,7 @@ struct LookupValueBufConfig<Sm70> {
 };
 
 template <typename K, typename V, typename S = uint64_t,
-          typename ArchTag = Sm80>
+          typename SS = AtomicScore<S>, typename ArchTag = Sm80>
 struct SelectPipelineLookupKernelWithIO {
   using ValueBufConfig = LookupValueBufConfig<ArchTag>;
 
@@ -759,8 +770,9 @@ struct SelectPipelineLookupKernelWithIO {
     return ValueBufConfig::size_pipeline_v1;
   }
 
-  template <template <typename, typename, typename> typename LookupKernelParams>
-  static void select_kernel(LookupKernelParams<K, V, S>& params,
+  template <template <typename, typename, typename, typename>
+            typename LookupKernelParams>
+  static void select_kernel(LookupKernelParams<K, V, S, SS>& params,
                             cudaStream_t& stream) {
     constexpr int BUCKET_SIZE = 128;
     constexpr uint32_t buf_size_v1 = ValueBufConfig::size_pipeline_v1;
@@ -773,45 +785,45 @@ struct SelectPipelineLookupKernelWithIO {
       if (total_value_size <= buf_size_v1) {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         }
       } else {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         }
       }
@@ -820,45 +832,45 @@ struct SelectPipelineLookupKernelWithIO {
       if (total_value_size <= buf_size_v1) {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV1<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params, stream);
         }
       } else {
         if (total_value_size % sizeof(float4) == 0) {
           using VecV = float4;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float2) == 0) {
           using VecV = float2;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(float) == 0) {
           using VecV = float;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else if (total_value_size % sizeof(uint16_t) == 0) {
           using VecV = uint16_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         } else {
           using VecV = uint8_t;
-          LaunchPipelineLookupV2<K, V, S, CopyScore, VecV,
+          LaunchPipelineLookupV2<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v2>::launch_kernel(params, stream);
         }
       }
@@ -869,9 +881,10 @@ struct SelectPipelineLookupKernelWithIO {
 /* lookup with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class S, class FoundFunctor, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          class FoundFunctor = FoundFunctorV1<K>, uint32_t TILE_SIZE = 4>
 __global__ void lookup_kernel_with_io(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, V* __restrict values, S* __restrict scores,
     FoundFunctor found_functor, size_t N) {
@@ -894,7 +907,7 @@ __global__ void lookup_kernel_with_io(
     size_t bkt_idx = 0;
     size_t start_idx = 0;
 
-    Bucket<K, V, S>* bucket = get_key_position<K>(
+    Bucket<K, V, S, SS>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     const int bucket_size = buckets_size[bkt_idx];
@@ -913,8 +926,7 @@ __global__ void lookup_kernel_with_io(
       bool found = (rank == src_lane);
       if (found) {
         if (scores != nullptr) {
-          *(scores + key_idx) =
-              bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
+          *(scores + key_idx) = score_load(bucket->scores(key_pos));
         }
       }
     }
@@ -924,21 +936,23 @@ __global__ void lookup_kernel_with_io(
   }
 }
 
-template <typename K, typename V, typename S, typename FoundFunctor>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>,
+          typename FoundFunctor = FoundFunctorV1<K>>
 struct SelectLookupKernelWithIOImpl {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
-                             V* __restrict values, S* __restrict scores,
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets,
+                             const K* __restrict keys, V* __restrict values,
+                             S* __restrict scores,
                              const FoundFunctor& found_functor) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      lookup_kernel_with_io<K, V, S, FoundFunctor, tile_size>
+      lookup_kernel_with_io<K, V, S, SS, FoundFunctor, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, found_functor, N);
@@ -946,7 +960,7 @@ struct SelectLookupKernelWithIOImpl {
       const unsigned int tile_size = 16;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      lookup_kernel_with_io<K, V, S, FoundFunctor, tile_size>
+      lookup_kernel_with_io<K, V, S, SS, FoundFunctor, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, found_functor, N);
@@ -955,38 +969,38 @@ struct SelectLookupKernelWithIOImpl {
   }
 };
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 struct SelectLookupKernelWithIO {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
-                             V* __restrict values, S* __restrict scores,
-                             bool* __restrict found) {
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets,
+                             const K* __restrict keys, V* __restrict values,
+                             S* __restrict scores, bool* __restrict found) {
     FoundFunctorV1<K> found_functor(found);
-    SelectLookupKernelWithIOImpl<K, V, S, decltype(found_functor)>::
+    SelectLookupKernelWithIOImpl<K, V, S, SS, decltype(found_functor)>::
         execute_kernel(load_factor, block_size, bucket_max_size, buckets_num,
                        dim, stream, n, table, buckets, keys, values, scores,
                        found_functor);
   }
 };
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 struct SelectLookupKernelWithIOV2 {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
-                             V* __restrict values, S* __restrict scores,
-                             K* __restrict missed_keys,
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets,
+                             const K* __restrict keys, V* __restrict values,
+                             S* __restrict scores, K* __restrict missed_keys,
                              int* __restrict missed_indices,
                              int* __restrict missed_size) {
     FoundFunctorV2<K> found_functor(missed_keys, missed_indices, missed_size);
-    SelectLookupKernelWithIOImpl<K, V, S, decltype(found_functor)>::
+    SelectLookupKernelWithIOImpl<K, V, S, SS, decltype(found_functor)>::
         execute_kernel(load_factor, block_size, bucket_max_size, buckets_num,
                        dim, stream, n, table, buckets, keys, values, scores,
                        found_functor);
@@ -995,13 +1009,14 @@ struct SelectLookupKernelWithIOV2 {
 
 // Use 1 thread to deal with a KV-pair, exculing copying value.
 template <typename K, typename V, typename S,
+          typename SS = AtomicScore<S>,
           typename FoundFunctor = FoundFunctorV1<K>>
 __device__ void tlp_lookup_kernel_hybrid_impl(
-    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, const uint64_t buckets_num,
     uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
     V** __restrict values, S* __restrict scores, int* __restrict dst_offset,
     FoundFunctor found_functor, uint64_t n) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
 
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
@@ -1097,36 +1112,37 @@ __device__ void tlp_lookup_kernel_hybrid_impl(
   found_functor(kv_idx, key, false);
 }
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 __global__ void tlp_lookup_kernel_hybrid(
-    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, const uint64_t buckets_num,
     uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
     V** __restrict values, S* __restrict scores, int* __restrict dst_offset,
     bool* __restrict founds, uint64_t n) {
   FoundFunctorV1<K> found_functor(founds);
-  tlp_lookup_kernel_hybrid_impl<K, V, S, decltype(found_functor)>(
+  tlp_lookup_kernel_hybrid_impl<K, V, S, SS, decltype(found_functor)>(
       buckets, buckets_num, bucket_capacity, dim, keys, values, scores,
       dst_offset, found_functor, n);
 }
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 __global__ void tlp_lookup_kernel_hybrid(
-    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, const uint64_t buckets_num,
     uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
     V** __restrict values, S* __restrict scores, int* __restrict dst_offset,
     K* __restrict missed_keys, int* __restrict missed_indices,
     int* __restrict missed_size, uint64_t n) {
   FoundFunctorV2<K> found_functor(missed_keys, missed_indices, missed_size);
-  tlp_lookup_kernel_hybrid_impl<K, V, S, decltype(found_functor)>(
+  tlp_lookup_kernel_hybrid_impl<K, V, S, SS, decltype(found_functor)>(
       buckets, buckets_num, bucket_capacity, dim, keys, values, scores,
       dst_offset, found_functor, n);
 }
 
 /* lookup kernel.
  */
-template <class K, class V, class S, class FoundFunctor, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          class FoundFunctor = FoundFunctorV1<K>, uint32_t TILE_SIZE = 4>
 __device__ void lookup_kernel_impl(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, V** __restrict values, S* __restrict scores,
     FoundFunctor found_functor, int* __restrict dst_offset, size_t N) {
@@ -1147,7 +1163,7 @@ __device__ void lookup_kernel_impl(
     size_t bkt_idx = 0;
     size_t start_idx = 0;
 
-    Bucket<K, V, S>* bucket = get_key_position<K>(
+    Bucket<K, V, S, SS>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     const int bucket_size = buckets_size[bkt_idx];
@@ -1168,8 +1184,7 @@ __device__ void lookup_kernel_impl(
       if (rank == src_lane) {
         *(values + key_idx) = (bucket->vectors + key_pos * dim);
         if (scores != nullptr) {
-          *(scores + key_idx) =
-              bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
+          *(scores + key_idx) = score_load(bucket->scores(key_pos));
         }
       }
     } else {
@@ -1184,29 +1199,31 @@ __device__ void lookup_kernel_impl(
   }
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
-__global__ void lookup_kernel(const Table<K, V, S>* __restrict table,
-                              Bucket<K, V, S>* buckets,
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
+__global__ void lookup_kernel(const Table<K, V, S, SS>* __restrict table,
+                              Bucket<K, V, S, SS>* buckets,
                               const size_t bucket_max_size,
                               const size_t buckets_num, const size_t dim,
                               const K* __restrict keys, V** __restrict values,
                               S* __restrict scores, bool* __restrict founds,
                               int* __restrict dst_offset, size_t N) {
   FoundFunctorV1<K> found_functor(founds);
-  lookup_kernel_impl<K, V, S, decltype(found_functor), TILE_SIZE>(
+  lookup_kernel_impl<K, V, S, SS, decltype(found_functor), TILE_SIZE>(
       table, buckets, bucket_max_size, buckets_num, dim, keys, values, scores,
       found_functor, dst_offset, N);
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
 __global__ void lookup_kernel(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, V** __restrict values, S* __restrict scores,
     K* __restrict missed_keys, int* __restrict missed_indices,
     int* __restrict missed_size, int* __restrict dst_offset, size_t N) {
   FoundFunctorV2<K> found_functor(missed_keys, missed_indices, missed_size);
-  lookup_kernel_impl<K, V, S, decltype(found_functor), TILE_SIZE>(
+  lookup_kernel_impl<K, V, S, SS, decltype(found_functor), TILE_SIZE>(
       table, buckets, bucket_max_size, buckets_num, dim, keys, values, scores,
       found_functor, dst_offset, N);
 }

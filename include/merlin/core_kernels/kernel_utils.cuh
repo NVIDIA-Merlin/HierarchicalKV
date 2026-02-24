@@ -557,8 +557,7 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kCustomized> {
       BUCKET* __restrict bucket, const int key_pos,
       const S* __restrict const input_scores, const int key_idx,
       const S& desired_score_when_missed, const bool new_insert) {
-    bucket->scores(key_pos)->store(desired_score_when_missed,
-                                   cuda::std::memory_order_relaxed);
+    score_store(bucket->scores(key_pos), desired_score_when_missed);
     return;
   }
 
@@ -580,8 +579,7 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kCustomized> {
       const S* __restrict const input_scores, const int key_idx,
       const S& epoch) {
     if (input_scores == nullptr) return;
-    bucket->scores(key_pos)->store(input_scores[key_idx],
-                                   cuda::std::memory_order_relaxed);
+    score_store(bucket->scores(key_pos), input_scores[key_idx]);
     return;
   }
 
@@ -606,9 +604,9 @@ __device__ __forceinline__ void copy_vector(
   }
 }
 
-template <class K, class V, class S>
-__forceinline__ __device__ Bucket<K, V, S>* get_key_position(
-    Bucket<K, V, S>* __restrict buckets, const K key, size_t& bkt_idx,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__forceinline__ __device__ Bucket<K, V, S, SS>* get_key_position(
+    Bucket<K, V, S, SS>* __restrict buckets, const K key, size_t& bkt_idx,
     size_t& start_idx, const size_t buckets_num, const size_t bucket_max_size) {
   const K hashed_key = Murmur3HashDevice(key);
   const size_t global_idx = hashed_key % (buckets_num * bucket_max_size);
@@ -625,9 +623,10 @@ __forceinline__ __device__ uint32_t get_start_position(
   return start_idx;
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
 __device__ __forceinline__ OccupyResult find_without_lock(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S>* __restrict__ bucket,
+    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S, SS>* __restrict__ bucket,
     const K desired_key, const size_t start_idx, int& key_pos, int& src_lane,
     const size_t bucket_max_size) {
   K expected_key = static_cast<K>(EMPTY_KEY);
@@ -655,16 +654,16 @@ __device__ __forceinline__ OccupyResult find_without_lock(
   return OccupyResult::CONTINUE;
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
 __device__ __inline__ OccupyResult find_and_lock_when_vacant(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S>* __restrict__ bucket,
-    const K desired_key, const S desired_score, K& evicted_key,
-    const size_t start_idx, int& key_pos, int& src_lane,
-    const size_t bucket_max_size) {
+    cg::thread_block_tile<TILE_SIZE> g,
+    Bucket<K, V, S, SS>* __restrict__ bucket, const K desired_key,
+    const S desired_score, K& evicted_key, const size_t start_idx,
+    int& key_pos, int& src_lane, const size_t bucket_max_size) {
   K expected_key = static_cast<K>(EMPTY_KEY);
 
   AtomicKey<K>* current_key;
-  AtomicScore<S>* current_score;
 
   K local_min_score_key = static_cast<K>(EMPTY_KEY);
 
@@ -727,19 +726,18 @@ __device__ __inline__ OccupyResult find_and_lock_when_vacant(
        tile_offset += TILE_SIZE) {
     key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
 
-    current_score = bucket->scores(key_pos);
-
     // Step 4: record min score location.
-    temp_min_score_val = current_score->load(cuda::std::memory_order_relaxed);
+    // Skip slots with LOCKED_KEY to avoid torn reads for large S types.
+    expected_key =
+        bucket->keys(key_pos)->load(cuda::std::memory_order_relaxed);
+    if (expected_key == static_cast<K>(LOCKED_KEY) ||
+        expected_key == static_cast<K>(EMPTY_KEY))
+      continue;
+    temp_min_score_val = score_load(bucket->scores(key_pos));
     if (temp_min_score_val < local_min_score_val) {
-      expected_key =
-          bucket->keys(key_pos)->load(cuda::std::memory_order_relaxed);
-      if (expected_key != static_cast<K>(LOCKED_KEY) &&
-          expected_key != static_cast<K>(EMPTY_KEY)) {
-        local_min_score_key = expected_key;
-        local_min_score_val = temp_min_score_val;
-        local_min_score_pos = key_pos;
-      }
+      local_min_score_key = expected_key;
+      local_min_score_val = temp_min_score_val;
+      local_min_score_pos = key_pos;
     }
   }
   // Step 5: insert by evicting some one.
@@ -755,15 +753,15 @@ __device__ __inline__ OccupyResult find_and_lock_when_vacant(
     if (src_lane == g.thread_rank()) {
       // TBD: Here can be compare_exchange_weak. Do benchmark.
       current_key = bucket->keys(local_min_score_pos);
-      current_score = bucket->scores(local_min_score_pos);
       evicted_key = local_min_score_key;
       result = current_key->compare_exchange_strong(
           local_min_score_key, static_cast<K>(LOCKED_KEY),
           cuda::std::memory_order_relaxed, cuda::std::memory_order_relaxed);
 
       // Need to recover when fail.
-      if (result && (current_score->load(cuda::std::memory_order_relaxed) >
-                     global_min_score_val)) {
+      if (result &&
+          (score_load(bucket->scores(local_min_score_pos)) >
+           global_min_score_val)) {
         current_key->store(local_min_score_key,
                            cuda::std::memory_order_release);
         result = false;
@@ -781,18 +779,20 @@ __device__ __inline__ OccupyResult find_and_lock_when_vacant(
   return OccupyResult::CONTINUE;
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE,
-          cuda::std::memory_order LOCK_MEM_ORDER,
-          cuda::std::memory_order UNLOCK_MEM_ORDER>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4,
+          cuda::std::memory_order LOCK_MEM_ORDER =
+              cuda::std::memory_order_relaxed,
+          cuda::std::memory_order UNLOCK_MEM_ORDER =
+              cuda::std::memory_order_relaxed>
 __device__ __forceinline__ OccupyResult find_and_lock_when_full(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S>* __restrict__ bucket,
-    const K desired_key, const S desired_score, K& evicted_key,
-    const size_t start_idx, int& key_pos, int& src_lane,
-    const size_t bucket_max_size) {
+    cg::thread_block_tile<TILE_SIZE> g,
+    Bucket<K, V, S, SS>* __restrict__ bucket, const K desired_key,
+    const S desired_score, K& evicted_key, const size_t start_idx,
+    int& key_pos, int& src_lane, const size_t bucket_max_size) {
   K expected_key = static_cast<K>(EMPTY_KEY);
 
   AtomicKey<K>* current_key;
-  AtomicScore<S>* current_score;
 
   K local_min_score_key = static_cast<K>(EMPTY_KEY);
 
@@ -830,12 +830,11 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_full(
     key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
 
     // Step 2: record min score location.
-    temp_min_score_val =
-        bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
+    // Skip slots with LOCKED_KEY to avoid torn reads for large S types.
+    expected_key = bucket->keys(key_pos)->load(LOCK_MEM_ORDER);
+    if (expected_key == static_cast<K>(LOCKED_KEY)) continue;
+    temp_min_score_val = score_load(bucket->scores(key_pos));
     if (temp_min_score_val < local_min_score_val) {
-      while ((expected_key = bucket->keys(key_pos)->load(LOCK_MEM_ORDER)) ==
-             static_cast<K>(LOCKED_KEY)) {
-      };
       local_min_score_key = expected_key;
       local_min_score_val = temp_min_score_val;
       local_min_score_pos = key_pos;
@@ -855,15 +854,15 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_full(
     if (src_lane == g.thread_rank()) {
       // TBD: Here can be compare_exchange_weak. Do benchmark.
       current_key = bucket->keys(local_min_score_pos);
-      current_score = bucket->scores(local_min_score_pos);
       evicted_key = local_min_score_key;
       result = current_key->compare_exchange_strong(
           local_min_score_key, static_cast<K>(LOCKED_KEY), LOCK_MEM_ORDER,
           cuda::std::memory_order_relaxed);
 
       // Need to recover when fail.
-      if (result && (current_score->load(cuda::std::memory_order_relaxed) >
-                     global_min_score_val)) {
+      if (result &&
+          (score_load(bucket->scores(local_min_score_pos)) >
+           global_min_score_val)) {
         current_key->store(local_min_score_key, UNLOCK_MEM_ORDER);
         result = false;
       }
@@ -880,9 +879,10 @@ __device__ __forceinline__ OccupyResult find_and_lock_when_full(
   return OccupyResult::CONTINUE;
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
 __device__ __forceinline__ OccupyResult find_and_lock_for_update(
-    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S>* __restrict__ bucket,
+    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S, SS>* __restrict__ bucket,
     const K desired_key, const size_t start_idx, int& key_pos, int& src_lane,
     const size_t bucket_max_size) {
   K expected_key = static_cast<K>(EMPTY_KEY);

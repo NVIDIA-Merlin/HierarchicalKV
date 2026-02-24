@@ -23,13 +23,14 @@ namespace merlin {
 
 // Use 1 thread to deal with a KV-pair, including copying value.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128, int Strategy = -1>
+          class SS = AtomicScore<S>, typename VecV = byte16,
+          uint32_t BLOCK_SIZE = 128, int Strategy = -1>
 __global__ void tlp_v1_find_or_insert_kernel_with_io(
-    Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
+    Bucket<K, V, S, SS>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, uint32_t bucket_capacity, const uint32_t dim,
     const K* __restrict__ keys, VecV* __restrict__ values,
     S* __restrict__ scores, uint64_t n, const S global_epoch) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using CopyValue = CopyValueMultipleGroup<VecV, 1>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
@@ -198,10 +199,7 @@ __global__ void tlp_v1_find_or_insert_kernel_with_io(
       if (result) {
         S* min_score_ptr =
             BUCKET::scores(bucket_keys_ptr, bucket_capacity, min_pos);
-        auto verify_score_ptr =
-            reinterpret_cast<AtomicScore<S>*>(min_score_ptr);
-        auto verify_score =
-            verify_score_ptr->load(cuda::std::memory_order_relaxed);
+        auto verify_score = *min_score_ptr;
         if (verify_score <= min_score) {
           key_pos = min_pos;
           ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
@@ -239,14 +237,15 @@ __global__ void tlp_v1_find_or_insert_kernel_with_io(
 
 // Use 1 thread to deal with a KV-pair, including copying value.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128,
-          uint32_t GROUP_SIZE = 16, int Strategy = -1>
+          class SS = AtomicScore<S>, typename VecV = byte16,
+          uint32_t BLOCK_SIZE = 128, uint32_t GROUP_SIZE = 16,
+          int Strategy = -1>
 __global__ void tlp_v2_find_or_insert_kernel_with_io(
-    Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
+    Bucket<K, V, S, SS>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, uint32_t bucket_capacity, const uint32_t dim,
     const K* __restrict__ keys, VecV* __restrict__ values,
     S* __restrict__ scores, uint64_t n, const S global_epoch) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
@@ -423,10 +422,7 @@ __global__ void tlp_v2_find_or_insert_kernel_with_io(
       if (result) {
         S* min_score_ptr =
             BUCKET::scores(bucket_keys_ptr, bucket_capacity, min_pos);
-        auto verify_score_ptr =
-            reinterpret_cast<AtomicScore<S>*>(min_score_ptr);
-        auto verify_score =
-            verify_score_ptr->load(cuda::std::memory_order_relaxed);
+        auto verify_score = *min_score_ptr;
         if (verify_score <= min_score) {
           key_pos = min_pos;
           ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
@@ -582,9 +578,10 @@ struct SharedMemoryManager_Pipeline_FindOrInsert {
 };
 
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128, int Strategy = -1>
+          class SS = AtomicScore<S>, typename VecV = byte16,
+          uint32_t BLOCK_SIZE = 128, int Strategy = -1>
 __global__ void pipeline_find_or_insert_kernel_with_io(
-    Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
+    Bucket<K, V, S, SS>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, const uint32_t dim, const K* __restrict__ keys,
     VecV* __restrict__ values, S* __restrict__ scores, uint64_t n,
     const S global_epoch) {
@@ -595,7 +592,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
   constexpr uint32_t Load_LEN = sizeof(VecD_Load) / sizeof(D);
   constexpr uint32_t Load_LEN_S = sizeof(byte16) / sizeof(S);
 
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
   using SMM =
       SharedMemoryManager_Pipeline_FindOrInsert<K, V, S, VecV, BLOCK_SIZE,
@@ -827,10 +824,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
               if (result) {
                 S* score_ptr = BUCKET::scores(bucket_keys_ptr, BUCKET_SIZE,
                                               min_pos_global);
-                auto verify_score_ptr =
-                    reinterpret_cast<AtomicScore<S>*>(score_ptr);
-                auto verify_score =
-                    verify_score_ptr->load(cuda::std::memory_order_relaxed);
+                auto verify_score = *score_ptr;
                 if (verify_score <= min_score_global) {
                   if (expected_key == static_cast<K>(RECLAIM_KEY)) {
                     occupy_result = OccupyResult::OCCUPIED_RECLAIMED;
@@ -953,10 +947,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
           if (result) {
             S* score_ptr =
                 BUCKET::scores(bucket_keys_ptr, BUCKET_SIZE, min_pos_global);
-            auto verify_score_ptr =
-                reinterpret_cast<AtomicScore<S>*>(score_ptr);
-            auto verify_score =
-                verify_score_ptr->load(cuda::std::memory_order_relaxed);
+            auto verify_score = *score_ptr;
             if (verify_score <= min_score_global) {
               if (expected_key == static_cast<K>(RECLAIM_KEY)) {
                 atomicAdd(bucket_size_ptr, 1);
@@ -1049,10 +1040,11 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
   }
 }
 
-template <typename K = uint64_t, typename V = float, typename S = uint64_t>
+template <typename K = uint64_t, typename V = float, typename S = uint64_t,
+          class SS = AtomicScore<S>>
 struct Params_FindOrInsert {
   Params_FindOrInsert(float load_factor_,
-                      Bucket<K, V, S>* __restrict__ buckets_,
+                      Bucket<K, V, S, SS>* __restrict__ buckets_,
                       int* buckets_size_, size_t buckets_num_,
                       uint32_t bucket_capacity_, uint32_t dim_,
                       const K* __restrict__ keys_, V* __restrict__ values_,
@@ -1069,7 +1061,7 @@ struct Params_FindOrInsert {
         n(n_),
         global_epoch(global_epoch_) {}
   float load_factor;
-  Bucket<K, V, S>* __restrict__ buckets;
+  Bucket<K, V, S, SS>* __restrict__ buckets;
   int* buckets_size;
   size_t buckets_num;
   uint32_t bucket_capacity;
@@ -1081,13 +1073,15 @@ struct Params_FindOrInsert {
   const S global_epoch;
 };
 
-template <typename K, typename V, typename S, typename VecV, int Strategy>
+template <typename K, typename V, typename S, class SS, typename VecV,
+          int Strategy>
 struct Launch_TLPv1_FindOrInsert {
-  using Params = Params_FindOrInsert<K, V, S>;
+  using Params = Params_FindOrInsert<K, V, S, SS>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     params.dim = params.dim * sizeof(V) / sizeof(VecV);
-    tlp_v1_find_or_insert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, Strategy>
+    tlp_v1_find_or_insert_kernel_with_io<K, V, S, SS, VecV, BLOCK_SIZE,
+                                         Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             params.buckets, params.buckets_size, params.buckets_num,
             params.bucket_capacity, params.dim, params.keys,
@@ -1096,9 +1090,10 @@ struct Launch_TLPv1_FindOrInsert {
   }
 };
 
-template <typename K, typename V, typename S, typename VecV, int Strategy>
+template <typename K, typename V, typename S, class SS, typename VecV,
+          int Strategy>
 struct Launch_TLPv2_FindOrInsert {
-  using Params = Params_FindOrInsert<K, V, S>;
+  using Params = Params_FindOrInsert<K, V, S, SS>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     const uint32_t value_size = params.dim * sizeof(V);
@@ -1106,7 +1101,7 @@ struct Launch_TLPv2_FindOrInsert {
 
     if (value_size <= 256) {
       constexpr int GROUP_SIZE = 8;
-      tlp_v2_find_or_insert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE,
+      tlp_v2_find_or_insert_kernel_with_io<K, V, S, SS, VecV, BLOCK_SIZE,
                                            GROUP_SIZE, Strategy>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_size, params.buckets_num,
@@ -1115,7 +1110,7 @@ struct Launch_TLPv2_FindOrInsert {
               params.global_epoch);
     } else {
       constexpr int GROUP_SIZE = 16;
-      tlp_v2_find_or_insert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE,
+      tlp_v2_find_or_insert_kernel_with_io<K, V, S, SS, VecV, BLOCK_SIZE,
                                            GROUP_SIZE, Strategy>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, params.buckets_size, params.buckets_num,
@@ -1126,9 +1121,10 @@ struct Launch_TLPv2_FindOrInsert {
   }
 };
 
-template <typename K, typename V, typename S, typename VecV, int Strategy>
+template <typename K, typename V, typename S, class SS, typename VecV,
+          int Strategy>
 struct Launch_Pipeline_FindOrInsert {
-  using Params = Params_FindOrInsert<K, V, S>;
+  using Params = Params_FindOrInsert<K, V, S, SS>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     constexpr uint32_t GROUP_SIZE = 32;
@@ -1141,7 +1137,8 @@ struct Launch_Pipeline_FindOrInsert {
     uint32_t shared_mem = SMM::total_size(params.dim);
     shared_mem =
         (shared_mem + sizeof(byte16) - 1) / sizeof(byte16) * sizeof(byte16);
-    pipeline_find_or_insert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, Strategy>
+    pipeline_find_or_insert_kernel_with_io<K, V, S, SS, VecV, BLOCK_SIZE,
+                                           Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
            stream>>>(params.buckets, params.buckets_size, params.buckets_num,
                      params.dim, params.keys,
@@ -1167,10 +1164,11 @@ struct ValueConfig_FindOrInsert<Sm70> {
   static constexpr uint32_t size_tlp_v2 = 128 * sizeof(byte4);
 };
 
-template <typename K, typename V, typename S, int Strategy, typename ArchTag>
+template <typename K, typename V, typename S, class SS, int Strategy,
+          typename ArchTag>
 struct KernelSelector_FindOrInsert {
   using ValueConfig = ValueConfig_FindOrInsert<ArchTag>;
-  using Params = Params_FindOrInsert<K, V, S>;
+  using Params = Params_FindOrInsert<K, V, S, SS>;
 
   static bool callable(bool unique_key, uint32_t bucket_size, uint32_t dim) {
     constexpr uint32_t MinBucketCap = sizeof(VecD_Load) / sizeof(D);
@@ -1191,23 +1189,23 @@ struct KernelSelector_FindOrInsert {
     auto launch_TLPv1 = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_TLPv1_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv1_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_TLPv1_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv1_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_TLPv1_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv1_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_TLPv1_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv1_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else {
         using VecV = byte;
-        Launch_TLPv1_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv1_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       }
     };
@@ -1216,23 +1214,23 @@ struct KernelSelector_FindOrInsert {
     auto launch_TLPv2 = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_TLPv2_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv2_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_TLPv2_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv2_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_TLPv2_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv2_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_TLPv2_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv2_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else {
         using VecV = byte;
-        Launch_TLPv2_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_TLPv2_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       }
     };
@@ -1241,23 +1239,23 @@ struct KernelSelector_FindOrInsert {
     auto launch_Pipeline = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_Pipeline_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_Pipeline_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_Pipeline_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_Pipeline_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_Pipeline_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_Pipeline_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_Pipeline_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_Pipeline_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       } else {
         using VecV = byte;
-        Launch_Pipeline_FindOrInsert<K, V, S, VecV, Strategy>::launch_kernel(
+        Launch_Pipeline_FindOrInsert<K, V, S, SS, VecV, Strategy>::launch_kernel(
             params, stream);
       }
     };
@@ -1299,9 +1297,10 @@ struct KernelSelector_FindOrInsert {
  * find or insert with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS, int Strategy,
+          uint32_t TILE_SIZE = 4>
 __global__ void find_or_insert_kernel_with_io(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, V* __restrict values, S* __restrict scores,
     const S global_epoch, const size_t N) {
@@ -1328,7 +1327,7 @@ __global__ void find_or_insert_kernel_with_io(
     int src_lane = -1;
     K evicted_key;
 
-    Bucket<K, V, S>* bucket =
+    Bucket<K, V, S, SS>* bucket =
         get_key_position<K>(buckets, find_or_insert_key, bkt_idx, start_idx,
                             buckets_num, bucket_max_size);
 
@@ -1380,21 +1379,21 @@ __global__ void find_or_insert_kernel_with_io(
   }
 }
 
-template <typename K, typename V, typename S, int Strategy>
+template <typename K, typename V, typename S, class SS, int Strategy>
 struct SelectFindOrInsertKernelWithIO {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets, const K* __restrict keys,
                              V* __restrict values, S* __restrict scores,
                              const S global_epoch) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      find_or_insert_kernel_with_io<K, V, S, Strategy, tile_size>
+      find_or_insert_kernel_with_io<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, global_epoch, N);
@@ -1402,7 +1401,7 @@ struct SelectFindOrInsertKernelWithIO {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      find_or_insert_kernel_with_io<K, V, S, Strategy, tile_size>
+      find_or_insert_kernel_with_io<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, global_epoch, N);
@@ -1413,15 +1412,16 @@ struct SelectFindOrInsertKernelWithIO {
 
 // Use 1 thread to deal with a KV-pair.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          uint32_t BLOCK_SIZE = 128, int Strategy = -1>
+          class SS = AtomicScore<S>, uint32_t BLOCK_SIZE = 128,
+          int Strategy = -1>
 __global__ void find_or_insert_kernel_lock_key_hybrid(
-    Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
+    Bucket<K, V, S, SS>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, uint32_t bucket_capacity, const uint32_t dim,
     const K* __restrict__ keys, V** __restrict__ value_ptrs,
     S* __restrict__ scores, K** __restrict__ key_ptrs,
     int* __restrict keys_index, bool* __restrict__ founds, uint64_t n,
     const S global_epoch) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   // bucket_capacity is a multiple of 4.
@@ -1604,10 +1604,7 @@ __global__ void find_or_insert_kernel_lock_key_hybrid(
       if (result) {
         S* min_score_ptr =
             BUCKET::scores(bucket_keys_ptr, bucket_capacity, min_pos);
-        auto verify_score_ptr =
-            reinterpret_cast<AtomicScore<S>*>(min_score_ptr);
-        auto verify_score =
-            verify_score_ptr->load(cuda::std::memory_order_relaxed);
+        auto verify_score = *min_score_ptr;
         if (verify_score <= min_score) {
           key_pos = min_pos;
           ScoreFunctor::update_with_digest(
@@ -1677,9 +1674,10 @@ __global__ void read_or_write_kernel_unlock_key(
 
 /* find or insert with the end-user specified score.
  */
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS, int Strategy,
+          uint32_t TILE_SIZE = 4>
 __global__ void find_or_insert_kernel(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, V** __restrict vectors, S* __restrict scores,
     bool* __restrict found, int* __restrict keys_index, const S global_epoch,
@@ -1706,7 +1704,7 @@ __global__ void find_or_insert_kernel(
     int src_lane = -1;
     K evicted_key;
 
-    Bucket<K, V, S>* bucket =
+    Bucket<K, V, S, SS>* bucket =
         get_key_position<K>(buckets, find_or_insert_key, bkt_idx, start_idx,
                             buckets_num, bucket_max_size);
 
