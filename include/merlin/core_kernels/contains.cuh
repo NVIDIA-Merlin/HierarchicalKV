@@ -21,9 +21,10 @@
 namespace nv {
 namespace merlin {
 
-template <typename K = uint64_t, typename V = float, typename S = uint64_t>
+template <typename K = uint64_t, typename V = float, typename S = uint64_t,
+          typename SS = AtomicScore<S>>
 struct ContainsKernelParams {
-  ContainsKernelParams(Bucket<K, V, S>* __restrict buckets_,
+  ContainsKernelParams(Bucket<K, V, S, SS>* __restrict buckets_,
                        size_t buckets_num_, uint32_t dim_,
                        const K* __restrict keys_, bool* __restrict founds_,
                        size_t n_)
@@ -33,7 +34,7 @@ struct ContainsKernelParams {
         keys(keys_),
         founds(founds_),
         n(n_) {}
-  Bucket<K, V, S>* __restrict buckets;
+  Bucket<K, V, S, SS>* __restrict buckets;
   size_t buckets_num;
   uint32_t dim;
   const K* __restrict keys;
@@ -42,8 +43,9 @@ struct ContainsKernelParams {
 };
 
 // Using 32 threads to deal with one key
-template <typename K = uint64_t, typename V = float, typename S = uint64_t>
-__global__ void contains_kernel_pipeline(Bucket<K, V, S>* buckets,
+template <typename K = uint64_t, typename V = float, typename S = uint64_t,
+          typename SS = AtomicScore<S>>
+__global__ void contains_kernel_pipeline(Bucket<K, V, S, SS>* buckets,
                                          const size_t buckets_num,
                                          const int dim,
                                          const K* __restrict keys,
@@ -82,7 +84,7 @@ __global__ void contains_kernel_pipeline(Bucket<K, V, S>* buckets,
     sm_target_digests[idx_block] = static_cast<uint32_t>(target_digest);
     int global_idx = hashed_key % (buckets_num * BUCKET_SIZE);
     int bkt_idx = global_idx / BUCKET_SIZE;
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
     __pipeline_memcpy_async(sm_keys_ptr + idx_block, bucket->keys_addr(),
                             sizeof(K*));
     __pipeline_commit();
@@ -214,13 +216,13 @@ __global__ void contains_kernel_pipeline(Bucket<K, V, S>* buckets,
 
 }  // End function
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 struct LaunchPipelineContains {
-  static void launch_kernel(ContainsKernelParams<K, V, S>& params,
+  static void launch_kernel(ContainsKernelParams<K, V, S, SS>& params,
                             cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     // Using 32 threads to deal with one key
-    contains_kernel_pipeline<K, V, S>
+    contains_kernel_pipeline<K, V, S, SS>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             params.buckets, params.buckets_num, params.dim, params.keys,
             params.founds, params.n);
@@ -228,17 +230,18 @@ struct LaunchPipelineContains {
 };
 
 template <typename K, typename V, typename S = uint64_t,
-          typename ArchTag = Sm80>
+          typename SS = AtomicScore<S>, typename ArchTag = Sm80>
 struct SelectPipelineContainsKernel {
-  static void select_kernel(ContainsKernelParams<K, V, S>& params,
+  static void select_kernel(ContainsKernelParams<K, V, S, SS>& params,
                             cudaStream_t& stream) {
-    LaunchPipelineContains<K, V, S>::launch_kernel(params, stream);
+    LaunchPipelineContains<K, V, S, SS>::launch_kernel(params, stream);
   }
 };
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
-__global__ void contains_kernel(const Table<K, V, S>* __restrict table,
-                                Bucket<K, V, S>* buckets,
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
+__global__ void contains_kernel(const Table<K, V, S, SS>* __restrict table,
+                                Bucket<K, V, S, SS>* buckets,
                                 const size_t bucket_max_size,
                                 const size_t buckets_num, const size_t dim,
                                 const K* __restrict keys,
@@ -260,7 +263,7 @@ __global__ void contains_kernel(const Table<K, V, S>* __restrict table,
     size_t bkt_idx = 0;
     size_t start_idx = 0;
 
-    Bucket<K, V, S>* bucket = get_key_position<K>(
+    Bucket<K, V, S, SS>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     const int bucket_size = buckets_size[bkt_idx];
@@ -278,26 +281,26 @@ __global__ void contains_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 struct SelectContainsKernel {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets, const K* __restrict keys,
                              bool* __restrict found) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      contains_kernel<K, V, S, tile_size><<<grid_size, block_size, 0, stream>>>(
+      contains_kernel<K, V, S, SS, tile_size><<<grid_size, block_size, 0, stream>>>(
           table, buckets, bucket_max_size, buckets_num, dim, keys, found, N);
     } else {
       const unsigned int tile_size = 16;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      contains_kernel<K, V, S, tile_size><<<grid_size, block_size, 0, stream>>>(
+      contains_kernel<K, V, S, SS, tile_size><<<grid_size, block_size, 0, stream>>>(
           table, buckets, bucket_max_size, buckets_num, dim, keys, found, N);
     }
     return;

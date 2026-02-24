@@ -23,14 +23,15 @@ namespace merlin {
 
 // Use 1 thread to deal with a KV-pair.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          uint32_t BLOCK_SIZE = 128, int Strategy = -1>
+          class SS = AtomicScore<S>, uint32_t BLOCK_SIZE = 128,
+          int Strategy = -1>
 __global__ void find_or_insert_ptr_kernel_lock_key(
-    Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
+    Bucket<K, V, S, SS>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, uint32_t bucket_capacity, const uint32_t dim,
     const K* __restrict__ keys, V** __restrict__ value_ptrs,
     S* __restrict__ scores, K** __restrict__ key_ptrs, uint64_t n,
     bool* __restrict__ founds, const S global_epoch) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   // bucket_capacity is a multiple of 4.
@@ -207,10 +208,7 @@ __global__ void find_or_insert_ptr_kernel_lock_key(
       if (result) {
         S* min_score_ptr =
             BUCKET::scores(bucket_keys_ptr, bucket_capacity, min_pos);
-        auto verify_score_ptr =
-            reinterpret_cast<AtomicScore<S>*>(min_score_ptr);
-        auto verify_score =
-            verify_score_ptr->load(cuda::std::memory_order_relaxed);
+        auto verify_score = *min_score_ptr;
         if (verify_score <= min_score) {
           key_pos = min_pos;
           ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
@@ -261,9 +259,10 @@ __global__ void find_or_insert_ptr_kernel_unlock_key(const K* __restrict__ keys,
 
 /* find or insert with the end-user specified score.
  */
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS, int Strategy,
+          uint32_t TILE_SIZE = 4>
 __global__ void find_ptr_or_insert_kernel(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, V** __restrict vectors, S* __restrict scores,
     bool* __restrict found, const S global_epoch, const size_t N) {
@@ -289,7 +288,7 @@ __global__ void find_ptr_or_insert_kernel(
     int src_lane = -1;
     K evicted_key;
 
-    Bucket<K, V, S>* bucket =
+    Bucket<K, V, S, SS>* bucket =
         get_key_position<K>(buckets, find_or_insert_key, bkt_idx, start_idx,
                             buckets_num, bucket_max_size);
 
@@ -335,21 +334,21 @@ __global__ void find_ptr_or_insert_kernel(
   }
 }
 
-template <typename K, typename V, typename S, int Strategy>
+template <typename K, typename V, typename S, class SS, int Strategy>
 struct SelectFindOrInsertPtrKernel {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets, const K* __restrict keys,
                              V** __restrict values, S* __restrict scores,
                              bool* __restrict found, const S global_epoch) {
     if (load_factor <= 0.5) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      find_ptr_or_insert_kernel<K, V, S, Strategy, tile_size>
+      find_ptr_or_insert_kernel<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, found, global_epoch, N);
@@ -357,7 +356,7 @@ struct SelectFindOrInsertPtrKernel {
       const unsigned int tile_size = 8;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      find_ptr_or_insert_kernel<K, V, S, Strategy, tile_size>
+      find_ptr_or_insert_kernel<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, found, global_epoch, N);
@@ -365,7 +364,7 @@ struct SelectFindOrInsertPtrKernel {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      find_ptr_or_insert_kernel<K, V, S, Strategy, tile_size>
+      find_ptr_or_insert_kernel<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, found, global_epoch, N);

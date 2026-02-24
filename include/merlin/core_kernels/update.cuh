@@ -23,13 +23,14 @@ namespace merlin {
 
 // Use 1 thread to deal with a KV-pair, including copying value.
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128, int Strategy = -1>
+          class SS = AtomicScore<S>, typename VecV = byte16,
+          uint32_t BLOCK_SIZE = 128, int Strategy = -1>
 __global__ void tlp_update_kernel_with_io(
-    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, const uint64_t buckets_num,
     uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
     const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n,
     const S global_epoch) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using CopyValue = CopyValueMultipleGroup<VecV, 1>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
@@ -132,10 +133,11 @@ __global__ void tlp_update_kernel_with_io(
   }
 }
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
-          typename VecV = byte16, uint32_t BLOCK_SIZE = 128,
-          uint32_t GROUP_SIZE = 16, int Strategy = -1>
+          class SS = AtomicScore<S>, typename VecV = byte16,
+          uint32_t BLOCK_SIZE = 128, uint32_t GROUP_SIZE = 16,
+          int Strategy = -1>
 __global__ void pipeline_update_kernel_with_io(
-    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, const uint64_t buckets_num,
     const uint32_t dim, const K* __restrict__ keys,
     const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n,
     const S global_epoch) {
@@ -147,7 +149,7 @@ __global__ void pipeline_update_kernel_with_io(
   constexpr uint32_t Load_LEN = sizeof(VecD_Load) / sizeof(D);
   constexpr int RESERVE = 8;
 
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
   using CopyScore = CopyScoreByPassCache<S, K, BUCKET_SIZE>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
@@ -187,7 +189,7 @@ __global__ void pipeline_update_kernel_with_io(
     sm_target_digests[idx_block] = digests_from_hashed<K>(hashed_key);
     uint64_t global_idx = hashed_key % (buckets_num * BUCKET_SIZE);
     uint64_t bkt_idx = global_idx / BUCKET_SIZE;
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
     __pipeline_memcpy_async(sm_keys_ptr + idx_block, bucket->keys_addr(),
                             sizeof(K*));
     __pipeline_commit();
@@ -488,9 +490,10 @@ __global__ void pipeline_update_kernel_with_io(
   }
 }  // End function
 
-template <typename K = uint64_t, typename V = float, typename S = uint64_t>
+template <typename K = uint64_t, typename V = float, typename S = uint64_t,
+          class SS = AtomicScore<S>>
 struct Params_Update {
-  Params_Update(float load_factor_, Bucket<K, V, S>* __restrict__ buckets_,
+  Params_Update(float load_factor_, Bucket<K, V, S, SS>* __restrict__ buckets_,
                 size_t buckets_num_, uint32_t bucket_capacity_, uint32_t dim_,
                 const K* __restrict__ keys_, const V* __restrict__ values_,
                 const S* __restrict__ scores_, size_t n_, const S global_epoch_)
@@ -505,7 +508,7 @@ struct Params_Update {
         n(n_),
         global_epoch(global_epoch_) {}
   float load_factor;
-  Bucket<K, V, S>* __restrict__ buckets;
+  Bucket<K, V, S, SS>* __restrict__ buckets;
   size_t buckets_num;
   uint32_t bucket_capacity;
   uint32_t dim;
@@ -516,13 +519,14 @@ struct Params_Update {
   const S global_epoch;
 };
 
-template <typename K, typename V, typename S, typename VecV, int Strategy>
+template <typename K, typename V, typename S, class SS, typename VecV,
+          int Strategy>
 struct Launch_TLP_Update {
-  using Params = Params_Update<K, V, S>;
+  using Params = Params_Update<K, V, S, SS>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     params.dim = params.dim * sizeof(V) / sizeof(VecV);
-    tlp_update_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, Strategy>
+    tlp_update_kernel_with_io<K, V, S, SS, VecV, BLOCK_SIZE, Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             params.buckets, params.buckets_num, params.bucket_capacity,
             params.dim, params.keys,
@@ -531,9 +535,10 @@ struct Launch_TLP_Update {
   }
 };
 
-template <typename K, typename V, typename S, typename VecV, int Strategy>
+template <typename K, typename V, typename S, class SS, typename VecV,
+          int Strategy>
 struct Launch_Pipeline_Update {
-  using Params = Params_Update<K, V, S>;
+  using Params = Params_Update<K, V, S, SS>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     constexpr uint32_t GROUP_SIZE = 16;
@@ -543,7 +548,7 @@ struct Launch_Pipeline_Update {
     uint32_t shared_mem = GROUP_NUM * 2 * params.dim * sizeof(VecV);
     shared_mem =
         (shared_mem + sizeof(byte16) - 1) / sizeof(byte16) * sizeof(byte16);
-    pipeline_update_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, GROUP_SIZE,
+    pipeline_update_kernel_with_io<K, V, S, SS, VecV, BLOCK_SIZE, GROUP_SIZE,
                                    Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
            stream>>>(params.buckets, params.buckets_num, params.dim,
@@ -574,10 +579,11 @@ struct ValueConfig_Update<Sm70> {
   static constexpr uint32_t size_pipeline = 64 * sizeof(byte4);
 };
 
-template <typename K, typename V, typename S, int Strategy, typename ArchTag>
+template <typename K, typename V, typename S, class SS, int Strategy,
+          typename ArchTag>
 struct KernelSelector_Update {
   using ValueConfig = ValueConfig_Update<ArchTag>;
-  using Params = Params_Update<K, V, S>;
+  using Params = Params_Update<K, V, S, SS>;
 
   static bool callable(bool unique_key, uint32_t bucket_size, uint32_t dim) {
     constexpr uint32_t MinBucketCap = sizeof(VecD_Load) / sizeof(D);
@@ -597,23 +603,23 @@ struct KernelSelector_Update {
     auto launch_TLP = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_TLP_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                   stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_TLP_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                   stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_TLP_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                   stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_TLP_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                   stream);
       } else {
         using VecV = byte;
-        Launch_TLP_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_TLP_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                   stream);
       }
     };
@@ -621,23 +627,23 @@ struct KernelSelector_Update {
     auto launch_Pipeline = [&]() {
       if (total_value_size % sizeof(byte16) == 0) {
         using VecV = byte16;
-        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_Pipeline_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                        stream);
       } else if (total_value_size % sizeof(byte8) == 0) {
         using VecV = byte8;
-        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_Pipeline_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                        stream);
       } else if (total_value_size % sizeof(byte4) == 0) {
         using VecV = byte4;
-        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_Pipeline_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                        stream);
       } else if (total_value_size % sizeof(byte2) == 0) {
         using VecV = byte2;
-        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_Pipeline_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                        stream);
       } else {
         using VecV = byte;
-        Launch_Pipeline_Update<K, V, S, VecV, Strategy>::launch_kernel(params,
+        Launch_Pipeline_Update<K, V, S, SS, VecV, Strategy>::launch_kernel(params,
                                                                        stream);
       }
     };
@@ -662,9 +668,10 @@ struct KernelSelector_Update {
  * update with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS, int Strategy,
+          uint32_t TILE_SIZE = 4>
 __global__ void update_kernel_with_io(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
     const K* __restrict keys, const V* __restrict values,
     const S* __restrict scores, const S global_epoch, const size_t N) {
@@ -688,7 +695,7 @@ __global__ void update_kernel_with_io(
     size_t start_idx = 0;
     int src_lane = -1;
 
-    Bucket<K, V, S>* bucket = get_key_position<K>(
+    Bucket<K, V, S, SS>* bucket = get_key_position<K>(
         buckets, update_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     OccupyResult occupy_result{OccupyResult::INITIAL};
@@ -720,21 +727,21 @@ __global__ void update_kernel_with_io(
   }
 }
 
-template <typename K, typename V, typename S, int Strategy>
+template <typename K, typename V, typename S, class SS, int Strategy>
 struct SelectUpdateKernelWithIO {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets, const K* __restrict keys,
                              const V* __restrict values,
                              const S* __restrict scores, const S global_epoch) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      update_kernel_with_io<K, V, S, Strategy, tile_size>
+      update_kernel_with_io<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, global_epoch, N);
@@ -742,7 +749,7 @@ struct SelectUpdateKernelWithIO {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      update_kernel_with_io<K, V, S, Strategy, tile_size>
+      update_kernel_with_io<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, global_epoch, N);
@@ -752,14 +759,15 @@ struct SelectUpdateKernelWithIO {
 };
 
 // Use 1 thread to deal with a KV-pair, including copying value.
-template <typename K, typename V, typename S, int Strategy = -1>
+template <typename K, typename V, typename S, class SS = AtomicScore<S>,
+          int Strategy = -1>
 __global__ void tlp_update_kernel_hybrid(
-    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, const uint64_t buckets_num,
     uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
     V** __restrict__ values, const S* __restrict__ scores,
     K** __restrict__ key_ptrs, int* __restrict src_offset, const S global_epoch,
     uint64_t n) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
 
   uint32_t tx = threadIdx.x;
@@ -857,9 +865,10 @@ __global__ void tlp_update_kernel_hybrid(
   }
 }
 
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
-__global__ void update_kernel(const Table<K, V, S>* __restrict table,
-                              Bucket<K, V, S>* buckets,
+template <class K, class V, class S, class SS, int Strategy,
+          uint32_t TILE_SIZE = 4>
+__global__ void update_kernel(const Table<K, V, S, SS>* __restrict table,
+                              Bucket<K, V, S, SS>* buckets,
                               const size_t bucket_max_size,
                               const size_t buckets_num, const size_t dim,
                               const K* __restrict keys, V** __restrict vectors,
@@ -884,7 +893,7 @@ __global__ void update_kernel(const Table<K, V, S>* __restrict table,
     size_t start_idx = 0;
     int src_lane = -1;
 
-    Bucket<K, V, S>* bucket = get_key_position<K>(
+    Bucket<K, V, S, SS>* bucket = get_key_position<K>(
         buckets, update_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     OccupyResult occupy_result{OccupyResult::INITIAL};

@@ -117,11 +117,36 @@ using AtomicScore = cuda::atomic<S, cuda::thread_scope_device>;
 template <class T>
 using AtomicPos = cuda::atomic<T, cuda::thread_scope_device>;
 
-template <class K, class V, class S>
+/// @brief Helper to load a score value from either AtomicScore<S>* or S*.
+template <class S>
+__forceinline__ __device__ S score_load(AtomicScore<S>* ptr) {
+  return ptr->load(cuda::std::memory_order_relaxed);
+}
+
+template <class S>
+__forceinline__ __device__ S score_load(S* ptr) {
+  return *ptr;
+}
+
+/// @brief Helper to store a score value to either AtomicScore<S>* or S*.
+template <class S>
+__forceinline__ __device__ void score_store(AtomicScore<S>* ptr, S val) {
+  ptr->store(val, cuda::std::memory_order_relaxed);
+}
+
+template <class S>
+__forceinline__ __device__ void score_store(S* ptr, S val) {
+  *ptr = val;
+}
+
+/// @brief Bucket structure with a defaulted score-storage type parameter.
+///
+/// @tparam SS The score storage type. Defaults to AtomicScore<S> for backward
+///            compatibility. For kCustomized mode, SS can be plain S.
+template <class K, class V, class S, class SS = AtomicScore<S>>
 struct Bucket {
   AtomicKey<K>* keys_;
-  /// TODO: compute the pointer of scores and digests using bucket_max_size
-  AtomicScore<S>* scores_;
+  SS* scores_;
   /// @brief not visible to users
   D* digests_;
   V* vectors;  // Pinned memory or HBM
@@ -134,7 +159,7 @@ struct Bucket {
     return keys_ + index;
   }
 
-  __forceinline__ __device__ AtomicScore<S>* scores(int index) const {
+  __forceinline__ __device__ SS* scores(int index) const {
     return scores_ + index;
   }
 
@@ -192,9 +217,9 @@ class Lock {
 
 using Mutex = Lock<cuda::thread_scope_device>;
 
-template <class K, class V, class S>
+template <class K, class V, class S, class SS = AtomicScore<S>>
 struct Table {
-  Bucket<K, V, S>* buckets;
+  Bucket<K, V, S, SS>* buckets;
   Mutex* locks;                 // mutex for write buckets
   int* buckets_size;            // size of each buckets.
   V** slices;                   // Handles of the HBM/ HMEM slices.

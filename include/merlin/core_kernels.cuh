@@ -54,8 +54,8 @@ __global__ void release_locks(S* __restrict mutex, const size_t start,
   }
 }
 
-template <class K, class V, class S>
-__global__ void create_atomic_keys(Bucket<K, V, S>* __restrict buckets,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__global__ void create_atomic_keys(Bucket<K, V, S, SS>* __restrict buckets,
                                    const size_t start, const size_t end,
                                    const size_t bucket_max_size) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
@@ -68,27 +68,27 @@ __global__ void create_atomic_keys(Bucket<K, V, S>* __restrict buckets,
   }
 }
 
-template <class K, class V, class S>
-__global__ void create_atomic_scores(Bucket<K, V, S>* __restrict buckets,
-                                     const size_t start, const size_t end,
-                                     const size_t bucket_max_size) {
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__global__ void create_scores(Bucket<K, V, S, SS>* __restrict buckets,
+                              const size_t start, const size_t end,
+                              const size_t bucket_max_size) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   if (start + tid < end) {
     for (size_t i = 0; i < bucket_max_size; i++) {
-      new (buckets[start + tid].scores(i))
-          AtomicScore<S>{static_cast<S>(EMPTY_SCORE)};
+      score_store(buckets[start + tid].scores(i),
+                  static_cast<S>(EMPTY_SCORE));
     }
   }
 }
 
-template <class K, class V, class S>
-__global__ void allocate_bucket_vectors(Bucket<K, V, S>* __restrict buckets,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__global__ void allocate_bucket_vectors(Bucket<K, V, S, SS>* __restrict buckets,
                                         const size_t index, V* address) {
   buckets[index].vectors = address;
 }
 
-template <class K, class V, class S>
-__global__ void allocate_bucket_others(Bucket<K, V, S>* __restrict buckets,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__global__ void allocate_bucket_others(Bucket<K, V, S, SS>* __restrict buckets,
                                        size_t total_size_per_bucket,
                                        size_t num_of_buckets,
                                        const int start_index, uint8_t* address,
@@ -99,14 +99,14 @@ __global__ void allocate_bucket_others(Bucket<K, V, S>* __restrict buckets,
     buckets[index].digests_ = address;
     buckets[index].keys_ =
         reinterpret_cast<AtomicKey<K>*>(buckets[index].digests_ + reserve_size);
-    buckets[index].scores_ = reinterpret_cast<AtomicScore<S>*>(
+    buckets[index].scores_ = reinterpret_cast<SS*>(
         buckets[index].keys_ + bucket_max_size);
     address += total_size_per_bucket;
   }
 }
 
-template <class K, class V, class S>
-__global__ void get_bucket_others_address(Bucket<K, V, S>* __restrict buckets,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__global__ void get_bucket_others_address(Bucket<K, V, S, SS>* __restrict buckets,
                                           const int index, uint8_t** address) {
   *address = buckets[index].digests_;
 }
@@ -157,8 +157,8 @@ void realloc_host(P* ptr, size_t old_size, size_t new_size,
 }
 
 /* Initialize the buckets with index from start to end. */
-template <class K, class V, class S>
-void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+void initialize_buckets(Table<K, V, S, SS>** table, BaseAllocator* allocator,
                         const size_t start, const size_t end) {
   /* As testing results show us, when the number of buckets is greater than
    * the 4 million the performance will drop significantly, we believe the
@@ -209,7 +209,7 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
         size_t index = start + num_of_allocated_buckets + j;
         V* address =
             (*table)->slices[i] + j * (*table)->bucket_max_size * (*table)->dim;
-        allocate_bucket_vectors<K, V, S>
+        allocate_bucket_vectors<K, V, S, SS>
             <<<1, 1>>>((*table)->buckets, index, address);
         CUDA_CHECK(cudaDeviceSynchronize());
       } else {
@@ -218,7 +218,7 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
         V* address = nullptr;
         CUDA_CHECK(cudaHostGetDevicePointer(&address, h_ptr, 0));
         size_t index = start + num_of_allocated_buckets + j;
-        allocate_bucket_vectors<K, V, S>
+        allocate_bucket_vectors<K, V, S, SS>
             <<<1, 1>>>((*table)->buckets, index, address);
       }
     }
@@ -229,7 +229,7 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
   (*table)->num_of_memory_slices += num_of_memory_slices;
   uint32_t bucket_max_size = static_cast<uint32_t>((*table)->bucket_max_size);
   size_t bucket_memory_size =
-      bucket_max_size * (sizeof(AtomicKey<K>) + sizeof(AtomicScore<S>));
+      bucket_max_size * (sizeof(AtomicKey<K>) + sizeof(SS));
   // Align to the cache line size.
   constexpr uint32_t CACHE_LINE_SIZE = 128U / sizeof(uint8_t);
   uint32_t reserve_size =
@@ -249,7 +249,7 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
         std::min(end - i, (*table)->num_of_buckets_per_alloc);
     allocator->alloc(MemoryType::Device, (void**)&(address),
                      bucket_memory_size * num_of_buckets);
-    allocate_bucket_others<K, V, S>
+    allocate_bucket_others<K, V, S, SS>
         <<<1, 1>>>((*table)->buckets, bucket_memory_size, num_of_buckets, i,
                    address, reserve_size, bucket_max_size);
   }
@@ -266,7 +266,7 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
     const size_t block_size = 512;
     const size_t N = end - start + 1;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-    create_atomic_keys<K, V, S><<<grid_size, block_size>>>(
+    create_atomic_keys<K, V, S, SS><<<grid_size, block_size>>>(
         (*table)->buckets, start, end, (*table)->bucket_max_size);
   }
 
@@ -274,15 +274,15 @@ void initialize_buckets(Table<K, V, S>** table, BaseAllocator* allocator,
     const size_t block_size = 512;
     const size_t N = end - start + 1;
     const int grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-    create_atomic_scores<K, V, S><<<grid_size, block_size>>>(
+    create_scores<K, V, S, SS><<<grid_size, block_size>>>(
         (*table)->buckets, start, end, (*table)->bucket_max_size);
   }
   CUDA_CHECK(cudaDeviceSynchronize());
   CudaCheckError();
 }
 
-template <class K, class V, class S>
-size_t get_slice_size(Table<K, V, S>** table) {
+template <class K, class V, class S, class SS = AtomicScore<S>>
+size_t get_slice_size(Table<K, V, S, SS>** table) {
   const size_t min_slice_size =
       (*table)->bucket_max_size * sizeof(V) * (*table)->dim;
   const size_t max_table_size = (*table)->max_size * sizeof(V) * (*table)->dim;
@@ -314,22 +314,22 @@ size_t get_slice_size(Table<K, V, S>** table) {
       or occurrence frequency or any thing for eviction.
    DIM: Vector dimension.
 */
-template <class K, class V, class S>
-void create_table(Table<K, V, S>** table, BaseAllocator* allocator,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+void create_table(Table<K, V, S, SS>** table, BaseAllocator* allocator,
                   const size_t dim, const size_t init_size = 134217728,
                   const size_t max_size = std::numeric_limits<size_t>::max(),
                   const size_t max_hbm_for_vectors = 0,
                   const size_t bucket_max_size = 128,
                   const size_t num_of_buckets_per_alloc = 1,
                   const size_t tile_size = 32, const bool primary = true) {
-  allocator->alloc(MemoryType::Host, (void**)table, sizeof(Table<K, V, S>));
-  std::memset(*table, 0, sizeof(Table<K, V, S>));
+  allocator->alloc(MemoryType::Host, (void**)table, sizeof(Table<K, V, S, SS>));
+  std::memset(*table, 0, sizeof(Table<K, V, S, SS>));
   (*table)->dim = dim;
   (*table)->bucket_max_size = bucket_max_size;
   (*table)->max_size = std::max(init_size, max_size);
   (*table)->tile_size = tile_size;
   (*table)->is_pure_hbm = true;
-  (*table)->bytes_per_slice = get_slice_size<K, V, S>(table);
+  (*table)->bytes_per_slice = get_slice_size<K, V, S, SS>(table);
   (*table)->num_of_buckets_per_alloc = num_of_buckets_per_alloc;
 
   // The bucket number will be the minimum needed for saving memory if no
@@ -360,37 +360,37 @@ void create_table(Table<K, V, S>** table, BaseAllocator* allocator,
                         (*table)->buckets_num * sizeof(int)));
 
   allocator->alloc(MemoryType::Device, (void**)&((*table)->buckets),
-                   (*table)->buckets_num * sizeof(Bucket<K, V, S>));
+                   (*table)->buckets_num * sizeof(Bucket<K, V, S, SS>));
   CUDA_CHECK(cudaMemset((*table)->buckets, 0,
-                        (*table)->buckets_num * sizeof(Bucket<K, V, S>)));
+                        (*table)->buckets_num * sizeof(Bucket<K, V, S, SS>)));
 
-  initialize_buckets<K, V, S>(table, allocator, 0, (*table)->buckets_num);
+  initialize_buckets<K, V, S, SS>(table, allocator, 0, (*table)->buckets_num);
   CudaCheckError();
 }
 
 /* Double the capacity on storage, must be followed by calling the
  * rehash_kernel. */
-template <class K, class V, class S>
-void double_capacity(Table<K, V, S>** table, BaseAllocator* allocator) {
+template <class K, class V, class S, class SS = AtomicScore<S>>
+void double_capacity(Table<K, V, S, SS>** table, BaseAllocator* allocator) {
   realloc<Mutex*>(&((*table)->locks), (*table)->buckets_num * sizeof(Mutex),
                   (*table)->buckets_num * sizeof(Mutex) * 2, allocator);
   realloc<int*>(&((*table)->buckets_size), (*table)->buckets_num * sizeof(int),
                 (*table)->buckets_num * sizeof(int) * 2, allocator);
 
-  realloc<Bucket<K, V, S>*>(
-      &((*table)->buckets), (*table)->buckets_num * sizeof(Bucket<K, V, S>),
-      (*table)->buckets_num * sizeof(Bucket<K, V, S>) * 2, allocator);
+  realloc<Bucket<K, V, S, SS>*>(
+      &((*table)->buckets), (*table)->buckets_num * sizeof(Bucket<K, V, S, SS>),
+      (*table)->buckets_num * sizeof(Bucket<K, V, S, SS>) * 2, allocator);
 
-  initialize_buckets<K, V, S>(table, allocator, (*table)->buckets_num,
-                              (*table)->buckets_num * 2);
+  initialize_buckets<K, V, S, SS>(table, allocator, (*table)->buckets_num,
+                                  (*table)->buckets_num * 2);
 
   (*table)->capacity *= 2;
   (*table)->buckets_num *= 2;
 }
 
 /* free all of the resource of a Table. */
-template <class K, class V, class S>
-void destroy_table(Table<K, V, S>** table, BaseAllocator* allocator) {
+template <class K, class V, class S, class SS = AtomicScore<S>>
+void destroy_table(Table<K, V, S, SS>** table, BaseAllocator* allocator) {
   uint8_t** d_address = nullptr;
   CUDA_CHECK(cudaMalloc((void**)&d_address, sizeof(uint8_t*)));
   /* NOTICE: Only the buckets which index is the times of
@@ -399,7 +399,7 @@ void destroy_table(Table<K, V, S>** table, BaseAllocator* allocator) {
   for (int i = 0; i < (*table)->buckets_num;
        i += (*table)->num_of_buckets_per_alloc) {
     uint8_t* h_address;
-    get_bucket_others_address<K, V, S>
+    get_bucket_others_address<K, V, S, SS>
         <<<1, 1>>>((*table)->buckets, i, d_address);
     CUDA_CHECK(cudaMemcpy(&h_address, d_address, sizeof(uint8_t*),
                           cudaMemcpyDeviceToHost));
@@ -430,9 +430,10 @@ void destroy_table(Table<K, V, S>** table, BaseAllocator* allocator) {
   CudaCheckError();
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void defragmentation_for_rehash(
-    Bucket<K, V, S>* __restrict bucket, uint32_t remove_pos,
+    Bucket<K, V, S, SS>* __restrict bucket, uint32_t remove_pos,
     const size_t bucket_max_size, const size_t buckets_num, const size_t dim) {
   uint32_t key_idx;
   size_t global_idx = 0;
@@ -460,10 +461,8 @@ __forceinline__ __device__ void defragmentation_for_rehash(
           (*(bucket->keys(key_idx))).load(cuda::std::memory_order_relaxed);
       bucket->digests(empty_pos)[0] = get_digest<K>(key);
       (*(bucket->keys(empty_pos))).store(key, cuda::std::memory_order_relaxed);
-      const S score =
-          (*(bucket->scores(key_idx))).load(cuda::std::memory_order_relaxed);
-      (*(bucket->scores(empty_pos)))
-          .store(score, cuda::std::memory_order_relaxed);
+      const S score = score_load(bucket->scores(key_idx));
+      score_store(bucket->scores(empty_pos), score);
       for (int j = 0; j < dim; j++) {
         bucket->vectors[empty_pos * dim + j] =
             bucket->vectors[key_idx * dim + j];
@@ -480,10 +479,11 @@ __forceinline__ __device__ void defragmentation_for_rehash(
   }
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
 __forceinline__ __device__ void move_key_to_new_bucket(
     cg::thread_block_tile<TILE_SIZE> g, int rank, const K& key, const S& score,
-    const V* __restrict vector, Bucket<K, V, S>* __restrict new_bucket,
+    const V* __restrict vector, Bucket<K, V, S, SS>* __restrict new_bucket,
     const size_t new_bkt_idx, const size_t new_start_idx,
     int* __restrict buckets_size, const size_t bucket_max_size,
     const size_t buckets_num, const size_t dim) {
@@ -505,8 +505,7 @@ __forceinline__ __device__ void move_key_to_new_bucket(
       if (rank == src_lane) {
         new_bucket->digests(key_pos)[0] = get_digest<K>(key);
         new_bucket->keys(key_pos)->store(key, cuda::std::memory_order_relaxed);
-        new_bucket->scores(key_pos)->store(score,
-                                           cuda::std::memory_order_relaxed);
+        score_store(new_bucket->scores(key_pos), score);
         atomicAdd(&(buckets_size[new_bkt_idx]), 1);
       }
       copy_vector<V, TILE_SIZE>(g, vector, new_bucket->vectors + key_pos * dim,
@@ -516,9 +515,10 @@ __forceinline__ __device__ void move_key_to_new_bucket(
   }
 }
 
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
 __global__ void rehash_kernel_for_fast_mode(
-    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const Table<K, V, S, SS>* __restrict table, Bucket<K, V, S, SS>* buckets,
     size_t N) {
   int* __restrict buckets_size = table->buckets_size;
   const size_t bucket_max_size = table->bucket_max_size;
@@ -535,7 +535,7 @@ __global__ void rehash_kernel_for_fast_mode(
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     uint32_t bkt_idx = t / TILE_SIZE;
-    Bucket<K, V, S>* bucket = (buckets + bkt_idx);
+    Bucket<K, V, S, SS>* bucket = (buckets + bkt_idx);
 
     lock<Mutex, TILE_SIZE>(g, table->locks[bkt_idx]);
     uint32_t key_idx = 0;
@@ -543,8 +543,7 @@ __global__ void rehash_kernel_for_fast_mode(
       key_idx = g.shfl(key_idx, 0);
       target_key =
           (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
-      target_score =
-          bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+      target_score = score_load(bucket->scores(key_idx));
       if (target_key != static_cast<K>(EMPTY_KEY) &&
           target_key != static_cast<K>(RECLAIM_KEY)) {
         const K hashed_key = Murmur3HashDevice(target_key);
@@ -552,7 +551,7 @@ __global__ void rehash_kernel_for_fast_mode(
         uint32_t new_bkt_idx = global_idx / bucket_max_size;
         if (new_bkt_idx != bkt_idx) {
           start_idx = get_start_position(global_idx, bucket_max_size);
-          move_key_to_new_bucket<K, V, S, TILE_SIZE>(
+          move_key_to_new_bucket<K, V, S, SS, TILE_SIZE>(
               g, rank, target_key, target_score,
               (bucket->vectors + key_idx * dim), buckets + new_bkt_idx,
               new_bkt_idx, start_idx, buckets_size, bucket_max_size,
@@ -563,7 +562,7 @@ __global__ void rehash_kernel_for_fast_mode(
                 ->store(static_cast<K>(EMPTY_KEY),
                         cuda::std::memory_order_relaxed);
             atomicSub(&(buckets_size[bkt_idx]), 1);
-            defragmentation_for_rehash<K, V, S, TILE_SIZE>(
+            defragmentation_for_rehash<K, V, S, SS, TILE_SIZE>(
                 bucket, key_idx, bucket_max_size, buckets_num / 2, dim);
             key_idx = 0;
           }
@@ -641,16 +640,16 @@ __global__ void read_kernel(const V* const* __restrict src, V* __restrict dst,
 }
 
 /* Clear all key-value in the table. */
-template <class K, class V, class S>
-__global__ void clear_kernel(Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, size_t N) {
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__global__ void clear_kernel(Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets, size_t N) {
   size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
   const size_t bucket_max_size = table->bucket_max_size;
 
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int key_idx = t % bucket_max_size;
     int bkt_idx = t / bucket_max_size;
-    Bucket<K, V, S>* bucket = &(buckets[bkt_idx]);
+    Bucket<K, V, S, SS>* bucket = &(buckets[bkt_idx]);
 
     bucket->digests(key_idx)[0] = empty_digest<K>();
     (bucket->keys(key_idx))
@@ -662,10 +661,11 @@ __global__ void clear_kernel(Table<K, V, S>* __restrict table,
 }
 
 /* Remove specified keys. */
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
-__global__ void remove_kernel(const Table<K, V, S>* __restrict table,
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
+__global__ void remove_kernel(const Table<K, V, S, SS>* __restrict table,
                               const K* __restrict keys,
-                              Bucket<K, V, S>* __restrict buckets,
+                              Bucket<K, V, S, SS>* __restrict buckets,
                               int* __restrict buckets_size,
                               const size_t bucket_max_size,
                               const size_t buckets_num, size_t N) {
@@ -684,7 +684,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
     size_t start_idx = 0;
     uint32_t tile_offset = 0;
 
-    Bucket<K, V, S>* bucket = get_key_position<K>(
+    Bucket<K, V, S, SS>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     unsigned found_vote = 0;
@@ -716,9 +716,8 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
         (bucket->keys(key_pos))
             ->store(static_cast<K>(RECLAIM_KEY),
                     cuda::std::memory_order_relaxed);
-        (bucket->scores(key_pos))
-            ->store(static_cast<S>(EMPTY_SCORE),
-                    cuda::std::memory_order_relaxed);
+        score_store(bucket->scores(key_pos),
+                    static_cast<S>(EMPTY_SCORE));
         atomicSub(&buckets_size[bkt_idx], 1);
       }
       break;
@@ -727,13 +726,13 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
 }
 
 /* Remove specified keys which match the Predict. */
-template <class K, class V, class S,
+template <class K, class V, class S, class SS = AtomicScore<S>,
           template <typename, typename> class PredFunctor,
           uint32_t TILE_SIZE = 1>
-__global__ void remove_kernel(const Table<K, V, S>* __restrict table,
+__global__ void remove_kernel(const Table<K, V, S, SS>* __restrict table,
                               const K pattern, const S threshold,
                               size_t* __restrict count,
-                              Bucket<K, V, S>* __restrict buckets,
+                              Bucket<K, V, S, SS>* __restrict buckets,
                               int* __restrict buckets_size,
                               const size_t bucket_max_size,
                               const size_t buckets_num, size_t N) {
@@ -745,7 +744,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
     uint32_t bkt_idx = t;
     uint32_t key_pos = 0;
 
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
 
     K current_key = 0;
     S current_score = 0;
@@ -753,8 +752,7 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
     while (key_offset < bucket_max_size) {
       current_key =
           bucket->keys(key_offset)->load(cuda::std::memory_order_relaxed);
-      current_score =
-          bucket->scores(key_offset)->load(cuda::std::memory_order_relaxed);
+      current_score = score_load(bucket->scores(key_offset));
       if (!IS_RESERVED_KEY<K>(current_key)) {
         if (pred(current_key, current_score, pattern, threshold)) {
           atomicAdd(count, 1);
@@ -763,9 +761,8 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
           (bucket->keys(key_pos))
               ->store(static_cast<K>(RECLAIM_KEY),
                       cuda::std::memory_order_relaxed);
-          (bucket->scores(key_pos))
-              ->store(static_cast<S>(EMPTY_SCORE),
-                      cuda::std::memory_order_relaxed);
+          score_store(bucket->scores(key_pos),
+                      static_cast<S>(EMPTY_SCORE));
           atomicSub(&buckets_size[bkt_idx], 1);
         } else {
           key_offset++;
@@ -777,11 +774,11 @@ __global__ void remove_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
-template <typename K, typename V, typename S, typename PredFunctor,
-          uint32_t GroupSize = 32>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>,
+          typename PredFunctor, uint32_t GroupSize = 32>
 __global__ void remove_kernel_v2(const uint64_t search_length,
                                  const uint64_t offset, PredFunctor pred,
-                                 Bucket<K, V, S>* buckets,
+                                 Bucket<K, V, S, SS>* buckets,
                                  int* __restrict buckets_size,
                                  const uint64_t bucket_capacity,
                                  const uint64_t dim, uint64_t* remove_counter) {
@@ -795,11 +792,10 @@ __global__ void remove_kernel_v2(const uint64_t search_length,
     uint64_t key_idx = (i + offset) % bucket_capacity;
 
     // May be different for threads within the same group.
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
 
     const K key = bucket->keys(key_idx)->load(cuda::std::memory_order_relaxed);
-    const S score =
-        bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+    const S score = score_load(bucket->scores(key_idx));
     const V* value = bucket->vectors + key_idx * dim;
 
     bool match = pred.template operator()<GroupSize>(key, value, score, g);
@@ -819,8 +815,7 @@ __global__ void remove_kernel_v2(const uint64_t search_length,
       bucket->digests(key_idx)[0] = reclaim_digest<K>();
       bucket->keys(key_idx)->store(static_cast<K>(RECLAIM_KEY),
                                    cuda::std::memory_order_relaxed);
-      bucket->scores(key_idx)->store(static_cast<S>(EMPTY_SCORE),
-                                     cuda::std::memory_order_relaxed);
+      score_store(bucket->scores(key_idx), static_cast<S>(EMPTY_SCORE));
       if (bucket_capacity < GroupSize) {
         atomicSub(&buckets_size[bkt_idx], 1);
       }
@@ -841,9 +836,9 @@ inline std::tuple<size_t, size_t> dump_kernel_shared_memory_size(
   return std::make_tuple(block_size * sizeof(KVM<K, V, S>), block_size);
 }
 
-template <class K, class V, class S>
-__global__ void dump_kernel(const Table<K, V, S>* __restrict table,
-                            Bucket<K, V, S>* buckets, K* d_key,
+template <class K, class V, class S, class SS = AtomicScore<S>>
+__global__ void dump_kernel(const Table<K, V, S, SS>* __restrict table,
+                            Bucket<K, V, S, SS>* buckets, K* d_key,
                             V* __restrict d_val, S* __restrict d_score,
                             const size_t offset, const size_t search_length,
                             size_t* d_dump_counter) {
@@ -864,7 +859,7 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
   __syncthreads();
 
   if (tid < search_length) {
-    Bucket<K, V, S>* const bucket{&buckets[(tid + offset) / bucket_max_size]};
+    Bucket<K, V, S, SS>* const bucket{&buckets[(tid + offset) / bucket_max_size]};
 
     const int key_idx{static_cast<int>((tid + offset) % bucket_max_size)};
     const K key{(bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed)};
@@ -873,7 +868,7 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
       size_t local_index{atomicAdd(&block_acc, 1)};
       block_tuples[local_index] = {
           key, &bucket->vectors[key_idx * dim],
-          bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed)};
+          score_load(bucket->scores(key_idx))};
     }
   }
   __syncthreads();
@@ -898,10 +893,10 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
 }
 
 /* Dump with score. */
-template <class K, class V, class S,
+template <class K, class V, class S, class SS = AtomicScore<S>,
           template <typename, typename> class PredFunctor>
-__global__ void dump_kernel(const Table<K, V, S>* __restrict table,
-                            Bucket<K, V, S>* buckets, const K pattern,
+__global__ void dump_kernel(const Table<K, V, S, SS>* __restrict table,
+                            Bucket<K, V, S, SS>* buckets, const K pattern,
                             const S threshold, K* d_key, V* __restrict d_val,
                             S* __restrict d_score, const size_t offset,
                             const size_t search_length,
@@ -927,11 +922,11 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
   if (tid < search_length) {
     int bkt_idx = (tid + offset) / bucket_max_size;
     int key_idx = (tid + offset) % bucket_max_size;
-    Bucket<K, V, S>* bucket = &(buckets[bkt_idx]);
+    Bucket<K, V, S, SS>* bucket = &(buckets[bkt_idx]);
 
     const K key =
         (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
-    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+    S score = score_load(bucket->scores(key_idx));
 
     if (!IS_RESERVED_KEY<K>(key) && pred(key, score, pattern, threshold)) {
       size_t local_index = atomicAdd(&block_acc, 1);
@@ -964,10 +959,10 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
-template <class K, class V, class S, class VecV,
+template <class K, class V, class S, class SS = AtomicScore<S>, class VecV,
           template <typename, typename> class PredFunctor, int TILE_SIZE>
-__global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
-                               Bucket<K, V, S>* buckets, const K pattern,
+__global__ void dump_kernel_v2(const Table<K, V, S, SS>* __restrict table,
+                               Bucket<K, V, S, SS>* buckets, const K pattern,
                                const S threshold, K* d_key, V* __restrict d_val,
                                S* __restrict d_score, const size_t offset,
                                const size_t search_length,
@@ -983,11 +978,11 @@ __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
     size_t bkt_idx = (i + offset) / bucket_max_size;
     size_t key_idx = (i + offset) % bucket_max_size;
     size_t leading_key_idx = key_idx / TILE_SIZE * TILE_SIZE;
-    Bucket<K, V, S>* bucket = &(buckets[bkt_idx]);
+    Bucket<K, V, S, SS>* bucket = &(buckets[bkt_idx]);
 
     const K key =
         (bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed);
-    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+    S score = score_load(bucket->scores(key_idx));
 
     bool match =
         (!IS_RESERVED_KEY<K>(key)) && pred(key, score, pattern, threshold);
@@ -1026,10 +1021,10 @@ __global__ void dump_kernel_v2(const Table<K, V, S>* __restrict table,
   }
 }
 
-template <typename K, typename V, typename S, typename PredFunctor,
-          uint32_t GroupSize = 32>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>,
+          typename PredFunctor, uint32_t GroupSize = 32>
 __global__ void dump_kernel(const uint64_t search_length, const uint64_t offset,
-                            PredFunctor pred, Bucket<K, V, S>* buckets,
+                            PredFunctor pred, Bucket<K, V, S, SS>* buckets,
                             const uint64_t bucket_capacity, const uint64_t dim,
                             K* __restrict__ out_keys, V* __restrict__ out_vals,
                             S* __restrict__ out_scores,
@@ -1044,11 +1039,10 @@ __global__ void dump_kernel(const uint64_t search_length, const uint64_t offset,
     uint64_t key_idx = (i + offset) % bucket_capacity;
 
     // May be different for threads within the same group.
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
 
     const K key = bucket->keys(key_idx)->load(cuda::std::memory_order_relaxed);
-    const S score =
-        bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+    const S score = score_load(bucket->scores(key_idx));
     const V* value = bucket->vectors + key_idx * dim;
 
     bool match = pred.template operator()<GroupSize>(key, value, score, g);
@@ -1086,7 +1080,7 @@ __global__ void dump_kernel(const uint64_t search_length, const uint64_t offset,
         uint64_t cur_idx = (i / GroupSize) * GroupSize + r + offset;
         uint64_t cur_bkt_idx = cur_idx / bucket_capacity;
         uint64_t cur_key_idx = cur_idx % bucket_capacity;
-        Bucket<K, V, S>* cur_bucket = buckets + cur_bkt_idx;
+        Bucket<K, V, S, SS>* cur_bucket = buckets + cur_bkt_idx;
 
         for (int j = g.thread_rank(); j < dim; j += GroupSize) {
           out_vals[(group_offset + bias) * dim + j] =
@@ -1097,10 +1091,10 @@ __global__ void dump_kernel(const uint64_t search_length, const uint64_t offset,
   }
 }
 
-template <class K, class V, class S,
+template <class K, class V, class S, class SS = AtomicScore<S>,
           template <typename, typename> class PredFunctor>
-__global__ void size_if_kernel(const Table<K, V, S>* __restrict table,
-                               Bucket<K, V, S>* buckets, const K pattern,
+__global__ void size_if_kernel(const Table<K, V, S, SS>* __restrict table,
+                               Bucket<K, V, S, SS>* buckets, const K pattern,
                                const S threshold, size_t* d_counter) {
   extern __shared__ unsigned char s[];
 
@@ -1118,11 +1112,11 @@ __global__ void size_if_kernel(const Table<K, V, S>* __restrict table,
   __syncthreads();
 
   for (size_t i = tid; i < table->capacity; i += blockDim.x * gridDim.x) {
-    Bucket<K, V, S>* const bucket{&buckets[i / bucket_max_size]};
+    Bucket<K, V, S, SS>* const bucket{&buckets[i / bucket_max_size]};
 
     const int key_idx{static_cast<int>(i % bucket_max_size)};
     const K key{(bucket->keys(key_idx))->load(cuda::std::memory_order_relaxed)};
-    S score = bucket->scores(key_idx)->load(cuda::std::memory_order_relaxed);
+    S score = score_load(bucket->scores(key_idx));
 
     if ((!IS_RESERVED_KEY(key)) && pred(key, score, pattern, threshold)) {
       ++local_acc;
@@ -1136,11 +1130,11 @@ __global__ void size_if_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
-template <typename K, typename V, typename S, typename ExecutionFunc,
-          uint32_t GroupSize = 32>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>,
+          typename ExecutionFunc, uint32_t GroupSize = 32>
 __global__ void traverse_kernel(const uint64_t search_length,
                                 const uint64_t offset, ExecutionFunc f,
-                                Bucket<K, V, S>* buckets,
+                                Bucket<K, V, S, SS>* buckets,
                                 const uint64_t bucket_capacity,
                                 const uint64_t dim) {
   cg::thread_block_tile<GroupSize> g =
@@ -1153,7 +1147,7 @@ __global__ void traverse_kernel(const uint64_t search_length,
     uint64_t key_idx = (i + offset) % bucket_capacity;
 
     // May be different for threads within the same group.
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
 
     const K key = bucket->keys(key_idx)->load(cuda::std::memory_order_relaxed);
     S* score = reinterpret_cast<S*>(bucket->scores(key_idx));
@@ -1231,13 +1225,14 @@ __global__ void compact_key_value_score_kernel(
   }
 }
 
-template <typename K, typename V, typename S, int Strategy = -1>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>,
+          int Strategy = -1>
 __global__ void lock_kernel_with_filter(
-    Bucket<K, V, S>* __restrict__ buckets, uint64_t const buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, uint64_t const buckets_num,
     uint32_t bucket_capacity, uint32_t const dim, K const* __restrict__ keys,
     K** __restrict locked_keys_ptr, bool* __restrict succeed,
     S const* __restrict__ scores, const S global_epoch, uint64_t n) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
   // Load `STRIDE` digests every time.
   constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
