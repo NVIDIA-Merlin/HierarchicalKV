@@ -312,10 +312,17 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kLfu> {
       cuda::std::memory_order_release;
   using BUCKET = Bucket<K, V, S>;
 
+  // Saturating add: returns a + b, capped at MAX_SCORE - 1 to avoid
+  // collision with sentinel values.
+  __forceinline__ __device__ static S saturating_add(S a, S b) {
+    constexpr S CAP = static_cast<S>(MAX_SCORE) - 1;
+    return (a <= CAP - b) ? (a + b) : CAP;
+  }
+
   __forceinline__ __device__ static S desired_when_missed(
       const S* __restrict const input_scores, const int key_idx,
       const S& epoch) {
-    return static_cast<S>(MAX_SCORE);
+    return input_scores[key_idx];
   }
 
   __forceinline__ __device__ static void update(
@@ -327,8 +334,11 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kLfu> {
       bucket->scores(key_pos)->store(input_scores[key_idx],
                                      cuda::std::memory_order_relaxed);
     } else {
-      bucket->scores(key_pos)->fetch_add(input_scores[key_idx],
-                                         cuda::std::memory_order_relaxed);
+      S old_score =
+          bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
+      S new_score = saturating_add(old_score, input_scores[key_idx]);
+      bucket->scores(key_pos)->store(new_score,
+                                     cuda::std::memory_order_relaxed);
     }
     return;
   }
@@ -348,7 +358,7 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kLfu> {
     if (new_insert) {
       __stcg(dst_score_ptr, input_scores[key_idx]);
     } else {
-      __stcg(dst_score_ptr, input_scores[key_idx] + *dst_score_ptr);
+      __stcg(dst_score_ptr, saturating_add(*dst_score_ptr, input_scores[key_idx]));
     }
     return;
   }
@@ -358,8 +368,11 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kLfu> {
       const S* __restrict const input_scores, const int key_idx,
       const S& epoch) {
     if (input_scores == nullptr) return;
-    bucket->scores(key_pos)->fetch_add(input_scores[key_idx],
-                                       cuda::std::memory_order_relaxed);
+    S old_score =
+        bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
+    S new_score = saturating_add(old_score, input_scores[key_idx]);
+    bucket->scores(key_pos)->store(new_score,
+                                   cuda::std::memory_order_relaxed);
     return;
   }
 
@@ -371,7 +384,7 @@ struct ScoreFunctor<K, V, S, EvictStrategyInternal::kLfu> {
     S* dst_score_ptr =
         BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
     // Cache in L2 cache, bypass L1 Cache.
-    __stcg(dst_score_ptr, input_scores[key_idx] + *dst_score_ptr);
+    __stcg(dst_score_ptr, saturating_add(*dst_score_ptr, input_scores[key_idx]));
   }
 };
 
