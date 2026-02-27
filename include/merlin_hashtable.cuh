@@ -2619,13 +2619,32 @@ class HashTable : public HashTableBase<K, V, S> {
 
     constexpr uint32_t MinBucketCapacityFilter = sizeof(VecD_Load) / sizeof(D);
     if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
-      constexpr uint32_t BLOCK_SIZE = 128U;
-      tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
-                                        evict_strategy>
-          <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
-              table_->buckets, table_->buckets_num, options_.max_bucket_size,
-              options_.dim, keys, values, scores, founds, n, false,
-              global_epoch_);
+      // Track load factor to choose between TLP and pipelined kernels.
+      static thread_local int step_counter = 0;
+      static thread_local float load_factor = 0.0;
+      if (((step_counter++) % kernel_select_interval_) == 0) {
+        load_factor = fast_load_factor(0, stream, false);
+      }
+
+      if (load_factor > 0.875f && options_.max_bucket_size == 128) {
+        // At high load factors, the TLP kernel degrades because empty-slot
+        // early termination fails.  Switch to the pipelined cooperative kernel
+        // which scans all 128 digests in one parallel step (32 threads/key).
+        constexpr uint32_t BLOCK_SIZE = 128U;
+        const size_t grid_size = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
+        lookup_ptr_kernel_with_pipeline<key_type, value_type, score_type>
+            <<<grid_size, BLOCK_SIZE, 0, stream>>>(
+                table_->buckets, table_->buckets_num, options_.dim, keys,
+                values, scores, founds, n);
+      } else {
+        constexpr uint32_t BLOCK_SIZE = 128U;
+        tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
+                                          evict_strategy>
+            <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
+                table_->buckets, table_->buckets_num, options_.max_bucket_size,
+                options_.dim, keys, values, scores, founds, n, false,
+                global_epoch_);
+      }
     } else {
       using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
       static thread_local int step_counter = 0;
