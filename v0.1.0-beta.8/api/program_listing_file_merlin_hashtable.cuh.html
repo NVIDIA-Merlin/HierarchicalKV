@@ -132,6 +132,11 @@
 <span class="w">  </span><span class="p">};</span>
 <span class="p">};</span>
 
+<span class="k">enum</span><span class="w"> </span><span class="k">class</span><span class="w"> </span><span class="nc">TableMode</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="n">kThroughput</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="n">kMemory</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="p">};</span>
+
 <span class="k">struct</span><span class="w"> </span><span class="nc">HashTableOptions</span><span class="w"> </span><span class="p">{</span>
 <span class="w">  </span><span class="kt">size_t</span><span class="w"> </span><span class="n">init_capacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 <span class="w">  </span><span class="kt">size_t</span><span class="w"> </span><span class="n">max_capacity</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
@@ -158,6 +163,7 @@
 <span class="w">  </span><span class="kt">int</span><span class="w"> </span><span class="n">reserved_key_start_bit</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">;</span>
 <span class="w">  </span><span class="kt">size_t</span><span class="w"> </span><span class="n">num_of_buckets_per_alloc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">1</span><span class="p">;</span>
 <span class="w">  </span><span class="kt">bool</span><span class="w"> </span><span class="n">api_lock</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span>
+<span class="w">  </span><span class="n">TableMode</span><span class="w"> </span><span class="n">table_mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">TableMode</span><span class="o">::</span><span class="n">kThroughput</span><span class="p">;</span>
 <span class="w">  </span><span class="n">MemoryPoolOptions</span>
 <span class="w">      </span><span class="n">device_memory_pool</span><span class="p">;</span>
 <span class="w">  </span><span class="n">MemoryPoolOptions</span>
@@ -418,6 +424,32 @@
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="w">    </span><span class="n">options_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">options</span><span class="p">;</span>
+
+<span class="w">    </span><span class="c1">// MEMORY_MODE (dual-bucket) specific initialization.</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">table_mode</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">TableMode</span><span class="o">::</span><span class="n">kMemory</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="c1">// Note: dual-bucket mode does not use max_load_factor for rehash</span>
+<span class="w">      </span><span class="c1">// triggering.  The effective load factor is governed entirely by the</span>
+<span class="w">      </span><span class="c1">// score-based eviction mechanism.  We intentionally leave</span>
+<span class="w">      </span><span class="c1">// max_load_factor at its default value and never consult it.</span>
+<span class="w">      </span><span class="n">MERLIN_CHECK</span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">init_capacity</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_capacity</span><span class="p">,</span>
+<span class="w">                   </span><span class="s">&quot;[MEMORY_MODE] init_capacity must equal max_capacity. &quot;</span>
+<span class="w">                   </span><span class="s">&quot;Auto-rehash is not supported in dual-bucket mode.&quot;</span><span class="p">);</span>
+<span class="w">      </span><span class="n">MERLIN_CHECK</span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">max_hbm_for_vectors</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">                   </span><span class="s">&quot;[MEMORY_MODE] Only pure HBM (fast mode) is supported. &quot;</span>
+<span class="w">                   </span><span class="s">&quot;Set max_hbm_for_vectors = 0.&quot;</span><span class="p">);</span>
+<span class="w">      </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">          </span><span class="n">options_</span><span class="p">.</span><span class="n">dim</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">value_type</span><span class="p">)</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="mi">224</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="kt">float</span><span class="p">),</span>
+<span class="w">          </span><span class="s">&quot;[MEMORY_MODE] dim * sizeof(V) must not exceed 896 bytes &quot;</span>
+<span class="w">          </span><span class="s">&quot;(i.e. dim &lt;= 224 for float). The dual-bucket lookup kernel uses a &quot;</span>
+<span class="w">          </span><span class="s">&quot;fixed-size shared memory buffer that cannot accommodate larger &quot;</span>
+<span class="w">          </span><span class="s">&quot;value vectors.&quot;</span><span class="p">);</span>
+<span class="w">      </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">          </span><span class="n">options_</span><span class="p">.</span><span class="n">init_capacity</span><span class="w"> </span><span class="o">/</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_bucket_size</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">          </span><span class="s">&quot;[MEMORY_MODE] capacity must provide at least 2 buckets &quot;</span>
+<span class="w">          </span><span class="s">&quot;(capacity &gt;= 2 * max_bucket_size). Dual-bucket addressing &quot;</span>
+<span class="w">          </span><span class="s">&quot;requires b1 != b2, which is impossible with a single bucket.&quot;</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
 <span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span><span class="n">options</span><span class="p">.</span><span class="n">reserved_key_start_bit</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="mi">0</span><span class="w"> </span><span class="o">&amp;&amp;</span>
 <span class="w">                     </span><span class="n">options</span><span class="p">.</span><span class="n">reserved_key_start_bit</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="n">MAX_RESERVED_KEY_BIT</span><span class="p">,</span>
 <span class="w">                 </span><span class="s">&quot;options.reserved_key_start_bit should &gt;= 0 and &lt;= 62.&quot;</span><span class="p">);</span>
@@ -458,12 +490,21 @@
 <span class="w">    </span><span class="n">shared_mem_size_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">deviceProp</span><span class="p">.</span><span class="n">sharedMemPerBlock</span><span class="p">;</span>
 <span class="w">    </span><span class="n">sm_cnt_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">deviceProp</span><span class="p">.</span><span class="n">multiProcessorCount</span><span class="p">;</span>
 <span class="w">    </span><span class="n">max_threads_per_block_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">deviceProp</span><span class="p">.</span><span class="n">maxThreadsPerBlock</span><span class="p">;</span>
+<span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">is_memory_mode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">table_mode</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">TableMode</span><span class="o">::</span><span class="n">kMemory</span><span class="p">);</span>
 <span class="w">    </span><span class="n">create_table</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="o">&gt;</span><span class="p">(</span>
 <span class="w">        </span><span class="o">&amp;</span><span class="n">table_</span><span class="p">,</span><span class="w"> </span><span class="n">allocator_</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">dim</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">init_capacity</span><span class="p">,</span>
 <span class="w">        </span><span class="n">options_</span><span class="p">.</span><span class="n">max_capacity</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_hbm_for_vectors</span><span class="p">,</span>
-<span class="w">        </span><span class="n">options_</span><span class="p">.</span><span class="n">max_bucket_size</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">num_of_buckets_per_alloc</span><span class="p">);</span>
+<span class="w">        </span><span class="n">options_</span><span class="p">.</span><span class="n">max_bucket_size</span><span class="p">,</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">num_of_buckets_per_alloc</span><span class="p">,</span>
+<span class="w">        </span><span class="cm">/*tile_size=*/</span><span class="mi">32</span><span class="p">,</span><span class="w"> </span><span class="cm">/*primary=*/</span><span class="nb">true</span><span class="p">,</span>
+<span class="w">        </span><span class="cm">/*dual_bucket_mode=*/</span><span class="n">is_memory_mode</span><span class="p">);</span>
 <span class="w">    </span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SAFE_GET_BLOCK_SIZE</span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">block_size</span><span class="p">);</span>
 <span class="w">    </span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">init_capacity</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_capacity</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// MEMORY_MODE: force disable auto-rehash.</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_memory_mode</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">;</span><span class="w">  </span><span class="c1">// Disable auto-rehash.</span>
+<span class="w">    </span><span class="p">}</span>
+
 <span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">((</span><span class="o">!</span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">io_by_cpu</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_hbm_for_vectors</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="mi">0</span><span class="p">)),</span>
 <span class="w">                 </span><span class="s">&quot;[HierarchicalKV] `io_by_cpu` should not be true when &quot;</span>
 <span class="w">                 </span><span class="s">&quot;`max_hbm_for_vectors` is not 0!&quot;</span><span class="p">);</span>
@@ -522,6 +563,25 @@
 <span class="w">    </span><span class="n">std</span><span class="o">::</span><span class="n">unique_ptr</span><span class="o">&lt;</span><span class="n">insert_unique_lock</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lock_ptr</span><span class="p">;</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">api_lock</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="n">lock_ptr</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">std</span><span class="o">::</span><span class="n">make_unique</span><span class="o">&lt;</span><span class="n">insert_unique_lock</span><span class="o">&gt;</span><span class="p">(</span><span class="n">mutex_</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">    </span><span class="p">}</span>
+
+<span class="w">    </span><span class="c1">// MEMORY_MODE: dual-bucket upsert.</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_memory_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="n">MERLIN_CHECK</span><span class="p">(</span><span class="n">unique_key</span><span class="p">,</span>
+<span class="w">                   </span><span class="s">&quot;[MEMORY_MODE] insert_or_assign requires unique_key=true &quot;</span>
+<span class="w">                   </span><span class="s">&quot;in dual-bucket mode.&quot;</span><span class="p">);</span>
+
+<span class="w">      </span><span class="k">using</span><span class="w"> </span><span class="n">DualSelector</span><span class="w"> </span><span class="o">=</span>
+<span class="w">          </span><span class="n">KernelSelector_DualBucketUpsert</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="p">,</span>
+<span class="w">                                          </span><span class="n">evict_strategy_</span><span class="p">,</span><span class="w"> </span><span class="n">ArchTag</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">      </span><span class="k">typename</span><span class="w"> </span><span class="nc">DualSelector</span><span class="o">::</span><span class="n">Params</span><span class="w"> </span><span class="nf">kernelParams</span><span class="p">(</span>
+<span class="w">          </span><span class="cm">/*load_factor=*/</span><span class="mf">0.0f</span><span class="p">,</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">buckets</span><span class="p">,</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">buckets_size</span><span class="p">,</span>
+<span class="w">          </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">buckets_num</span><span class="p">,</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">uint32_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">max_bucket_size</span><span class="p">),</span>
+<span class="w">          </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">uint32_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">options_</span><span class="p">.</span><span class="n">dim</span><span class="p">),</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="n">scores</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">,</span>
+<span class="w">          </span><span class="n">global_epoch_</span><span class="p">);</span>
+<span class="w">      </span><span class="n">DualSelector</span><span class="o">::</span><span class="n">select_kernel</span><span class="p">(</span><span class="n">kernelParams</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">      </span><span class="n">CudaCheckError</span><span class="p">();</span>
+<span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_fast_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
@@ -657,6 +717,10 @@
 <span class="w">                        </span><span class="n">size_type</span><span class="o">*</span><span class="w"> </span><span class="n">d_evicted_counter</span><span class="p">,</span><span class="w">  </span><span class="c1">// (1)</span>
 <span class="w">                        </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">unique_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">,</span>
 <span class="w">                        </span><span class="kt">bool</span><span class="w"> </span><span class="n">ignore_evict_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] insert_and_evict() is not supported in dual-bucket &quot;</span>
+<span class="w">        </span><span class="s">&quot;mode. Use insert_or_assign() instead.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -804,6 +868,10 @@
 <span class="w">                       </span><span class="k">const</span><span class="w"> </span><span class="n">score_type</span><span class="o">*</span><span class="w"> </span><span class="n">scores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">,</span><span class="w">  </span><span class="c1">// (n)</span>
 <span class="w">                       </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">                       </span><span class="kt">bool</span><span class="w"> </span><span class="n">ignore_evict_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] accum_or_assign() is not supported in dual-bucket &quot;</span>
+<span class="w">        </span><span class="s">&quot;mode. Use insert_or_assign() instead.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -891,6 +959,10 @@
 <span class="w">                      </span><span class="n">score_type</span><span class="o">*</span><span class="w"> </span><span class="n">scores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">,</span><span class="w">             </span><span class="c1">// (n)</span>
 <span class="w">                      </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">unique_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">,</span>
 <span class="w">                      </span><span class="kt">bool</span><span class="w"> </span><span class="n">ignore_evict_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] find_or_insert() is not supported in dual-bucket mode. &quot;</span>
+<span class="w">        </span><span class="s">&quot;Use insert_or_assign() and find() separately.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -1049,6 +1121,10 @@
 <span class="w">                      </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">unique_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">,</span>
 <span class="w">                      </span><span class="kt">bool</span><span class="w"> </span><span class="n">ignore_evict_strategy</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">false</span><span class="p">,</span>
 <span class="w">                      </span><span class="n">key_type</span><span class="o">**</span><span class="w"> </span><span class="n">locked_key_ptrs</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] find_or_insert() is not supported in dual-bucket mode. &quot;</span>
+<span class="w">        </span><span class="s">&quot;Use insert_or_assign() and find() separately.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -1310,6 +1386,10 @@
 <span class="w">                     </span><span class="k">const</span><span class="w"> </span><span class="n">key_type</span><span class="o">*</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w">                </span><span class="c1">// (n)</span>
 <span class="w">                     </span><span class="k">const</span><span class="w"> </span><span class="n">score_type</span><span class="o">*</span><span class="w"> </span><span class="n">scores</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">nullptr</span><span class="p">,</span><span class="w">  </span><span class="c1">// (n)</span>
 <span class="w">                     </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">unique_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] assign_scores() is not supported in dual-bucket mode. &quot;</span>
+<span class="w">        </span><span class="s">&quot;Scores are managed by insert_or_assign() in MEMORY_MODE.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -1360,6 +1440,10 @@
 <span class="w">                     </span><span class="k">const</span><span class="w"> </span><span class="n">key_type</span><span class="o">*</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w">      </span><span class="c1">// (n)</span>
 <span class="w">                     </span><span class="k">const</span><span class="w"> </span><span class="n">value_type</span><span class="o">*</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w">  </span><span class="c1">// (n, DIM)</span>
 <span class="w">                     </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">unique_key</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nb">true</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] assign_values() is not supported in dual-bucket mode. &quot;</span>
+<span class="w">        </span><span class="s">&quot;Use insert_or_assign() to update values in MEMORY_MODE.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -1516,6 +1600,18 @@
 <span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">const</span><span class="w"> </span><span class="kt">uint32_t</span><span class="w"> </span><span class="n">value_size</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">dim</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">sizeof</span><span class="p">(</span><span class="n">V</span><span class="p">);</span>
+
+<span class="w">    </span><span class="c1">// MEMORY_MODE: dual-bucket find (sequential b1 then b2).</span>
+<span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_memory_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="k">using</span><span class="w"> </span><span class="n">DualSelector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SelectDualBucketLookupKernel</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span>
+<span class="w">                                                        </span><span class="n">score_type</span><span class="p">,</span><span class="w"> </span><span class="n">ArchTag</span><span class="o">&gt;</span><span class="p">;</span>
+<span class="w">      </span><span class="n">LookupKernelParams</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span><span class="w"> </span><span class="n">score_type</span><span class="o">&gt;</span><span class="w"> </span><span class="n">lookupParams</span><span class="p">(</span>
+<span class="w">          </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">buckets</span><span class="p">,</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">buckets_num</span><span class="p">,</span><span class="w"> </span><span class="k">static_cast</span><span class="o">&lt;</span><span class="kt">uint32_t</span><span class="o">&gt;</span><span class="p">(</span><span class="n">dim</span><span class="p">()),</span>
+<span class="w">          </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">values</span><span class="p">,</span><span class="w"> </span><span class="n">scores</span><span class="p">,</span><span class="w"> </span><span class="n">founds</span><span class="p">,</span><span class="w"> </span><span class="n">n</span><span class="p">);</span>
+<span class="w">      </span><span class="n">DualSelector</span><span class="o">::</span><span class="n">select_kernel</span><span class="p">(</span><span class="n">lookupParams</span><span class="p">,</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">buckets_size</span><span class="p">,</span><span class="w"> </span><span class="n">stream</span><span class="p">);</span>
+<span class="w">      </span><span class="n">CudaCheckError</span><span class="p">();</span>
+<span class="w">      </span><span class="k">return</span><span class="p">;</span>
+<span class="w">    </span><span class="p">}</span>
 
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">is_fast_mode</span><span class="p">())</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">using</span><span class="w"> </span><span class="n">Selector</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">SelectPipelineLookupKernelWithIO</span><span class="o">&lt;</span><span class="n">key_type</span><span class="p">,</span><span class="w"> </span><span class="n">value_type</span><span class="p">,</span>
@@ -1787,6 +1883,10 @@
 <span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">contains</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">key_type</span><span class="o">*</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w">  </span><span class="c1">// (n)</span>
 <span class="w">                </span><span class="kt">bool</span><span class="o">*</span><span class="w"> </span><span class="n">founds</span><span class="p">,</span><span class="w">                             </span><span class="c1">// (n)</span>
 <span class="w">                </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] contains() is not supported in dual-bucket mode. &quot;</span>
+<span class="w">        </span><span class="s">&quot;Key may reside in either bucket.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -1821,6 +1921,9 @@
 <span class="w">  </span><span class="p">}</span>
 
 <span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">erase</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">n</span><span class="p">,</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="n">key_type</span><span class="o">*</span><span class="w"> </span><span class="n">keys</span><span class="p">,</span><span class="w"> </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">                 </span><span class="s">&quot;[MEMORY_MODE] erase() is not supported in dual-bucket mode. &quot;</span>
+<span class="w">                 </span><span class="s">&quot;Key may reside in either bucket.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
 <span class="w">    </span><span class="p">}</span>
@@ -2211,6 +2314,10 @@
 <span class="w">  </span><span class="n">size_type</span><span class="w"> </span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">capacity</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
 
 <span class="w">  </span><span class="kt">void</span><span class="w"> </span><span class="n">reserve</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">new_capacity</span><span class="p">,</span><span class="w"> </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="n">MERLIN_CHECK</span><span class="p">(</span>
+<span class="w">        </span><span class="o">!</span><span class="n">is_memory_mode</span><span class="p">(),</span>
+<span class="w">        </span><span class="s">&quot;[MEMORY_MODE] reserve() is not supported in dual-bucket mode. &quot;</span>
+<span class="w">        </span><span class="s">&quot;Rehash does not preserve dual-bucket mapping.&quot;</span><span class="p">);</span>
 <span class="w">    </span><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="n">new_capacity</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_capacity</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
 <span class="w">      </span><span class="n">reach_max_capacity_</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">(</span><span class="n">capacity</span><span class="p">()</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="mi">2</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">max_capacity</span><span class="p">);</span>
 <span class="w">      </span><span class="k">return</span><span class="p">;</span>
@@ -2430,6 +2537,10 @@
 
 <span class="w"> </span><span class="k">private</span><span class="o">:</span>
 <span class="w">  </span><span class="kr">inline</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">is_fast_mode</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="k">return</span><span class="w"> </span><span class="n">table_</span><span class="o">-&gt;</span><span class="n">is_pure_hbm</span><span class="p">;</span><span class="w"> </span><span class="p">}</span>
+
+<span class="w">  </span><span class="kr">inline</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="n">is_memory_mode</span><span class="p">()</span><span class="w"> </span><span class="k">const</span><span class="w"> </span><span class="k">noexcept</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="n">options_</span><span class="p">.</span><span class="n">table_mode</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">TableMode</span><span class="o">::</span><span class="n">kMemory</span><span class="p">;</span>
+<span class="w">  </span><span class="p">}</span>
 
 <span class="w">  </span><span class="kr">inline</span><span class="w"> </span><span class="kt">float</span><span class="w"> </span><span class="n">fast_load_factor</span><span class="p">(</span><span class="k">const</span><span class="w"> </span><span class="n">size_type</span><span class="w"> </span><span class="n">delta</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
 <span class="w">                                </span><span class="n">cudaStream_t</span><span class="w"> </span><span class="n">stream</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
