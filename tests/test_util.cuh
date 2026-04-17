@@ -30,6 +30,7 @@
 #include <unordered_set>
 #include "merlin/utils.cuh"
 #include "merlin_hashtable.cuh"
+#include "merlin_hashtable_device.cuh"
 
 #define UNEQUAL_EXPR(expr1, expr2)                             \
   {                                                            \
@@ -44,6 +45,27 @@
   }
 
 namespace test_util {
+
+template <typename K, typename V, typename S, uint32_t TILE_SIZE = 4>
+__device__ __forceinline__ bool key_matches(
+    const nv::merlin::device::HashTableDeviceView<K, V, S>& view,
+    const typename nv::merlin::device::HashTableDeviceView<K, V, S>::key_type
+        key,
+    const int pos) {
+  if (pos < 0) {
+    return false;
+  }
+  uint32_t bucket_idx = 0;
+  uint32_t aligned_start = 0;
+  if (!nv::merlin::device::compute_bucket_index_and_aligned_start<K, V, S,
+                                                                  TILE_SIZE>(
+          view, key, &bucket_idx, &aligned_start)) {
+    return false;
+  }
+  const K current_key =
+      *reinterpret_cast<const K*>((view.buckets + bucket_idx)->keys(pos));
+  return current_key == key;
+}
 
 template <class S>
 __global__ void host_nano_kernel(S* d_clk) {
