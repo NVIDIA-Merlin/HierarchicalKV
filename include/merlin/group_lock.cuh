@@ -27,6 +27,20 @@ namespace nv {
 namespace merlin {
 
 /*
+ * Thread-local cached CUDA stream for lock acquisition kernels.
+ * Eliminates per-call cudaStreamCreate/Destroy overhead which causes
+ * CUDA driver contention when multiple threads acquire locks concurrently.
+ */
+inline cudaStream_t get_lock_stream() {
+  thread_local cudaStream_t stream = [] {
+    cudaStream_t s;
+    CUDA_CHECK(cudaStreamCreate(&s));
+    return s;
+  }();
+  return stream;
+}
+
+/*
  * Implementing a triple-group, mutex and relative lock guard for better E2E
  * performance:
  * - There are three roles: `inserter`, `updater`, and `reader`.
@@ -74,12 +88,10 @@ class group_shared_mutex {
       h_read_count_.fetch_add(1, std::memory_order_acq_rel);
       if (h_update_count_.load(std::memory_order_acquire) == 0) {
         {
-          cudaStream_t stream;
-          CUDA_CHECK(cudaStreamCreate(&stream));
+          cudaStream_t stream = get_lock_stream();
           group_lock::lock_read_kernel<<<1, 1, 0, stream>>>(d_update_count_,
                                                             d_read_count_);
           CUDA_CHECK(cudaStreamSynchronize(stream));
-          CUDA_CHECK(cudaStreamDestroy(stream));
         }
         break;
       }
@@ -99,12 +111,10 @@ class group_shared_mutex {
       h_update_count_.fetch_add(1, std::memory_order_acq_rel);
       if (h_read_count_.load(std::memory_order_acquire) == 0) {
         {
-          cudaStream_t stream;
-          CUDA_CHECK(cudaStreamCreate(&stream));
+          cudaStream_t stream = get_lock_stream();
           group_lock::lock_update_kernel<<<1, 1, 0, stream>>>(d_update_count_,
                                                               d_read_count_);
           CUDA_CHECK(cudaStreamSynchronize(stream));
-          CUDA_CHECK(cudaStreamDestroy(stream));
         }
         break;
       }
@@ -148,12 +158,10 @@ class group_shared_mutex {
     }
 
     {
-      cudaStream_t stream;
-      CUDA_CHECK(cudaStreamCreate(&stream));
+      cudaStream_t stream = get_lock_stream();
       group_lock::lock_update_read_kernel<<<1, 1, 0, stream>>>(
           d_update_count_, d_read_count_, d_unique_flag_);
       CUDA_CHECK(cudaStreamSynchronize(stream));
-      CUDA_CHECK(cudaStreamDestroy(stream));
     }
   }
 
