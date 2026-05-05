@@ -1651,6 +1651,65 @@ void BatchCheckFind(Table* table, K* keys, V* values, S* scores, size_t len,
   CUDA_CHECK(cudaStreamSynchronize(stream));
 }
 
+void test_insert_and_evict_bugfix_no_zero_eviction() {
+  size_t max_capacity = 2048;
+  size_t init_capacity = 2048;
+  size_t remove_len = 1024;
+  size_t insert_len = 2048;
+  
+  TableOptions opt;
+  opt.max_capacity = max_capacity;
+  opt.init_capacity = init_capacity;
+  opt.max_hbm_for_vectors = 1024 * 1024 * sizeof(f32); 
+  opt.num_of_buckets_per_alloc = 16;
+  opt.dim = dim;
+
+  using Table = nv::merlin::HashTable<i64, f32, u64, EvictStrategy::kLru>;
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  std::unique_ptr<Table> table = std::make_unique<Table>();
+  table->init(opt);
+
+  test_util::KVMSBuffer<i64, f32, u64> buffer_init;
+  buffer_init.Reserve(max_capacity, dim, stream);
+  buffer_init.ToRange(1, 1, stream); 
+  
+  test_util::KVMSBuffer<i64, f32, u64> evict_buffer_init;
+  evict_buffer_init.Reserve(max_capacity, dim, stream);
+
+  size_t n_evicted = table->insert_and_evict(
+      max_capacity, buffer_init.keys_ptr(), buffer_init.values_ptr(), nullptr,
+      evict_buffer_init.keys_ptr(), evict_buffer_init.values_ptr(), nullptr, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  table->erase(remove_len, buffer_init.keys_ptr(), stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  test_util::KVMSBuffer<i64, f32, u64> buffer_new;
+  buffer_new.Reserve(insert_len, dim, stream);
+  buffer_new.ToRange(3000, 1, stream); 
+
+  test_util::KVMSBuffer<i64, f32, u64> evict_buffer_new;
+  evict_buffer_new.Reserve(insert_len, dim, stream);
+  
+  CUDA_CHECK(cudaMemsetAsync(evict_buffer_new.keys_ptr(), 0, insert_len * sizeof(i64), stream));
+
+  n_evicted = table->insert_and_evict(
+      insert_len, buffer_new.keys_ptr(), buffer_new.values_ptr(), nullptr,
+      evict_buffer_new.keys_ptr(), evict_buffer_new.values_ptr(), nullptr, stream);
+      
+  evict_buffer_new.SyncData(/*h2d=*/false, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  printf("Second insert evicted %zu keys\n", n_evicted);
+
+  for (size_t i = 0; i < n_evicted; i++) {
+    i64 evicted_key = evict_buffer_new.keys_ptr(false)[i];
+    ASSERT_NE(evicted_key, 0) << "Found 0 (uninitialized empty key) at evict index " << i;
+  }
+}
+
 void test_insert_and_evict_run_with_batch_find() {
   const size_t U = 16 * 1024 * 1024;
   const size_t init_capacity = U;
@@ -1752,4 +1811,8 @@ TEST(InsertAndEvictTest, test_insert_and_evict_with_export_batch) {
 
 TEST(InsertAndEvictTest, test_insert_and_evict_run_with_batch_find) {
   test_insert_and_evict_run_with_batch_find();
+}
+
+TEST(InsertAndEvictTest, test_insert_and_evict_bugfix_no_zero_eviction) {
+  test_insert_and_evict_bugfix_no_zero_eviction();
 }
