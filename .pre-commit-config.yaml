@@ -1,0 +1,17 @@
+# Local dev hook config. Run `pre-commit install` once to enable.
+# Mirrors the public Lint GitHub Actions workflow so contributors catch
+# issues before pushing.
+repos:
+-   repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: v14.0.6
+    hooks:
+    -   id: clang-format
+        types_or: [c++, c, cuda]
+        files: '^(include|tests|benchmark)/.*\.(h|hpp|cuh|cc|cpp|cu)(\.cu)?$'
+-   repo: https://github.com/codespell-project/codespell
+    rev: v2.3.0
+    hooks:
+    -   id: codespell
+        args:
+        - --skip=.git,build,bazel-*,third_party
+        - --ignore-words-list=ans,nd,inout

@@ -1,0 +1,46 @@
+# Copyright (c) 2026, NVIDIA CORPORATION.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+
+# Public lint check that runs on every PR / push.
+# Lives on free GitHub-hosted runners (no GPU needed) so it gives fast
+# format feedback without spending Blossom-CI cycles.
+name: Lint
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  clang-format:
+    name: clang-format
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-format-14
+          sudo update-alternatives --install /usr/bin/clang-format clang-format /usr/bin/clang-format-14 100
+
+      - name: Run clang-format (dry-run, fail on diff)
+        run: |
+          set -e
+          files=$(find include tests benchmark \
+            \( -name '*.h' -o -name '*.hpp' -o -name '*.cuh' \
+               -o -name '*.cc' -o -name '*.cpp' -o -name '*.cu' \
+               -o -name '*.cc.cu' \) 2>/dev/null)
+          if [ -z "$files" ]; then
+            echo "No C++/CUDA source files found — nothing to check."
+            exit 0
+          fi
+          echo "Checking $(echo "$files" | wc -l) files..."
+          clang-format --dry-run --Werror --style=file $files
