@@ -45,10 +45,10 @@ namespace merlin {
  * - 128-slot buckets
  * - 4-stage software pipeline
  */
-template <class K, class V, class S, class VecV, int BLOCK_SIZE = 128,
+template <class K, class V, class S, class SS, class VecV, int BLOCK_SIZE = 128,
           int Strategy = 0>
 __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
-    Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
+    Bucket<K, V, S, SS>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, const uint32_t dim, const K* __restrict__ keys,
     const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n,
     const S global_epoch) {
@@ -58,7 +58,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
   constexpr uint32_t Load_LEN = sizeof(VecD_Load) / sizeof(D);
   constexpr uint32_t Load_LEN_S = sizeof(byte16) / sizeof(S);
 
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
   using SMM = SharedMemoryManager_Pipeline_Upsert<K, V, S, VecV, BLOCK_SIZE,
                                                   GROUP_SIZE, BUCKET_SIZE>;
@@ -552,12 +552,10 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
                     cuda::std::memory_order_acquire,
                     cuda::std::memory_order_relaxed);
                 if (cas_ok) {
-                  S* score_ptr = BUCKET::scores(evict_keys_ptr, BUCKET_SIZE,
-                                                min_pos_evict);
                   auto verify_score_ptr =
-                      reinterpret_cast<AtomicScore<S>*>(score_ptr);
-                  auto verify_score =
-                      verify_score_ptr->load(cuda::std::memory_order_relaxed);
+                      reinterpret_cast<SS*>(BUCKET::scores(
+                          evict_keys_ptr, BUCKET_SIZE, min_pos_evict));
+                  auto verify_score = score_load(verify_score_ptr);
                   if (verify_score <= min_score_global) {
                     if (expected_key == static_cast<K>(RECLAIM_KEY)) {
                       occupy_result = OccupyResult::OCCUPIED_RECLAIMED;
@@ -712,9 +710,10 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
 
 // --- Kernel Launcher ---
 
-template <typename K, typename V, typename S, typename VecV, int Strategy>
+template <typename K, typename V, typename S, typename SS, typename VecV,
+          int Strategy>
 struct Launch_DualBucket_Pipeline_Upsert {
-  using Params = Params_Upsert<K, V, S>;
+  using Params = Params_Upsert<K, V, S, SS>;
   inline static void launch_kernel(Params& params, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     constexpr uint32_t GROUP_SIZE = 32;
@@ -726,7 +725,7 @@ struct Launch_DualBucket_Pipeline_Upsert {
     uint32_t shared_mem = SMM::total_size(params.dim);
     shared_mem =
         (shared_mem + sizeof(byte16) - 1) / sizeof(byte16) * sizeof(byte16);
-    dual_bucket_pipeline_upsert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE,
+    dual_bucket_pipeline_upsert_kernel_with_io<K, V, S, SS, VecV, BLOCK_SIZE,
                                                Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
            stream>>>(params.buckets, params.buckets_size, params.buckets_num,
@@ -738,9 +737,10 @@ struct Launch_DualBucket_Pipeline_Upsert {
 
 // --- Kernel Selector ---
 
-template <typename K, typename V, typename S, int Strategy, typename ArchTag>
+template <typename K, typename V, typename S, typename SS, int Strategy,
+          typename ArchTag>
 struct KernelSelector_DualBucketUpsert {
-  using Params = Params_Upsert<K, V, S>;
+  using Params = Params_Upsert<K, V, S, SS>;
 
   static void select_kernel(Params& params, cudaStream_t& stream) {
     const uint32_t total_value_size =
@@ -749,24 +749,29 @@ struct KernelSelector_DualBucketUpsert {
     // Dual-bucket always uses pipeline kernel (optimized for bucket_size=128).
     if (total_value_size % sizeof(byte16) == 0) {
       using VecV = byte16;
-      Launch_DualBucket_Pipeline_Upsert<K, V, S, VecV, Strategy>::launch_kernel(
-          params, stream);
+      Launch_DualBucket_Pipeline_Upsert<K, V, S, SS, VecV,
+                                        Strategy>::launch_kernel(params,
+                                                                 stream);
     } else if (total_value_size % sizeof(byte8) == 0) {
       using VecV = byte8;
-      Launch_DualBucket_Pipeline_Upsert<K, V, S, VecV, Strategy>::launch_kernel(
-          params, stream);
+      Launch_DualBucket_Pipeline_Upsert<K, V, S, SS, VecV,
+                                        Strategy>::launch_kernel(params,
+                                                                 stream);
     } else if (total_value_size % sizeof(byte4) == 0) {
       using VecV = byte4;
-      Launch_DualBucket_Pipeline_Upsert<K, V, S, VecV, Strategy>::launch_kernel(
-          params, stream);
+      Launch_DualBucket_Pipeline_Upsert<K, V, S, SS, VecV,
+                                        Strategy>::launch_kernel(params,
+                                                                 stream);
     } else if (total_value_size % sizeof(byte2) == 0) {
       using VecV = byte2;
-      Launch_DualBucket_Pipeline_Upsert<K, V, S, VecV, Strategy>::launch_kernel(
-          params, stream);
+      Launch_DualBucket_Pipeline_Upsert<K, V, S, SS, VecV,
+                                        Strategy>::launch_kernel(params,
+                                                                 stream);
     } else {
       using VecV = byte;
-      Launch_DualBucket_Pipeline_Upsert<K, V, S, VecV, Strategy>::launch_kernel(
-          params, stream);
+      Launch_DualBucket_Pipeline_Upsert<K, V, S, SS, VecV,
+                                        Strategy>::launch_kernel(params,
+                                                                 stream);
     }
   }
 };

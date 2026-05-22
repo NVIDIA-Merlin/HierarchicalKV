@@ -79,9 +79,10 @@ __global__ void write_with_accum_kernel(const V* __restrict delta_or_val,
  * update with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS, int Strategy,
+          uint32_t TILE_SIZE = 4>
 __global__ void accum_or_assign_kernel_with_io(
-    const Table<K, V, S>* __restrict table, const size_t bucket_max_size,
+    const Table<K, V, S, SS>* __restrict table, const size_t bucket_max_size,
     const size_t buckets_num, const size_t dim, const K* __restrict keys,
     const V* __restrict value_or_deltas, const S* __restrict scores,
     const bool* __restrict accum_or_assigns, const S global_epoch,
@@ -111,7 +112,7 @@ __global__ void accum_or_assign_kernel_with_io(
     int src_lane = -1;
     K evicted_key;
 
-    Bucket<K, V, S>* bucket =
+    Bucket<K, V, S, SS>* bucket =
         get_key_position<K>(table->buckets, insert_key, bkt_idx, start_idx,
                             buckets_num, bucket_max_size);
 
@@ -119,12 +120,12 @@ __global__ void accum_or_assign_kernel_with_io(
     const int bucket_size = buckets_size[bkt_idx];
     do {
       if (bucket_size < bucket_max_size) {
-        occupy_result = find_and_lock_when_vacant<K, V, S, TILE_SIZE>(
+        occupy_result = find_and_lock_when_vacant<K, V, S, SS, TILE_SIZE>(
             g, bucket, insert_key, insert_score, evicted_key, start_idx,
             key_pos, src_lane, bucket_max_size);
       } else {
         start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
-        occupy_result = find_and_lock_when_full<K, V, S, TILE_SIZE,
+        occupy_result = find_and_lock_when_full<K, V, S, SS, TILE_SIZE,
                                                 ScoreFunctor::LOCK_MEM_ORDER,
                                                 ScoreFunctor::UNLOCK_MEM_ORDER>(
             g, bucket, insert_key, insert_score, evicted_key, start_idx,
@@ -173,20 +174,20 @@ __global__ void accum_or_assign_kernel_with_io(
   }
 }
 
-template <typename K, typename V, typename S, int Strategy>
+template <typename K, typename V, typename S, class SS, int Strategy>
 struct SelectAccumOrAssignKernelWithIO {
   static void execute_kernel(
       const float& load_factor, const int& block_size,
       const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
       cudaStream_t& stream, const size_t& n,
-      const Table<K, V, S>* __restrict table, const K* __restrict keys,
+      const Table<K, V, S, SS>* __restrict table, const K* __restrict keys,
       const V* __restrict value_or_deltas, const S* __restrict scores,
       const bool* __restrict accum_or_assigns, const S global_epoch) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      accum_or_assign_kernel_with_io<K, V, S, Strategy, tile_size>
+      accum_or_assign_kernel_with_io<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, bucket_max_size, buckets_num, dim, keys, value_or_deltas,
               scores, accum_or_assigns, global_epoch, N);
@@ -194,7 +195,7 @@ struct SelectAccumOrAssignKernelWithIO {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      accum_or_assign_kernel_with_io<K, V, S, Strategy, tile_size>
+      accum_or_assign_kernel_with_io<K, V, S, SS, Strategy, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, bucket_max_size, buckets_num, dim, keys, value_or_deltas,
               scores, accum_or_assigns, global_epoch, N);
@@ -203,9 +204,10 @@ struct SelectAccumOrAssignKernelWithIO {
   }
 };
 
-template <class K, class V, class S, int Strategy, uint32_t TILE_SIZE = 4>
+template <class K, class V, class S, class SS, int Strategy,
+          uint32_t TILE_SIZE = 4>
 __global__ void accum_or_assign_kernel(
-    const Table<K, V, S>* __restrict table, const size_t bucket_max_size,
+    const Table<K, V, S, SS>* __restrict table, const size_t bucket_max_size,
     const size_t buckets_num, const size_t dim, const K* __restrict keys,
     V** __restrict value_or_deltas, const S* __restrict scores,
     const bool* __restrict accum_or_assigns, int* __restrict src_offset,
@@ -234,7 +236,7 @@ __global__ void accum_or_assign_kernel(
     int src_lane = -1;
     K evicted_key;
 
-    Bucket<K, V, S>* bucket =
+    Bucket<K, V, S, SS>* bucket =
         get_key_position<K>(table->buckets, insert_key, bkt_idx, start_idx,
                             buckets_num, bucket_max_size);
 
@@ -246,12 +248,12 @@ __global__ void accum_or_assign_kernel(
     const int bucket_size = buckets_size[bkt_idx];
     do {
       if (bucket_size < bucket_max_size) {
-        occupy_result = find_and_lock_when_vacant<K, V, S, TILE_SIZE>(
+        occupy_result = find_and_lock_when_vacant<K, V, S, SS, TILE_SIZE>(
             g, bucket, insert_key, insert_score, evicted_key, start_idx,
             key_pos, src_lane, bucket_max_size);
       } else {
         start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
-        occupy_result = find_and_lock_when_full<K, V, S, TILE_SIZE,
+        occupy_result = find_and_lock_when_full<K, V, S, SS, TILE_SIZE,
                                                 ScoreFunctor::LOCK_MEM_ORDER,
                                                 ScoreFunctor::UNLOCK_MEM_ORDER>(
             g, bucket, insert_key, insert_score, evicted_key, start_idx,

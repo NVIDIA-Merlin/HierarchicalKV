@@ -22,13 +22,14 @@ namespace nv {
 namespace merlin {
 
 // Use 1 thread to deal with a KV-pair, including copying value.
-template <typename K, typename V, typename S, int Strategy>
+template <typename K, typename V, typename S, int Strategy,
+          typename SS = AtomicScore<S>>
 __global__ void tlp_lookup_ptr_kernel_with_filter(
-    Bucket<K, V, S>* __restrict__ buckets, const uint64_t buckets_num,
+    Bucket<K, V, S, SS>* __restrict__ buckets, const uint64_t buckets_num,
     uint32_t bucket_capacity, const uint32_t dim, const K* __restrict__ keys,
     V** __restrict values, S* __restrict scores, bool* __restrict founds,
     uint64_t n, bool update_score, const S global_epoch) {
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
   // Load `STRIDE` digests every time.
   constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
@@ -155,9 +156,9 @@ WRITE_BACK:
 // from lookup_kernel_with_io_pipeline_v1 (the value-copy find kernel) but skips
 // the value copy stages entirely, writing only V* pointers.  This ensures find*
 // throughput at lambda=1.0 is always >= find throughput.
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 __global__ void lookup_ptr_kernel_with_pipeline(
-    Bucket<K, V, S>* buckets, const size_t buckets_num, const int dim,
+    Bucket<K, V, S, SS>* buckets, const size_t buckets_num, const int dim,
     const K* __restrict keys, V** __restrict values, S* __restrict scores,
     bool* __restrict founds, size_t n) {
   constexpr int GROUP_SIZE = 32;
@@ -196,7 +197,7 @@ __global__ void lookup_ptr_kernel_with_pipeline(
     sm_target_digests[idx_block] = static_cast<uint32_t>(target_digest);
     int global_idx = hashed_key % (buckets_num * BUCKET_SIZE);
     int bkt_idx = global_idx / BUCKET_SIZE;
-    Bucket<K, V, S>* bucket = buckets + bkt_idx;
+    Bucket<K, V, S, SS>* bucket = buckets + bkt_idx;
     __pipeline_memcpy_async(sm_keys_ptr + idx_block, bucket->keys_addr(),
                             sizeof(K*));
     __pipeline_commit();
@@ -376,9 +377,10 @@ __global__ void lookup_ptr_kernel_with_pipeline(
 /* lookup with IO operation. This kernel is
  * usually used for the pure HBM mode for better performance.
  */
-template <class K, class V, class S, uint32_t TILE_SIZE = 4>
-__global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
-                                  Bucket<K, V, S>* buckets,
+template <class K, class V, class S, class SS = AtomicScore<S>,
+          uint32_t TILE_SIZE = 4>
+__global__ void lookup_ptr_kernel(const Table<K, V, S, SS>* __restrict table,
+                                  Bucket<K, V, S, SS>* buckets,
                                   const size_t bucket_max_size,
                                   const size_t buckets_num, const size_t dim,
                                   const K* __restrict keys,
@@ -397,7 +399,7 @@ __global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
     OccupyResult occupy_result{OccupyResult::INITIAL};
     int key_pos = -1;
     int src_lane = -1;
-    Bucket<K, V, S>* bucket{nullptr};
+    Bucket<K, V, S, SS>* bucket{nullptr};
     if (!IS_RESERVED_KEY<K>(find_key)) {
       size_t bkt_idx = 0;
       size_t start_idx = 0;
@@ -410,7 +412,7 @@ __global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
         start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
       }
 
-      occupy_result = find_without_lock<K, V, S, TILE_SIZE>(
+      occupy_result = find_without_lock<K, V, S, SS, TILE_SIZE>(
           g, bucket, find_key, start_idx, key_pos, src_lane, bucket_max_size);
     } else {
       occupy_result = OccupyResult::ILLEGAL;
@@ -424,8 +426,7 @@ __global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
       if (found_) {
         values[key_idx] = bucket->vectors + key_pos * dim;
         if (scores != nullptr) {
-          *(scores + key_idx) =
-              bucket->scores(key_pos)->load(cuda::std::memory_order_relaxed);
+          *(scores + key_idx) = score_load(bucket->scores(key_pos));
         }
       } else {
         values[key_idx] = nullptr;
@@ -434,21 +435,21 @@ __global__ void lookup_ptr_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
-template <typename K, typename V, typename S>
+template <typename K, typename V, typename S, typename SS = AtomicScore<S>>
 struct SelectLookupPtrKernel {
   static void execute_kernel(const float& load_factor, const int& block_size,
                              const size_t bucket_max_size,
                              const size_t buckets_num, const size_t dim,
                              cudaStream_t& stream, const size_t& n,
-                             const Table<K, V, S>* __restrict table,
-                             Bucket<K, V, S>* buckets, const K* __restrict keys,
-                             V** __restrict values, S* __restrict scores,
-                             bool* __restrict found) {
+                             const Table<K, V, S, SS>* __restrict table,
+                             Bucket<K, V, S, SS>* buckets,
+                             const K* __restrict keys, V** __restrict values,
+                             S* __restrict scores, bool* __restrict found) {
     if (load_factor <= 0.75) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      lookup_ptr_kernel<K, V, S, tile_size>
+      lookup_ptr_kernel<K, V, S, SS, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, found, N);
@@ -456,7 +457,7 @@ struct SelectLookupPtrKernel {
       const unsigned int tile_size = 16;
       const size_t N = n * tile_size;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-      lookup_ptr_kernel<K, V, S, tile_size>
+      lookup_ptr_kernel<K, V, S, SS, tile_size>
           <<<grid_size, block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, found, N);

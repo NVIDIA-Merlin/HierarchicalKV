@@ -35,12 +35,12 @@ namespace merlin {
  * (prefetch digests -> digest match + key load -> key verify + value prefetch
  * -> value writeback).
  */
-template <class K, class V, class S, class VecV,
+template <class K, class V, class S, class SS, class VecV,
           typename CopyScore = CopyScoreEmpty<S, K, 128>,
           typename CopyValue = CopyValueTwoGroup<VecV, 32>,
           typename FoundFunctor = FoundFunctorV1<K>, int VALUE_BUF = 56>
 __global__ void dual_bucket_pipeline_lookup_kernel_with_io(
-    Bucket<K, V, S>* buckets, const int32_t* __restrict__ buckets_size,
+    Bucket<K, V, S, SS>* buckets, const int32_t* __restrict__ buckets_size,
     const size_t buckets_num, const int dim, const K* __restrict keys,
     VecV* __restrict values, S* __restrict scores, FoundFunctor found_functor,
     size_t n) {
@@ -51,7 +51,7 @@ __global__ void dual_bucket_pipeline_lookup_kernel_with_io(
   constexpr int GROUP_NUM = BLOCK_SIZE / GROUP_SIZE;
   constexpr int DIGEST_SPAN = BUCKET_SIZE / 4;
 
-  using BUCKET = Bucket<K, V, S>;
+  using BUCKET = Bucket<K, V, S, SS>;
 
   // Shared memory declarations.
   __shared__ int sm_target_digests[BLOCK_SIZE];
@@ -608,11 +608,12 @@ __global__ void dual_bucket_pipeline_lookup_kernel_with_io(
 
 // --- Kernel Launchers ---
 
-template <typename K, typename V, typename S, typename CopyScore, typename VecV,
-          uint32_t ValueBufSize>
+template <typename K, typename V, typename S, typename SS, typename CopyScore,
+          typename VecV, uint32_t ValueBufSize>
 struct LaunchDualBucketLookupV1 {
-  template <template <typename, typename, typename> typename LookupKernelParams>
-  static void launch_kernel(LookupKernelParams<K, V, S>& params,
+  template <template <typename, typename, typename, typename>
+            typename LookupKernelParams>
+  static void launch_kernel(LookupKernelParams<K, V, S, SS>& params,
                             const int32_t* buckets_size, cudaStream_t& stream) {
     constexpr int BLOCK_SIZE = 128;
     constexpr int GROUP_SIZE = 32;
@@ -621,7 +622,7 @@ struct LaunchDualBucketLookupV1 {
     if (params.dim > (GROUP_SIZE * 2)) {
       using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
       dual_bucket_pipeline_lookup_kernel_with_io<
-          K, V, S, VecV, CopyScore, CopyValue, decltype(params.found_functor),
+          K, V, S, SS, VecV, CopyScore, CopyValue, decltype(params.found_functor),
           VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, buckets_size, params.buckets_num, params.dim,
@@ -630,7 +631,7 @@ struct LaunchDualBucketLookupV1 {
     } else if (params.dim > GROUP_SIZE) {
       using CopyValue = CopyValueTwoGroup<VecV, GROUP_SIZE>;
       dual_bucket_pipeline_lookup_kernel_with_io<
-          K, V, S, VecV, CopyScore, CopyValue, decltype(params.found_functor),
+          K, V, S, SS, VecV, CopyScore, CopyValue, decltype(params.found_functor),
           VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, buckets_size, params.buckets_num, params.dim,
@@ -639,7 +640,7 @@ struct LaunchDualBucketLookupV1 {
     } else {
       using CopyValue = CopyValueOneGroup<VecV, GROUP_SIZE>;
       dual_bucket_pipeline_lookup_kernel_with_io<
-          K, V, S, VecV, CopyScore, CopyValue, decltype(params.found_functor),
+          K, V, S, SS, VecV, CopyScore, CopyValue, decltype(params.found_functor),
           VecSize>
           <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               params.buckets, buckets_size, params.buckets_num, params.dim,
@@ -652,6 +653,7 @@ struct LaunchDualBucketLookupV1 {
 // --- Kernel Selector ---
 
 template <typename K, typename V, typename S = uint64_t,
+          typename SS = AtomicScore<S>,
           typename ArchTag = Sm80>
 struct SelectDualBucketLookupKernel {
   using ValueBufConfig = LookupValueBufConfig<ArchTag>;
@@ -660,8 +662,9 @@ struct SelectDualBucketLookupKernel {
     return ValueBufConfig::size_pipeline_v1;
   }
 
-  template <template <typename, typename, typename> typename LookupKernelParams>
-  static void select_kernel(LookupKernelParams<K, V, S>& params,
+  template <template <typename, typename, typename, typename>
+            typename LookupKernelParams>
+  static void select_kernel(LookupKernelParams<K, V, S, SS>& params,
                             const int32_t* buckets_size, cudaStream_t& stream) {
     constexpr int BUCKET_SIZE = 128;
     constexpr uint32_t buf_size_v1 = ValueBufConfig::size_pipeline_v1;
@@ -673,31 +676,31 @@ struct SelectDualBucketLookupKernel {
       using CopyScore = CopyScoreEmpty<S, K, BUCKET_SIZE>;
       if (total_value_size % sizeof(float4) == 0) {
         using VecV = float4;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else if (total_value_size % sizeof(float2) == 0) {
         using VecV = float2;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else if (total_value_size % sizeof(float) == 0) {
         using VecV = float;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else if (total_value_size % sizeof(uint16_t) == 0) {
         using VecV = uint16_t;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else {
         using VecV = uint8_t;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
@@ -706,31 +709,31 @@ struct SelectDualBucketLookupKernel {
       using CopyScore = CopyScoreByPassCache<S, K, BUCKET_SIZE>;
       if (total_value_size % sizeof(float4) == 0) {
         using VecV = float4;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else if (total_value_size % sizeof(float2) == 0) {
         using VecV = float2;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else if (total_value_size % sizeof(float) == 0) {
         using VecV = float;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else if (total_value_size % sizeof(uint16_t) == 0) {
         using VecV = uint16_t;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);
       } else {
         using VecV = uint8_t;
-        LaunchDualBucketLookupV1<K, V, S, CopyScore, VecV,
+        LaunchDualBucketLookupV1<K, V, S, SS, CopyScore, VecV,
                                  buf_size_v1>::launch_kernel(params,
                                                              buckets_size,
                                                              stream);

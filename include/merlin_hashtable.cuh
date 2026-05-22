@@ -921,8 +921,15 @@ class HashTable : public HashTableBase<K, V, S> {
   using allocator_type = BaseAllocator;
 
  private:
-  using TableCore = nv::merlin::Table<key_type, value_type, score_type>;
+  using ScoreStore = typename std::conditional<
+      (Strategy == static_cast<int>(EvictStrategy::kCustomized)),
+      score_type, AtomicScore<score_type>>::type;
+  using TableCore =
+      nv::merlin::Table<key_type, value_type, score_type, ScoreStore>;
   static constexpr unsigned int TILE_SIZE = 4;
+  static constexpr bool is_customized_ =
+      (evict_strategy ==
+       static_cast<int>(EvictStrategy::kCustomized));
 
   using DeviceMemoryPool = MemoryPool<DeviceAllocator<char>>;
   using HostMemoryPool = MemoryPool<HostAllocator<char>>;
@@ -936,16 +943,17 @@ class HashTable : public HashTableBase<K, V, S> {
                    std::is_same<key_type, uint64_t>::value),
                   "The key_type must be int64_t or uint64_t.");
 
-    static_assert((std::is_same<score_type, uint64_t>::value ||
-                   std::is_same<score_type, uint32_t>::value),
-                  "The score_type must be uint64_t or uint32_t.");
+    // Built-in strategies require uint64_t scores (for epoch/timestamp
+    // encoding). kCustomized mode allows any trivially-copyable score type.
+    static_assert(
+        evict_strategy == EvictStrategy::kCustomized ||
+            std::is_same<score_type, uint64_t>::value,
+        "Built-in eviction strategies (kLru, kLfu, kEpochLru, kEpochLfu) "
+        "require score_type to be uint64_t. Use kCustomized for other types.");
 
-    // Incompatible: Epoch-based strategies encode epoch(hi32)|score(lo32),
-    // require 64-bit score
-    static_assert(!(std::is_same<score_type, uint32_t>::value &&
-                    (evict_strategy != EvictStrategy::kCustomized)),
-                  "score_type uint32_t is only compatible with Customized; "
-                  "use uint64_t.");
+    static_assert(
+        std::is_trivially_copyable<score_type>::value,
+        "The score_type must be trivially copyable.");
   };
 
   /**
@@ -957,7 +965,8 @@ class HashTable : public HashTableBase<K, V, S> {
       CUDA_CHECK(cudaDeviceSynchronize());
 
       initialized_ = false;
-      destroy_table<key_type, value_type, score_type>(&table_, allocator_);
+      destroy_table<key_type, value_type, score_type, ScoreStore>(
+          &table_, allocator_);
       allocator_->free(MemoryType::Device, d_table_);
       dev_mem_pool_.reset();
       host_mem_pool_.reset();
@@ -1054,7 +1063,7 @@ class HashTable : public HashTableBase<K, V, S> {
     sm_cnt_ = deviceProp.multiProcessorCount;
     max_threads_per_block_ = deviceProp.maxThreadsPerBlock;
     const bool is_memory_mode = (options_.table_mode == TableMode::kMemory);
-    create_table<key_type, value_type, score_type>(
+    create_table<key_type, value_type, score_type, ScoreStore>(
         &table_, allocator_, options_.dim, options_.init_capacity,
         options_.max_capacity, options_.max_hbm_for_vectors,
         options_.max_bucket_size, options_.num_of_buckets_per_alloc,
@@ -1170,7 +1179,7 @@ class HashTable : public HashTableBase<K, V, S> {
 
       using DualSelector =
           KernelSelector_DualBucketUpsert<key_type, value_type, score_type,
-                                          evict_strategy_, ArchTag>;
+                                          ScoreStore, evict_strategy_, ArchTag>;
       typename DualSelector::Params kernelParams(
           /*load_factor=*/0.0f, table_->buckets, table_->buckets_size,
           table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
@@ -1190,7 +1199,7 @@ class HashTable : public HashTableBase<K, V, S> {
       }
 
       using Selector = KernelSelector_Upsert<key_type, value_type, score_type,
-                                             evict_strategy_, ArchTag>;
+                                             ScoreStore, evict_strategy_, ArchTag>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size),
                              static_cast<uint32_t>(options_.dim))) {
@@ -1203,7 +1212,7 @@ class HashTable : public HashTableBase<K, V, S> {
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpsertKernelWithIO<key_type, value_type,
-                                                  score_type, evict_strategy_>;
+                                                  score_type, ScoreStore, evict_strategy_>;
         Selector::execute_kernel(
             load_factor, options_.block_size, options_.max_bucket_size,
             table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -1240,7 +1249,7 @@ class HashTable : public HashTableBase<K, V, S> {
         constexpr uint32_t BLOCK_SIZE = 128;
 
         upsert_kernel_lock_key_hybrid<key_type, value_type, score_type,
-                                      BLOCK_SIZE, evict_strategy_>
+                                      ScoreStore, BLOCK_SIZE, evict_strategy_>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_size, table_->buckets_num,
                 options_.max_bucket_size, options_.dim, keys, d_dst, scores,
@@ -1251,7 +1260,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        upsert_kernel<key_type, value_type, score_type, evict_strategy_,
+        upsert_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy_,
                       TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_dst, scores,
@@ -1394,7 +1403,7 @@ class HashTable : public HashTableBase<K, V, S> {
 
     using Selector =
         KernelSelector_UpsertAndEvict<key_type, value_type, score_type,
-                                      evict_strategy, ArchTag>;
+                                      ScoreStore, evict_strategy, ArchTag>;
     if (Selector::callable(unique_key,
                            static_cast<uint32_t>(options_.max_bucket_size),
                            static_cast<uint32_t>(options_.dim))) {
@@ -1408,7 +1417,7 @@ class HashTable : public HashTableBase<K, V, S> {
     } else if (unique_key and options_.max_bucket_size % 16 == 0) {
       using KernelLauncher =
           InsertAndEvictKernelLauncher<key_type, value_type, score_type,
-                                       evict_strategy>;
+                                       ScoreStore, evict_strategy>;
       typename KernelLauncher::Params kernelParams(
           load_factor, table_->buckets, table_->buckets_size,
           table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
@@ -1442,7 +1451,7 @@ class HashTable : public HashTableBase<K, V, S> {
       CUDA_CHECK(memset64Async(tmp_evict_keys, EMPTY_KEY_CPU, n, stream));
       using Selector =
           SelectUpsertAndEvictKernelWithIO<key_type, value_type, score_type,
-                                           evict_strategy>;
+                                           ScoreStore, evict_strategy>;
       Selector::execute_kernel(
           load_factor, options_.block_size, options_.max_bucket_size,
           table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -1618,7 +1627,7 @@ class HashTable : public HashTableBase<K, V, S> {
     if (is_fast_mode()) {
       using Selector =
           SelectAccumOrAssignKernelWithIO<key_type, value_type, score_type,
-                                          evict_strategy>;
+                                          ScoreStore, evict_strategy>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -1654,7 +1663,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        accum_or_assign_kernel<key_type, value_type, score_type, evict_strategy,
+        accum_or_assign_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy,
                                TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, options_.max_bucket_size, table_->buckets_num, dim(),
             keys, dst, scores, accum_or_assigns, src_offset, founds,
@@ -1733,7 +1742,7 @@ class HashTable : public HashTableBase<K, V, S> {
 
       using Selector =
           KernelSelector_FindOrInsert<key_type, value_type, score_type,
-                                      evict_strategy, ArchTag>;
+                                      ScoreStore, evict_strategy, ArchTag>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size),
                              static_cast<uint32_t>(options_.dim))) {
@@ -1747,7 +1756,7 @@ class HashTable : public HashTableBase<K, V, S> {
       } else {
         using Selector =
             SelectFindOrInsertKernelWithIO<key_type, value_type, score_type,
-                                           evict_strategy>;
+                                           ScoreStore, evict_strategy>;
         Selector::execute_kernel(
             load_factor, options_.block_size, options_.max_bucket_size,
             table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -1784,7 +1793,7 @@ class HashTable : public HashTableBase<K, V, S> {
         constexpr uint32_t BLOCK_SIZE = 128;
 
         find_or_insert_kernel_lock_key_hybrid<key_type, value_type, score_type,
-                                              BLOCK_SIZE, evict_strategy>
+                                              ScoreStore, BLOCK_SIZE, evict_strategy>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_size, table_->buckets_num,
                 options_.max_bucket_size, options_.dim, keys,
@@ -1796,7 +1805,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        find_or_insert_kernel<key_type, value_type, score_type, evict_strategy,
+        find_or_insert_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy,
                               TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_table_value_addrs,
@@ -1919,7 +1928,7 @@ class HashTable : public HashTableBase<K, V, S> {
 
       constexpr uint32_t BLOCK_SIZE = 128U;
       find_or_insert_ptr_kernel_lock_key<key_type, value_type, score_type,
-                                         BLOCK_SIZE, evict_strategy>
+                                         ScoreStore, BLOCK_SIZE, evict_strategy>
           <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               table_->buckets, table_->buckets_size, table_->buckets_num,
               options_.max_bucket_size, options_.dim, keys, values, scores,
@@ -1937,7 +1946,7 @@ class HashTable : public HashTableBase<K, V, S> {
       CUDA_CHECK(cudaMemsetAsync(keys_ptr, 0, dev_ws_size, stream));
 
       find_or_insert_ptr_kernel_lock_key<key_type, value_type, score_type,
-                                         BLOCK_SIZE, evict_strategy>
+                                         ScoreStore, BLOCK_SIZE, evict_strategy>
           <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               table_->buckets, table_->buckets_size, table_->buckets_num,
               options_.max_bucket_size, options_.dim, keys, values, scores,
@@ -1948,7 +1957,7 @@ class HashTable : public HashTableBase<K, V, S> {
               keys, keys_ptr, n);
     } else {
       using Selector = SelectFindOrInsertPtrKernel<key_type, value_type,
-                                                   score_type, evict_strategy>;
+                                                   score_type, ScoreStore, evict_strategy>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -2000,7 +2009,7 @@ class HashTable : public HashTableBase<K, V, S> {
           "small.");
     }
     constexpr uint32_t BLOCK_SIZE = 128U;
-    lock_kernel_with_filter<key_type, value_type, score_type, evict_strategy>
+    lock_kernel_with_filter<key_type, value_type, score_type, ScoreStore, evict_strategy>
         <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
             table_->buckets, table_->buckets_num, options_.max_bucket_size,
             options_.dim, keys, locked_key_ptrs, success, scores, global_epoch_,
@@ -2092,7 +2101,7 @@ class HashTable : public HashTableBase<K, V, S> {
         load_factor = fast_load_factor(0, stream, false);
       }
       using Selector = KernelSelector_Update<key_type, value_type, score_type,
-                                             evict_strategy, ArchTag>;
+                                             ScoreStore, evict_strategy, ArchTag>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size),
                              static_cast<uint32_t>(options_.dim))) {
@@ -2104,7 +2113,7 @@ class HashTable : public HashTableBase<K, V, S> {
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpdateKernelWithIO<key_type, value_type,
-                                                  score_type, evict_strategy>;
+                                                  score_type, ScoreStore, evict_strategy>;
         Selector::execute_kernel(
             load_factor, options_.block_size, options_.max_bucket_size,
             table_->buckets_num, options_.dim, stream, n, d_table_,
@@ -2140,7 +2149,7 @@ class HashTable : public HashTableBase<K, V, S> {
         constexpr uint32_t BLOCK_SIZE = 128U;
 
         tlp_update_kernel_hybrid<key_type, value_type, score_type,
-                                 evict_strategy>
+                                 ScoreStore, evict_strategy>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_num, options_.max_bucket_size,
                 options_.dim, keys, d_dst, scores, keys_ptr, d_src_offset,
@@ -2151,7 +2160,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        update_kernel<key_type, value_type, score_type, evict_strategy,
+        update_kernel<key_type, value_type, score_type, ScoreStore, evict_strategy,
                       TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_dst, scores,
@@ -2251,7 +2260,7 @@ class HashTable : public HashTableBase<K, V, S> {
         load_factor = fast_load_factor(0, stream, false);
       }
       using Selector = KernelSelector_UpdateScore<key_type, value_type,
-                                                  score_type, evict_strategy>;
+                                                  score_type, ScoreStore, evict_strategy>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size))) {
         typename Selector::Params kernelParams(
@@ -2261,7 +2270,7 @@ class HashTable : public HashTableBase<K, V, S> {
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpdateScoreKernel<key_type, value_type,
-                                                 score_type, evict_strategy>;
+                                                 score_type, ScoreStore, evict_strategy>;
         Selector::execute_kernel(load_factor, options_.block_size,
                                  options_.max_bucket_size, table_->buckets_num,
                                  stream, n, d_table_, table_->buckets, keys,
@@ -2321,7 +2330,7 @@ class HashTable : public HashTableBase<K, V, S> {
         load_factor = fast_load_factor(0, stream, false);
       }
       using Selector = KernelSelector_UpdateValues<key_type, value_type,
-                                                   score_type, ArchTag>;
+                                                   score_type, ScoreStore, ArchTag>;
       if (Selector::callable(unique_key,
                              static_cast<uint32_t>(options_.max_bucket_size),
                              static_cast<uint32_t>(options_.dim))) {
@@ -2332,7 +2341,7 @@ class HashTable : public HashTableBase<K, V, S> {
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector =
-            SelectUpdateValuesKernelWithIO<key_type, value_type, score_type>;
+            SelectUpdateValuesKernelWithIO<key_type, value_type, score_type, ScoreStore>;
         Selector::execute_kernel(load_factor, options_.block_size,
                                  options_.max_bucket_size, table_->buckets_num,
                                  options_.dim, stream, n, d_table_,
@@ -2367,7 +2376,7 @@ class HashTable : public HashTableBase<K, V, S> {
       if (filter_condition) {
         constexpr uint32_t BLOCK_SIZE = 128U;
 
-        tlp_update_values_kernel_hybrid<key_type, value_type, score_type>
+        tlp_update_values_kernel_hybrid<key_type, value_type, score_type, ScoreStore>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_num, options_.max_bucket_size,
                 options_.dim, keys, d_dst, keys_ptr, d_src_offset, n);
@@ -2377,7 +2386,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        update_values_kernel<key_type, value_type, score_type, TILE_SIZE>
+        update_values_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_, table_->buckets, options_.max_bucket_size,
                 table_->buckets_num, options_.dim, keys, d_dst, d_src_offset,
@@ -2482,28 +2491,31 @@ class HashTable : public HashTableBase<K, V, S> {
     // MEMORY_MODE: dual-bucket find (sequential b1 then b2).
     if (is_memory_mode()) {
       using DualSelector = SelectDualBucketLookupKernel<key_type, value_type,
-                                                        score_type, ArchTag>;
-      LookupKernelParams<key_type, value_type, score_type> lookupParams(
-          table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
-          keys, values, scores, founds, n);
+                                                        score_type, ScoreStore,
+                                                        ArchTag>;
+      LookupKernelParams<key_type, value_type, score_type, ScoreStore>
+          lookupParams(
+              table_->buckets, table_->buckets_num,
+              static_cast<uint32_t>(dim()), keys, values, scores, founds, n);
       DualSelector::select_kernel(lookupParams, table_->buckets_size, stream);
       CudaCheckError();
       return;
     }
 
     if (is_fast_mode()) {
-      using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
-                                                        score_type, ArchTag>;
+      using Selector = SelectPipelineLookupKernelWithIO<
+          key_type, value_type, score_type, ScoreStore, ArchTag>;
       const uint32_t pipeline_max_size = Selector::max_value_size();
       // Pipeline lookup kernel only supports "bucket_size = 128".
       if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
-        LookupKernelParams<key_type, value_type, score_type> lookupParams(
-            table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
-            keys, values, scores, founds, n);
+        LookupKernelParams<key_type, value_type, score_type, ScoreStore>
+            lookupParams(table_->buckets, table_->buckets_num,
+                         static_cast<uint32_t>(dim()), keys, values, scores,
+                         founds, n);
         Selector::select_kernel(lookupParams, stream);
       } else {
         using Selector =
-            SelectLookupKernelWithIO<key_type, value_type, score_type>;
+            SelectLookupKernelWithIO<key_type, value_type, score_type, ScoreStore>;
         static thread_local int step_counter = 0;
         static thread_local float load_factor = 0.0;
 
@@ -2542,7 +2554,7 @@ class HashTable : public HashTableBase<K, V, S> {
       if (filter_condition) {
         constexpr uint32_t BLOCK_SIZE = 128U;
 
-        tlp_lookup_kernel_hybrid<key_type, value_type, score_type>
+        tlp_lookup_kernel_hybrid<key_type, value_type, score_type, ScoreStore>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_num, options_.max_bucket_size,
                 options_.dim, keys, src, scores, dst_offset, founds, n);
@@ -2551,7 +2563,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        lookup_kernel<key_type, value_type, score_type, TILE_SIZE>
+        lookup_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_, table_->buckets, options_.max_bucket_size,
                 table_->buckets_num, options_.dim, keys, src, scores, founds,
@@ -2619,17 +2631,17 @@ class HashTable : public HashTableBase<K, V, S> {
 
     if (is_fast_mode()) {
       using Selector = SelectPipelineLookupKernelWithIO<key_type, value_type,
-                                                        score_type, ArchTag>;
+                                                        score_type, ScoreStore, ArchTag>;
       const uint32_t pipeline_max_size = Selector::max_value_size();
       // Pipeline lookup kernel only supports "bucket_size = 128".
       if (options_.max_bucket_size == 128 && value_size <= pipeline_max_size) {
-        LookupKernelParamsV2<key_type, value_type, score_type> lookupParams(
+        LookupKernelParamsV2<key_type, value_type, score_type, ScoreStore> lookupParams(
             table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
             keys, values, scores, missed_keys, missed_indices, missed_size, n);
         Selector::select_kernel(lookupParams, stream);
       } else {
         using Selector =
-            SelectLookupKernelWithIOV2<key_type, value_type, score_type>;
+            SelectLookupKernelWithIOV2<key_type, value_type, score_type, ScoreStore>;
         static thread_local int step_counter = 0;
         static thread_local float load_factor = 0.0;
 
@@ -2669,7 +2681,7 @@ class HashTable : public HashTableBase<K, V, S> {
       if (filter_condition) {
         constexpr uint32_t BLOCK_SIZE = 128U;
 
-        tlp_lookup_kernel_hybrid<key_type, value_type, score_type>
+        tlp_lookup_kernel_hybrid<key_type, value_type, score_type, ScoreStore>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_num, options_.max_bucket_size,
                 options_.dim, keys, src, scores, dst_offset, missed_keys,
@@ -2679,7 +2691,7 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = n * TILE_SIZE;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        lookup_kernel<key_type, value_type, score_type, TILE_SIZE>
+        lookup_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(
                 d_table_, table_->buckets, options_.max_bucket_size,
                 table_->buckets_num, options_.dim, keys, src, scores,
@@ -2731,6 +2743,10 @@ class HashTable : public HashTableBase<K, V, S> {
             bool* founds,                             // (n)
             score_type* scores = nullptr,             // (n)
             cudaStream_t stream = 0, bool unique_key = true) const {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] pointer-return find() is not supported in "
+        "dual-bucket mode. Key may reside in either bucket.");
     if (n == 0) {
       return;
     }
@@ -2755,21 +2771,23 @@ class HashTable : public HashTableBase<K, V, S> {
         // which scans all 128 digests in one parallel step (32 threads/key).
         constexpr uint32_t BLOCK_SIZE = 128U;
         const size_t grid_size = (n + BLOCK_SIZE - 1) / BLOCK_SIZE;
-        lookup_ptr_kernel_with_pipeline<key_type, value_type, score_type>
+        lookup_ptr_kernel_with_pipeline<key_type, value_type, score_type,
+                                        ScoreStore>
             <<<grid_size, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_num, options_.dim, keys,
                 values, scores, founds, n);
       } else {
         constexpr uint32_t BLOCK_SIZE = 128U;
         tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
-                                          evict_strategy>
+                                          evict_strategy, ScoreStore>
             <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
                 table_->buckets, table_->buckets_num, options_.max_bucket_size,
                 options_.dim, keys, values, scores, founds, n, false,
                 global_epoch_);
       }
     } else {
-      using Selector = SelectLookupPtrKernel<key_type, value_type, score_type>;
+      using Selector =
+          SelectLookupPtrKernel<key_type, value_type, score_type, ScoreStore>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -2813,6 +2831,10 @@ class HashTable : public HashTableBase<K, V, S> {
                        bool* founds,                             // (n)
                        score_type* scores = nullptr,             // (n)
                        cudaStream_t stream = 0, bool unique_key = true) {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] pointer-return find_and_update() is not supported "
+        "in dual-bucket mode. Key may reside in either bucket.");
     if (n == 0) {
       return;
     }
@@ -2828,7 +2850,7 @@ class HashTable : public HashTableBase<K, V, S> {
     if (unique_key && options_.max_bucket_size >= MinBucketCapacityFilter) {
       constexpr uint32_t BLOCK_SIZE = 128U;
       tlp_lookup_ptr_kernel_with_filter<key_type, value_type, score_type,
-                                        evict_strategy>
+                                        evict_strategy, ScoreStore>
           <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
               table_->buckets, table_->buckets_num, options_.max_bucket_size,
               options_.dim, keys, values, scores, founds, n, true,
@@ -2872,13 +2894,13 @@ class HashTable : public HashTableBase<K, V, S> {
     if (options_.max_bucket_size == 128) {
       // Pipeline lookup kernel only supports "bucket_size = 128".
       using Selector = SelectPipelineContainsKernel<key_type, value_type,
-                                                    score_type, ArchTag>;
-      ContainsKernelParams<key_type, value_type, score_type> containsParams(
+                                                    score_type, ScoreStore, ArchTag>;
+      ContainsKernelParams<key_type, value_type, score_type, ScoreStore> containsParams(
           table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
           keys, founds, n);
       Selector::select_kernel(containsParams, stream);
     } else {
-      using Selector = SelectContainsKernel<key_type, value_type, score_type>;
+      using Selector = SelectContainsKernel<key_type, value_type, score_type, ScoreStore>;
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -2919,7 +2941,7 @@ class HashTable : public HashTableBase<K, V, S> {
       const size_t N = n * TILE_SIZE;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      remove_kernel<key_type, value_type, score_type, TILE_SIZE>
+      remove_kernel<key_type, value_type, score_type, ScoreStore, TILE_SIZE>
           <<<grid_size, block_size, 0, stream>>>(
               d_table_, keys, table_->buckets, table_->buckets_size,
               table_->bucket_max_size, table_->buckets_num, N);
@@ -2978,7 +3000,7 @@ class HashTable : public HashTableBase<K, V, S> {
       const size_t N = table_->buckets_num;
       const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-      remove_kernel<key_type, value_type, score_type, PredFunctor>
+      remove_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor>
           <<<grid_size, block_size, 0, stream>>>(
               d_table_, pattern, threshold, d_count, table_->buckets,
               table_->buckets_size, table_->bucket_max_size,
@@ -3022,16 +3044,16 @@ class HashTable : public HashTableBase<K, V, S> {
       uint64_t n = options_.max_capacity;
       auto kernel = [&] {
         if (dim >= 32 && n % 32 == 0) {
-          return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+          return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
                                   32>;
         } else if (dim >= 16 && n % 16 == 0) {
-          return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+          return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
                                   16>;
         } else if (dim >= 8 && n % 8 == 0) {
-          return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+          return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
                                   8>;
         }
-        return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
+        return remove_kernel_v2<key_type, value_type, score_type, ScoreStore, PredFunctor,
                                 1>;
       }();
       uint64_t block_size = 128UL;
@@ -3066,7 +3088,7 @@ class HashTable : public HashTableBase<K, V, S> {
     const size_t N = table_->buckets_num * table_->bucket_max_size;
     const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-    clear_kernel<key_type, value_type, score_type>
+    clear_kernel<key_type, value_type, score_type, ScoreStore>
         <<<grid_size, block_size, 0, stream>>>(d_table_, table_->buckets, N);
 
     CudaCheckError();
@@ -3120,7 +3142,7 @@ class HashTable : public HashTableBase<K, V, S> {
 
     const size_t grid_size = SAFE_GET_GRID_SIZE(n, block_size);
 
-    dump_kernel<key_type, value_type, score_type>
+    dump_kernel<key_type, value_type, score_type, ScoreStore>
         <<<grid_size, block_size, shared_size, stream>>>(
             d_table_, table_->buckets, keys, values, scores, offset, n,
             d_counter);
@@ -3223,17 +3245,17 @@ class HashTable : public HashTableBase<K, V, S> {
       using VecV = decltype(vec);
       size_t vec_dim = value_size / sizeof(VecV);
       if (vec_dim >= 32 && check_tile_size(32)) {
-        return dump_kernel_v2<key_type, value_type, score_type, VecV,
+        return dump_kernel_v2<key_type, value_type, score_type, ScoreStore, VecV,
                               PredFunctor, 32>;
       } else if (vec_dim >= 16 && check_tile_size(16)) {
-        return dump_kernel_v2<key_type, value_type, score_type, VecV,
+        return dump_kernel_v2<key_type, value_type, score_type, ScoreStore, VecV,
                               PredFunctor, 16>;
       } else if (vec_dim >= 8 && check_tile_size(8)) {
-        return dump_kernel_v2<key_type, value_type, score_type, VecV,
+        return dump_kernel_v2<key_type, value_type, score_type, ScoreStore, VecV,
                               PredFunctor, 8>;
       }
       match_fast_cond = false;
-      return dump_kernel<key_type, value_type, score_type, PredFunctor>;
+      return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor>;
     };
     auto kernel = [&] {
       if (value_size >= sizeof(float4) * 8 &&
@@ -3328,13 +3350,13 @@ class HashTable : public HashTableBase<K, V, S> {
     uint64_t dim = table_->dim;
     auto kernel = [&] {
       if (dim >= 32 && n % 32 == 0) {
-        return dump_kernel<key_type, value_type, score_type, PredFunctor, 32>;
+        return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 32>;
       } else if (dim >= 16 && n % 16 == 0) {
-        return dump_kernel<key_type, value_type, score_type, PredFunctor, 16>;
+        return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 16>;
       } else if (dim >= 8 && n % 8 == 0) {
-        return dump_kernel<key_type, value_type, score_type, PredFunctor, 8>;
+        return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 8>;
       }
-      return dump_kernel<key_type, value_type, score_type, PredFunctor, 1>;
+      return dump_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor, 1>;
     }();
     uint64_t block_size = 128UL;
     uint64_t grid_size = std::min(sm_cnt_ * max_threads_per_block_ / block_size,
@@ -3385,16 +3407,16 @@ class HashTable : public HashTableBase<K, V, S> {
     uint64_t dim = table_->dim;
     auto kernel = [&] {
       if (dim >= 32 && n % 32 == 0) {
-        return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+        return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
                                32>;
       } else if (dim >= 16 && n % 16 == 0) {
-        return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+        return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
                                16>;
       } else if (dim >= 8 && n % 8 == 0) {
-        return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+        return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
                                8>;
       }
-      return traverse_kernel<key_type, value_type, score_type, ExecutionFunc,
+      return traverse_kernel<key_type, value_type, score_type, ScoreStore, ExecutionFunc,
                              1>;
     }();
     uint64_t block_size = 128UL;
@@ -3469,7 +3491,7 @@ class HashTable : public HashTableBase<K, V, S> {
     grid_size = std::min(grid_size,
                          static_cast<size_t>(sm_cnt_ * max_threads_per_block_ /
                                              options_.block_size));
-    size_if_kernel<key_type, value_type, score_type, PredFunctor>
+    size_if_kernel<key_type, value_type, score_type, ScoreStore, PredFunctor>
         <<<grid_size, options_.block_size, 0, stream>>>(
             d_table_, table_->buckets, pattern, threshold, d_counter);
     CudaCheckError();
@@ -3522,7 +3544,8 @@ class HashTable : public HashTableBase<K, V, S> {
 
       while (capacity() < new_capacity &&
              capacity() * 2 <= options_.max_capacity) {
-        double_capacity<key_type, value_type, score_type>(&table_, allocator_);
+        double_capacity<key_type, value_type, score_type, ScoreStore>(
+            &table_, allocator_);
         CUDA_CHECK(cudaDeviceSynchronize());
         sync_table_configuration();
 
@@ -3530,7 +3553,8 @@ class HashTable : public HashTableBase<K, V, S> {
         const size_t N = TILE_SIZE * table_->buckets_num / 2;
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        rehash_kernel_for_fast_mode<key_type, value_type, score_type, TILE_SIZE>
+        rehash_kernel_for_fast_mode<key_type, value_type, score_type,
+                                    ScoreStore, TILE_SIZE>
             <<<grid_size, block_size, 0, stream>>>(d_table_, table_->buckets,
                                                    N);
       }
@@ -3656,7 +3680,7 @@ class HashTable : public HashTableBase<K, V, S> {
       // Dump the next batch to workspace, and then write it to the file.
       CUDA_CHECK(cudaMemsetAsync(d_count, 0, sizeof(size_type), stream));
 
-      dump_kernel<key_type, value_type, score_type>
+      dump_kernel<key_type, value_type, score_type, ScoreStore>
           <<<grid_size, block_size, shared_size, stream>>>(
               d_table_, table_->buckets, d_keys, d_values, d_scores, i,
               std::min(total_size - i, n), d_count);

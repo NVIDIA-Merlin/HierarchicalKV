@@ -501,6 +501,53 @@ TEST(DualBucketTest, ContainsGuard) {
   CUDA_CHECK(cudaFree(d_founds));
 }
 
+TEST(DualBucketTest, PointerFindGuard) {
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
+  Table table;
+  create_memory_mode_table(table, 128 * 128);
+
+  K* d_keys;
+  V** d_values;
+  bool* d_founds;
+  S* d_scores;
+  CUDA_CHECK(cudaMalloc(&d_keys, sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_values, sizeof(V*)));
+  CUDA_CHECK(cudaMalloc(&d_founds, sizeof(bool)));
+  CUDA_CHECK(cudaMalloc(&d_scores, sizeof(S)));
+
+  EXPECT_THROW(table.find(1, d_keys, d_values, d_founds, d_scores, 0, true),
+               std::runtime_error);
+
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_values));
+  CUDA_CHECK(cudaFree(d_founds));
+  CUDA_CHECK(cudaFree(d_scores));
+}
+
+TEST(DualBucketTest, PointerFindAndUpdateGuard) {
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
+  Table table;
+  create_memory_mode_table(table, 128 * 128);
+
+  K* d_keys;
+  V** d_values;
+  bool* d_founds;
+  S* d_scores;
+  CUDA_CHECK(cudaMalloc(&d_keys, sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_values, sizeof(V*)));
+  CUDA_CHECK(cudaMalloc(&d_founds, sizeof(bool)));
+  CUDA_CHECK(cudaMalloc(&d_scores, sizeof(S)));
+
+  EXPECT_THROW(
+      table.find_and_update(1, d_keys, d_values, d_founds, d_scores, 0, true),
+      std::runtime_error);
+
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_values));
+  CUDA_CHECK(cudaFree(d_founds));
+  CUDA_CHECK(cudaFree(d_scores));
+}
+
 TEST(DualBucketTest, ReserveGuard) {
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
   Table table;
