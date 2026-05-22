@@ -17,7 +17,9 @@ cuda_cc_library(
 cuda_cc_library(
     name = "merlin_hashtable",
     hdrs = [
+        "merlin_hashtable_base.hpp",
         "merlin_hashtable.cuh",
+        "merlin_hashtable_device.cuh",
     ],
     visibility = [
         "//visibility:public",
