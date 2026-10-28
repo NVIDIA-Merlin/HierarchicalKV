@@ -63,22 +63,34 @@ __device__ __forceinline__ void get_dual_bucket_indices(
 // Target digest for a given key (bits [56:63] of Murmur3 hash).
 template <class K>
 __device__ __forceinline__ D get_dual_bucket_digest(const K& key) {
+#ifdef DISABLE_DIGEST
+  return static_cast<D>(0x01);
+#else
   const K hashed_key = Murmur3HashDevice(key);
   return static_cast<D>(static_cast<uint64_t>(hashed_key) >> 56);
+#endif
 }
 
 // Target digest from a pre-computed hash.
 template <class K>
 __device__ __forceinline__ D
 get_dual_bucket_digest_from_hash(const K& hashed_key) {
+#ifdef DISABLE_DIGEST
+  return static_cast<D>(0x01);
+#else
   return static_cast<D>(static_cast<uint64_t>(hashed_key) >> 56);
+#endif
 }
 
 // Pack dual-bucket digest into all 4 bytes for SIMD `__vcmpeq4` comparison.
 template <class K>
 __device__ __forceinline__ VecD_Comp
 dual_bucket_digests_from_hashed(const K& hashed_key) {
+#ifdef DISABLE_DIGEST
+  D digest = static_cast<D>(0x01);
+#else
   D digest = static_cast<D>(static_cast<uint64_t>(hashed_key) >> 56);
+#endif
   return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
 }
 
@@ -86,6 +98,8 @@ dual_bucket_digests_from_hashed(const K& hashed_key) {
 // hash value (bits [56:63]).
 template <class K>
 __device__ __forceinline__ D dual_bucket_empty_digest() {
+  // NOTE: must always return the real hash-derived value so the kernel
+  // can distinguish empty slots from occupied ones under DISABLE_DIGEST.
   const K hashed_key = Murmur3HashDevice(static_cast<K>(EMPTY_KEY));
   return static_cast<D>(static_cast<uint64_t>(hashed_key) >> 56);
 }
@@ -93,6 +107,8 @@ __device__ __forceinline__ D dual_bucket_empty_digest() {
 // Pack empty-key digest into all 4 bytes for SIMD comparison.
 template <class K>
 __device__ __forceinline__ VecD_Comp dual_bucket_empty_digests() {
+  // NOTE: must always use real empty_digest (see dual_bucket_empty_digest
+  // note).
   D digest = dual_bucket_empty_digest<K>();
   return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
 }

@@ -124,7 +124,33 @@ static inline int SAFE_GET_BLOCK_SIZE(int block_size, int device = -1) {
   return std::min(prop.maxThreadsPerBlock, block_size);
 }
 
-inline uint64_t Murmur3HashHost(const uint64_t& key) {
+#define HKV_HASH_MURMUR3 0
+#define HKV_HASH_SPLITMIX64 1
+#define HKV_HASH_XXHASH_AVALANCHE 2
+#define HKV_HASH_WYHASH_FINAL 3
+#define HKV_HASH_IDENTITY 4
+
+#ifndef HKV_HASH_VARIANT
+#define HKV_HASH_VARIANT HKV_HASH_MURMUR3
+#endif
+
+inline const char* HkvHashVariantNameHost() {
+#if HKV_HASH_VARIANT == HKV_HASH_MURMUR3
+  return "murmur3";
+#elif HKV_HASH_VARIANT == HKV_HASH_SPLITMIX64
+  return "splitmix64";
+#elif HKV_HASH_VARIANT == HKV_HASH_XXHASH_AVALANCHE
+  return "xxhash_avalanche";
+#elif HKV_HASH_VARIANT == HKV_HASH_WYHASH_FINAL
+  return "wyhash_final";
+#elif HKV_HASH_VARIANT == HKV_HASH_IDENTITY
+  return "identity";
+#else
+  return "unknown";
+#endif
+}
+
+inline uint64_t HkvMurmur3Mix64Host(uint64_t key) {
   uint64_t k = key;
   k ^= k >> 33;
   k *= UINT64_C(0xff51afd7ed558ccd);
@@ -132,29 +158,118 @@ inline uint64_t Murmur3HashHost(const uint64_t& key) {
   k *= UINT64_C(0xc4ceb9fe1a85ec53);
   k ^= k >> 33;
   return k;
+}
+
+inline uint64_t HkvSplitmix64Host(uint64_t key) {
+  uint64_t z = key + UINT64_C(0x9e3779b97f4a7c15);
+  z = (z ^ (z >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+  z = (z ^ (z >> 27)) * UINT64_C(0x94d049bb133111eb);
+  return z ^ (z >> 31);
+}
+
+inline uint64_t HkvXxhashAvalancheHost(uint64_t key) {
+  uint64_t h = key;
+  h ^= h >> 33;
+  h *= UINT64_C(0xc2b2ae3d27d4eb4f);
+  h ^= h >> 29;
+  h *= UINT64_C(0x165667b19e3779f9);
+  h ^= h >> 32;
+  return h;
+}
+
+inline uint64_t HkvWyhashFinalHost(uint64_t key) {
+  uint64_t h = key;
+  h ^= h >> 32;
+  h *= UINT64_C(0xd6e8feb86659fd93);
+  h ^= h >> 32;
+  h *= UINT64_C(0xd6e8feb86659fd93);
+  h ^= h >> 32;
+  return h;
+}
+
+inline uint64_t HkvHash64Host(uint64_t key) {
+#if HKV_HASH_VARIANT == HKV_HASH_MURMUR3
+  return HkvMurmur3Mix64Host(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_SPLITMIX64
+  return HkvSplitmix64Host(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_XXHASH_AVALANCHE
+  return HkvXxhashAvalancheHost(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_WYHASH_FINAL
+  return HkvWyhashFinalHost(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_IDENTITY
+  return key;
+#else
+#error "Unsupported HKV_HASH_VARIANT"
+#endif
+}
+
+inline uint64_t Murmur3HashHost(const uint64_t& key) {
+  return HkvHash64Host(key);
+}
+
+__inline__ __device__ uint64_t HkvMurmur3Mix64Device(uint64_t key) {
+  uint64_t k = key;
+  k ^= k >> 33;
+  k *= UINT64_C(0xff51afd7ed558ccd);
+  k ^= k >> 33;
+  k *= UINT64_C(0xc4ceb9fe1a85ec53);
+  k ^= k >> 33;
+  return k;
+}
+
+__inline__ __device__ uint64_t HkvSplitmix64Device(uint64_t key) {
+  uint64_t z = key + UINT64_C(0x9e3779b97f4a7c15);
+  z = (z ^ (z >> 30)) * UINT64_C(0xbf58476d1ce4e5b9);
+  z = (z ^ (z >> 27)) * UINT64_C(0x94d049bb133111eb);
+  return z ^ (z >> 31);
+}
+
+__inline__ __device__ uint64_t HkvXxhashAvalancheDevice(uint64_t key) {
+  uint64_t h = key;
+  h ^= h >> 33;
+  h *= UINT64_C(0xc2b2ae3d27d4eb4f);
+  h ^= h >> 29;
+  h *= UINT64_C(0x165667b19e3779f9);
+  h ^= h >> 32;
+  return h;
+}
+
+__inline__ __device__ uint64_t HkvWyhashFinalDevice(uint64_t key) {
+  uint64_t h = key;
+  h ^= h >> 32;
+  h *= UINT64_C(0xd6e8feb86659fd93);
+  h ^= h >> 32;
+  h *= UINT64_C(0xd6e8feb86659fd93);
+  h ^= h >> 32;
+  return h;
+}
+
+__inline__ __device__ uint64_t HkvHash64Device(uint64_t key) {
+#if HKV_HASH_VARIANT == HKV_HASH_MURMUR3
+  return HkvMurmur3Mix64Device(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_SPLITMIX64
+  return HkvSplitmix64Device(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_XXHASH_AVALANCHE
+  return HkvXxhashAvalancheDevice(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_WYHASH_FINAL
+  return HkvWyhashFinalDevice(key);
+#elif HKV_HASH_VARIANT == HKV_HASH_IDENTITY
+  return key;
+#else
+#error "Unsupported HKV_HASH_VARIANT"
+#endif
 }
 
 __inline__ __device__ uint64_t Murmur3HashDevice(uint64_t const& key) {
-  uint64_t k = key;
-  k ^= k >> 33;
-  k *= UINT64_C(0xff51afd7ed558ccd);
-  k ^= k >> 33;
-  k *= UINT64_C(0xc4ceb9fe1a85ec53);
-  k ^= k >> 33;
-  return k;
+  return HkvHash64Device(key);
 }
 
 __inline__ __device__ int64_t Murmur3HashDevice(int64_t const& key) {
-  uint64_t k = uint64_t(key);
-  k ^= k >> 33;
-  k *= UINT64_C(0xff51afd7ed558ccd);
-  k ^= k >> 33;
-  k *= UINT64_C(0xc4ceb9fe1a85ec53);
-  k ^= k >> 33;
-  return int64_t(k);
+  return int64_t(HkvHash64Device(uint64_t(key)));
 }
 
 __inline__ __device__ uint32_t Murmur3HashDevice(uint32_t const& key) {
+#if HKV_HASH_VARIANT == HKV_HASH_MURMUR3
   uint32_t k = key;
   k ^= k >> 16;
   k *= UINT32_C(0x85ebca6b);
@@ -163,17 +278,13 @@ __inline__ __device__ uint32_t Murmur3HashDevice(uint32_t const& key) {
   k ^= k >> 16;
 
   return k;
+#else
+  return static_cast<uint32_t>(HkvHash64Device(static_cast<uint64_t>(key)));
+#endif
 }
 
 __inline__ __device__ int32_t Murmur3HashDevice(int32_t const& key) {
-  uint32_t k = uint32_t(key);
-  k ^= k >> 16;
-  k *= UINT32_C(0x85ebca6b);
-  k ^= k >> 13;
-  k *= UINT32_C(0xc2b2ae35);
-  k ^= k >> 16;
-
-  return int32_t(k);
+  return int32_t(Murmur3HashDevice(uint32_t(key)));
 }
 
 class CudaDeviceRestorer {

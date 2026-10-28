@@ -1,5 +1,9 @@
 # [NVIDIA HierarchicalKV(Beta)](https://github.com/NVIDIA-Merlin/HierarchicalKV)
 
+Optional source-level benchmarks and the real FBGEMM TBE service adapter are
+documented in [benchmark/README.md](benchmark/README.md). These targets do
+not change the default library or test build.
+
 [![Version](https://img.shields.io/github/v/release/NVIDIA-Merlin/HierarchicalKV?color=orange&include_prereleases)](https://github.com/NVIDIA-Merlin/HierarchicalKV/releases)
 [![GitHub License](https://img.shields.io/github/license/NVIDIA-Merlin/HierarchicalKV)](https://github.com/NVIDIA-Merlin/HierarchicalKV/blob/master/LICENSE)
 [![Documentation](https://img.shields.io/badge/documentation-blue.svg)](https://nvidia-merlin.github.io/HierarchicalKV/master/README.html)
@@ -35,7 +39,7 @@ HierarchicalKV alleviates these challenges and helps the machine learning engine
 - Buckets are locally ordered
 - Store keys and values separately
 - Store all the keys in HBM
-- Build-in and customizable eviction strategy
+- Built-in and customizable eviction strategy
 
 HierarchicalKV makes NVIDIA GPUs more suitable for training large and super-large models of ***search, recommendations, and advertising***.
 The library simplifies the common challenges to building, evaluating, and serving sophisticated recommenders models.

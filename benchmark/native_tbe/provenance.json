@@ -1,0 +1,198 @@
+{
+  "status": "SOURCE_MIGRATED_CPU_ONLY_RUNTIME_NOT_RUN",
+  "hkv_upstream_base": "9fa33c66f63c23819428b795254597d615feaa7f",
+  "legacy_recsys_repo": "https://github.com/NVIDIA/recsys-examples.git",
+  "legacy_recsys_base": "250aaa8bbbda2b6dd7995ef7f363754e4571066e",
+  "legacy_recsys_source132_record": "e30dd8a7df113ee127833071f207f8f4960e9e804ed17153a51a44e04dde6fd7",
+  "measured_hkv_source": "f52f313c5ffac5081924019d27d3ef5f2a890707",
+  "measured_native_elf_sha256": "dc3b4000dac266d0b559b65b9a3a500dfabcb3e9681cf25f06915f4670578a63",
+  "measured_native_elf_bundled": false,
+  "measured_result_reused_for_new_source": false,
+  "python": "3.10",
+  "torch": "2.7.0+cu126",
+  "fbgemm_gpu": "1.2.0+cu126",
+  "fbgemm_source_cpp_wheel_equivalence_proved": false,
+  "overlay_files": [
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/README.md",
+      "sha256": "d7ba9683d34aea8e3f950c740480c3940d8d79f4eabd7f86515670cd03c539de",
+      "bytes": 534
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/config.py",
+      "sha256": "f1401f667ffe928527a545e2e21181685863fa6b98be1a1e48a812aee1c76e6c",
+      "bytes": 9667
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/criteo_dataloader.py",
+      "sha256": "dc34c9c261befe32e91720f699e72c4802a59c7c50868db418db89bb82104fc0",
+      "bytes": 11607
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/dlrm_model.py",
+      "sha256": "b342d7927ca1f37bd11d293241a87c05dd2dbfa9783d55365128e8b6a5e61787",
+      "bytes": 3246
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/embedding_config.py",
+      "sha256": "8443ce24481a69b31074553ebec3934e9e479346a18aecf91740df058a69362b",
+      "bytes": 33467
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/native_tbe_comparison.py",
+      "sha256": "dcfa420dcad80aba850a17bcf9dcb31c7af369a32dc9ae5b04ed241b80aea717",
+      "bytes": 180810
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/serving_replay.py",
+      "sha256": "1abfe20c6b3d3c82ac2c6fe415e3c047918c12219622086f46044bb73a336a13",
+      "bytes": 23120
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/test_contract.py",
+      "sha256": "403297d1b1d1a5f355949266f3df668ed7aa2da168b19d0d7e08b256aa7fe36d",
+      "bytes": 33676
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_comparison.py",
+      "sha256": "e6332cedeb593aa4c81d20cd836d2881f123f49e37350dbbf4020e31a7e247c9",
+      "bytes": 20220
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_fairness.py",
+      "sha256": "fa5b58ac3801706eb26cebe24159141615697886ba8fec07f932610cf4123f5d",
+      "bytes": 66770
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/train.py",
+      "sha256": "aade38cae9326aa78742c7b9070a685e07e2c10d75da953585061f3385ac194e",
+      "bytes": 14897
+    },
+    {
+      "path": "corelib/dynamicemb/benchmark/criteo_experiment/training_state_gate.py",
+      "sha256": "90343b0892c1b8c84147142c8c1b50eb6a24ee6f1bf63967dbaf41beda1765ca",
+      "bytes": 11373
+    },
+    {
+      "path": "corelib/dynamicemb/dynamicemb/batched_dynamicemb_function.py",
+      "sha256": "33392ce5b8ea17a84e9556673f049009312cdcb2e748957be116cacf8e2754f1",
+      "bytes": 19152
+    },
+    {
+      "path": "corelib/dynamicemb/dynamicemb/batched_dynamicemb_tables.py",
+      "sha256": "0fde6c71a03b3a23870556c6477e7ed6c4bbba191611281822cfd98fea923f59",
+      "bytes": 56204
+    },
+    {
+      "path": "corelib/dynamicemb/dynamicemb/key_value_table.py",
+      "sha256": "e31ed6b49c1e72f0cab241a116a5f1250f32010c39158f11e119f8f1208bbf5e",
+      "bytes": 38326
+    },
+    {
+      "path": "corelib/dynamicemb/setup.py",
+      "sha256": "1214895d74a6b9023590131ddb1dfb03565ea3584ce81d53821cb58a8ccaba9f",
+      "bytes": 6965
+    },
+    {
+      "path": "corelib/dynamicemb/src/accounting_allocator.cuh",
+      "sha256": "986e5ca855eb04edc934307dfb20024433c8b442c8b2972c963622f350240780",
+      "bytes": 18528
+    },
+    {
+      "path": "corelib/dynamicemb/src/allocation_stats.h",
+      "sha256": "40b19afbbaae85f34ceee59976ae22bc03fe776d3ce95396d7cc792af2858ed7",
+      "bytes": 1598
+    },
+    {
+      "path": "corelib/dynamicemb/src/dynamic_emb_op.cu",
+      "sha256": "7139d59e0f76ee81f6456ea9ad7a8594829467a537641d373e0a7b2388dd915a",
+      "bytes": 59659
+    },
+    {
+      "path": "corelib/dynamicemb/src/dynamic_variable_base.cu",
+      "sha256": "73f470d53e951506f6072c52ba5192f8c9798c7e41631f0b2944d25dc9c17fca",
+      "bytes": 3243
+    },
+    {
+      "path": "corelib/dynamicemb/src/dynamic_variable_base.h",
+      "sha256": "f6f7db51cb8a39b27120852b19344bc421458b378f37ba0083aeabead7d6fa1f",
+      "bytes": 9276
+    },
+    {
+      "path": "corelib/dynamicemb/src/hkv_variable.cuh",
+      "sha256": "e032d1fd023edee65a224e44cefa339ad5a9c2d35f25e2f07cdd30280c18c938",
+      "bytes": 32112
+    },
+    {
+      "path": "corelib/dynamicemb/src/hkv_variable.h",
+      "sha256": "40bc1d8e5d63f9e934e4a705f785a5e9f6fb57c17c444280d3ebbad81076621c",
+      "bytes": 9031
+    },
+    {
+      "path": "corelib/dynamicemb/src/unique_op.cu",
+      "sha256": "d0514b0578b4e21e5176d2a81862aada668a22d745e2f8b1613974e76d45cc22",
+      "bytes": 5264
+    },
+    {
+      "path": "corelib/dynamicemb/src/unique_op.h",
+      "sha256": "6cef0c902249728eee2ec74d4af5c010e3ac620c3ac5b408390acbf557d0d23e",
+      "bytes": 7363
+    },
+    {
+      "path": "corelib/dynamicemb/test/unit_tests/memory_accounting_test.cu",
+      "sha256": "fdd5e60ebe1bedab15c24330af985305d83c9399911e74172384635958356771",
+      "bytes": 16330
+    }
+  ],
+  "full_runtime_dependency_gate": "NOT_RUN until exact external dependency/source/ELF identity and CUDA availability are verified",
+  "legacy_source132_reconstruction": {
+    "same_rows": 122,
+    "intentional_drift_rows": 10,
+    "missing_rows": 0,
+    "drift_paths": [
+      "corelib/dynamicemb/benchmark/criteo_experiment/README.md",
+      "corelib/dynamicemb/benchmark/criteo_experiment/config.py",
+      "corelib/dynamicemb/benchmark/criteo_experiment/embedding_config.py",
+      "corelib/dynamicemb/benchmark/criteo_experiment/native_tbe_comparison.py",
+      "corelib/dynamicemb/benchmark/criteo_experiment/serving_replay.py",
+      "corelib/dynamicemb/benchmark/criteo_experiment/train.py",
+      "corelib/dynamicemb/dynamicemb/batched_dynamicemb_function.py",
+      "corelib/dynamicemb/dynamicemb/batched_dynamicemb_tables.py",
+      "corelib/dynamicemb/dynamicemb/key_value_table.py",
+      "corelib/dynamicemb/setup.py"
+    ],
+    "meaning": "The source132 reconstruction has 122 exact rows and ten intentional wrapper/runtime/documentation/build-safety drifts; the setup.py drift removes the unconditional dynamicemb pip uninstall, while the fixed-comparison guard remains within the already-different native driver row. Neither the new wrapper nor the upstream core is the historical measured ELF."
+  },
+  "hkv_core_final_tar_sha256": "8094990695d9bb04ed36f16741d5ad086c7a6299f8edbc4f529dc62781ef0e43",
+  "hkv_core_final_manifest_sha256": "f61790211ba3d18c260ef405e933181d83dd5128f64240bebf12f70c9ce8a9ad",
+  "hkv_benchmark_only_extension_patch_sha256": "7f6cc7ec69720516ca94d8fb3a024dec35fd6460d697d25f38a3975d953fc179",
+  "benchmark_extension_measured_as_prior_f52_sdk": false,
+  "overlay_distribution": "third_party/recsys-examples/legacy-250aaa.patch",
+  "overlay_patch_sha256": "14f23aa918539f879b375ae0bd32daaafec8fe8ef9a60d1018e52fd1f54d0f1a",
+  "overlay_apply_base": "250aaa8bbbda2b6dd7995ef7f363754e4571066e",
+  "overlay_apply_exact_files": 27,
+  "overlay_apply_flags": "--unidiff-zero",
+  "setup_safety": {
+    "unconditional_dynamicemb_pip_uninstall_removed": true,
+    "hkv_source_override_required_to_skip_submodule_update": "DYNAMICEMB_HKV_SOURCE",
+    "new_extension_build_and_import": "NOT_RUN"
+  },
+  "comparison_control_delta": {
+    "explicit_tbe_uvm_prefetch_removed": true,
+    "nonzero_prefetch_environment_rejected_before_io": true,
+    "prior_results_reused": false,
+    "native_fbgemm_source_modified": false
+  },
+  "cpu_fixture_update": {
+    "scope": "Two existing CPU fixture modules updated to current required layout, roster, peak-reservation and diagnostic flush/NVTX fields; runtime driver unchanged",
+    "cases": 286,
+    "CPU_validation_only": true,
+    "native_fbgemm_source_modified": false,
+    "runtime_ELF_changed": false
+  }
+}

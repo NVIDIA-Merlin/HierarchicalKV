@@ -117,12 +117,16 @@ __forceinline__ __device__ int diff_buf(int i) { return (i & 0x01) ^ 1; }
 
 template <typename K>
 __forceinline__ __device__ D empty_digest() {
+  // NOTE: empty_digest must always return the real hash-derived value,
+  // even under DISABLE_DIGEST, so the kernel can distinguish empty
+  // slots from occupied ones.
   const K hashed_key = Murmur3HashDevice(static_cast<K>(EMPTY_KEY));
   return static_cast<D>(hashed_key >> 32);
 }
 
 template <typename K>
 __forceinline__ __device__ D reclaim_digest() {
+  // NOTE: reclaim_digest must always return the real value (see empty_digest).
   const K hashed_key = Murmur3HashDevice(static_cast<K>(RECLAIM_KEY));
   return static_cast<D>(hashed_key >> 32);
 }
@@ -130,14 +134,22 @@ __forceinline__ __device__ D reclaim_digest() {
 // Target digest for a given key (bits [32:39] of Murmur3 hash).
 template <typename K>
 __forceinline__ __device__ D get_digest(const K& key) {
+#ifdef DISABLE_DIGEST
+  return static_cast<D>(0x01);
+#else
   const K hashed_key = Murmur3HashDevice(key);
   return static_cast<D>(hashed_key >> 32);
+#endif
 }
 
 // Pack digest into all 4 bytes for SIMD `__vcmpeq4` comparison.
 template <typename K>
 __forceinline__ __device__ VecD_Comp digests_from_hashed(const K& hashed_key) {
+#ifdef DISABLE_DIGEST
+  D digest = static_cast<D>(0x01);
+#else
   D digest = static_cast<D>(hashed_key >> 32);
+#endif
   // Set every byte in VecD_Comp to `digest`.
   return static_cast<VecD_Comp>(__byte_perm(digest, digest, 0x0000));
 }

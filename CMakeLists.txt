@@ -26,6 +26,7 @@ set(CMAKE_CUDA_STANDARD 17)
 list(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake/modules)
 
 option(CLANGFORMAT "Clangformat code files before compiling" OFF)
+option(HKV_BUILD_REPRO_BENCHMARKS "Build optional HKV research benchmarks" OFF)
 if(CLANGFORMAT)
   include(ClangFormat)
   file(GLOB_RECURSE clangformat_includes
@@ -202,3 +203,7 @@ TARGET_LINK_LIBRARIES(correctness_stress_test gtest_main)
 add_executable(dual_bucket_benchmark benchmark/dual_bucket_benchmark.cc.cu)
 target_compile_features(dual_bucket_benchmark PUBLIC cxx_std_14)
 set_target_properties(dual_bucket_benchmark PROPERTIES  CUDA_ARCHITECTURES OFF)
+
+if(HKV_BUILD_REPRO_BENCHMARKS)
+  add_subdirectory(benchmark)
+endif()

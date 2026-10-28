@@ -13,5 +13,5 @@ repos:
     hooks:
     -   id: codespell
         args:
-        - --skip=.git,build,bazel-*,third_party
-        - --ignore-words-list=ans,nd,inout
+        - --skip=.git,build,bazel-*,third_party,third_party/*
+        - --ignore-words-list=ans,nd,inout,tbe
