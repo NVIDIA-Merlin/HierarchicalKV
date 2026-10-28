@@ -1,5 +1,5 @@
 {
-  "status": "SOURCE_MIGRATED_CPU_ONLY_RUNTIME_NOT_RUN",
+  "status": "SOURCE_MIGRATED_SOURCE_BOUND_SDK_FIVE_PAIR_DIAGNOSTIC",
   "hkv_upstream_base": "9fa33c66f63c23819428b795254597d615feaa7f",
   "legacy_recsys_repo": "https://github.com/NVIDIA/recsys-examples.git",
   "legacy_recsys_base": "250aaa8bbbda2b6dd7995ef7f363754e4571066e",
@@ -149,7 +149,7 @@
       "bytes": 16330
     }
   ],
-  "full_runtime_dependency_gate": "NOT_RUN until exact external dependency/source/ELF identity and CUDA availability are verified",
+  "full_runtime_dependency_gate": "PASS for recorded new-SDK configured-native five-pair only; legacy f52-specific external checker remains historical",
   "legacy_source132_reconstruction": {
     "same_rows": 122,
     "intentional_drift_rows": 10,
@@ -180,7 +180,7 @@
   "setup_safety": {
     "unconditional_dynamicemb_pip_uninstall_removed": true,
     "hkv_source_override_required_to_skip_submodule_update": "DYNAMICEMB_HKV_SOURCE",
-    "new_extension_build_and_import": "NOT_RUN"
+    "new_extension_build_and_import": "SOURCE_BOUND_CPU_BUILD_IMPORT_PASS: b928115e0b645e3b721a051ca60953ff98f4c1721301d8a0cfef12630ffc1bc2"
   },
   "comparison_control_delta": {
     "explicit_tbe_uvm_prefetch_removed": true,
@@ -194,5 +194,35 @@
     "CPU_validation_only": true,
     "native_fbgemm_source_modified": false,
     "runtime_ELF_changed": false
-  }
+  },
+  "new_sdk_five_pair": {
+    "recipe": "benchmark/native_tbe/shared-cache-five-pair.json",
+    "timings": "benchmark/native_tbe/timings-new-sdk-five-pair.csv",
+    "hkv_source_commit": "cc797335de5cef92be6f604f07c92e2b38133e45",
+    "hkv_core_parent": "d1cb1a2c",
+    "recsys_overlay_sha256": "14f23aa918539f879b375ae0bd32daaafec8fe8ef9a60d1018e52fd1f54d0f1a",
+    "native_elf_sha256": "b928115e0b645e3b721a051ca60953ff98f4c1721301d8a0cfef12630ffc1bc2",
+    "native_build_id": "c97ba0b318ab42c249b8ee5d400a9e4c209ab744",
+    "driver_sha256": "dcfa420dcad80aba850a17bcf9dcb31c7af369a32dc9ae5b04ed241b80aea717",
+    "summary_sha256": "d7486eba760c99fdf9ac3aaa0e08177e6eaef723d4a6506824bb2c7f2bac06e6",
+    "independent_pairs": 5,
+    "ten_fresh_processes": true,
+    "all_native_oracles_pass": true,
+    "tbe_over_hkv_wall_geomean": 1.9563286025344122,
+    "paired_bootstrap_ci95": [
+      1.610912890190617,
+      2.801606879987176
+    ],
+    "status": "DIAGNOSTIC_ONLY",
+    "formal_v2": false,
+    "strict_four_gib_qualified": false,
+    "policy_equivalence_admitted": false,
+    "tbe_modified": false
+  },
+  "historical_f52_fields_only": [
+    "measured_hkv_source",
+    "measured_native_elf_sha256",
+    "measured_native_elf_bundled",
+    "measured_result_reused_for_new_source"
+  ]
 }

@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "scope": "fixed-entry configured-native full cache service; no strict 4-GiB or policy-equivalence qualification",
+  "source": {
+    "hkv_branch_commit": "cc797335de5cef92be6f604f07c92e2b38133e45",
+    "hkv_core_parent": "d1cb1a2c",
+    "recsys_base": "250aaa8bbbda2b6dd7995ef7f363754e4571066e",
+    "recsys_overlay": "third_party/recsys-examples/legacy-250aaa.patch",
+    "recsys_overlay_sha256": "14f23aa918539f879b375ae0bd32daaafec8fe8ef9a60d1018e52fd1f54d0f1a",
+    "native_elf_sha256": "b928115e0b645e3b721a051ca60953ff98f4c1721301d8a0cfef12630ffc1bc2",
+    "native_build_id": "c97ba0b318ab42c249b8ee5d400a9e4c209ab744",
+    "python_driver_sha256": "dcfa420dcad80aba850a17bcf9dcb31c7af369a32dc9ae5b04ed241b80aea717",
+    "torch": "2.7.0+cu126",
+    "fbgemm_gpu": "1.2.0+cu126",
+    "tbe_native_modified": false,
+    "cuda_runtime": "12.6",
+    "gpu_driver_recorded": "615.71.10"
+  },
+  "inputs": {
+    "contract": "benchmark/native_tbe/input-contract-legacy.json",
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "prepare_argv_template": [
+      "python",
+      "-m",
+      "benchmark.criteo_experiment.native_tbe_comparison",
+      "prepare",
+      "--output",
+      "{input_dir}/seed{seed}.pt",
+      "--seed",
+      "{seed}",
+      "--distribution",
+      "uniform",
+      "--target-miss-percent",
+      "25",
+      "--occupancy",
+      "full-overfill",
+      "--eviction",
+      "lru",
+      "--cache-rows",
+      "65536",
+      "--vocab-rows",
+      "262144",
+      "--batch-size",
+      "8192",
+      "--batches",
+      "1"
+    ],
+    "require_digest_match_before_run": true,
+    "input_payload_bundled": false,
+    "logical_tables": 26,
+    "dim": 32
+  },
+  "execution": {
+    "fresh_processes": 10,
+    "order": [
+      {
+        "seed": 42,
+        "backends": [
+          "dynamicemb",
+          "torchrec"
+        ]
+      },
+      {
+        "seed": 43,
+        "backends": [
+          "torchrec",
+          "dynamicemb"
+        ]
+      },
+      {
+        "seed": 44,
+        "backends": [
+          "dynamicemb",
+          "torchrec"
+        ]
+      },
+      {
+        "seed": 45,
+        "backends": [
+          "torchrec",
+          "dynamicemb"
+        ]
+      },
+      {
+        "seed": 46,
+        "backends": [
+          "dynamicemb",
+          "torchrec"
+        ]
+      }
+    ],
+    "common_run_argv": [
+      "python",
+      "-m",
+      "benchmark.criteo_experiment.native_tbe_comparison",
+      "run",
+      "--input",
+      "{input_dir}/seed{seed}.pt",
+      "--backend",
+      "{backend}",
+      "--state",
+      "warm",
+      "--cuda-event-service",
+      "--cache-rows",
+      "65536",
+      "--output",
+      "{result_dir}/{seed}-{backend}-warm.jsonl"
+    ],
+    "dynamicemb_env": {
+      "DYNAMICEMB_ALLOCATION_IDENTITIES": "0",
+      "DYNAMICEMB_EXPERIMENTAL_NATIVE_LRU_HIT_UPDATE": "1",
+      "DYNAMICEMB_EXPERIMENTAL_BACKING_HBM_FULL": "1",
+      "TBE_EXPERIMENTAL_UVM_PREFETCH": "0"
+    },
+    "dynamicemb_extra_argv": [
+      "--hkv-layout",
+      "shared",
+      "--diagnostic-flush-repeats",
+      "1"
+    ],
+    "torchrec_env": {
+      "DYNAMICEMB_ALLOCATION_IDENTITIES": "0",
+      "TBE_EXPERIMENTAL_UVM_PREFETCH": "0"
+    },
+    "torchrec_extra_argv": [],
+    "cache_rows_effective_total": 1703936,
+    "hkv_bucket_capacity": 128,
+    "tbe_associativity": 32,
+    "full_outputs_miss_dirty_backing_flush": true,
+    "flush_count_each": 1,
+    "one_gpu_fixed_source_and_inputs": true,
+    "gpu_model": "NVIDIA H100 NVL",
+    "same_gpu_uuid_observed_in_all_ten": true,
+    "caps_seconds": {
+      "actor": 4800,
+      "harvest_reserve": 360,
+      "preflight": 180,
+      "native_per_process": 3000,
+      "checker_or_summary": 60
+    }
+  },
+  "validation": {
+    "actual_reproducer": "driver internal exact preflights/full output/dirty26/full backing/flush and summarize --raw all ten",
+    "external_validate_native_result_py": "historical f52-specific; not used to admit new SDK results",
+    "summary_argv_template": [
+      "python",
+      "-m",
+      "benchmark.criteo_experiment.native_tbe_comparison",
+      "summarize",
+      "--raw",
+      "{all_ten_result_paths_in_execution_order}",
+      "--output",
+      "{result_dir}/warm-five-pair-summary.json"
+    ],
+    "interval": "paired-seed percentile bootstrap of log ratios",
+    "bootstrap_resamples": 10000,
+    "bootstrap_rng_seed": 20261020,
+    "failure_retention": "all planned cells; no seed replacement",
+    "recorded_per_cell_validation": "Source-rebound per-arm and paired checks retained scientific assertions; the checked-in legacy f52 validator was not applied unchanged."
+  },
+  "published_measurement": {
+    "file": "benchmark/native_tbe/timings-new-sdk-five-pair.csv",
+    "summary_sha256": "d7486eba760c99fdf9ac3aaa0e08177e6eaef723d4a6506824bb2c7f2bac06e6",
+    "tbe_over_hkv_wall_geomean": 1.9563286025344122,
+    "ci95": [
+      1.610912890190617,
+      2.801606879987176
+    ],
+    "independent_pairs": 5,
+    "status": "DIAGNOSTIC_ONLY; configured-native service result, not formal V2 or 4-GiB qualification"
+  }
+}

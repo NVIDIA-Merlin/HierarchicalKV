@@ -1,0 +1,6 @@
+seed,first_backend,second_backend,hkv_host_wall_ms,tbe_host_wall_ms,tbe_over_hkv
+42,dynamicemb,torchrec,19.943761,32.682895,1.638752841
+43,torchrec,dynamicemb,19.613817,32.672957,1.665813287
+44,dynamicemb,torchrec,8.416990,33.407073,3.969004719
+45,torchrec,dynamicemb,19.583438,32.988807,1.684525823
+46,dynamicemb,torchrec,20.976017,32.933128,1.570037246
