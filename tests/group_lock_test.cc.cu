@@ -15,7 +15,9 @@
  */
 
 #include <gtest/gtest.h>
+#include <atomic>
 #include <chrono>
+#include <exception>
 #include <system_error>
 #include <thread>
 #include <vector>
@@ -23,6 +25,138 @@
 
 using namespace nv::merlin;
 using namespace std::chrono_literals;
+
+namespace {
+
+__global__ void phase_producer(int* values, int* observed, int row,
+                               bool read_only) {
+  const int offset = row * 64 + threadIdx.x;
+  const auto started = clock64();
+  while (clock64() - started < 1000000ULL) {
+  }
+  if (read_only) {
+    observed[offset] = values[offset];
+  } else {
+    values[offset] = 101 + row;
+  }
+}
+
+__global__ void phase_consumer(int* values, int* observed, int count,
+                               bool read_only) {
+  const int offset = blockIdx.x * blockDim.x + threadIdx.x;
+  if (offset < count) {
+    observed[offset] = values[offset];
+    if (!read_only) values[offset] = 777;
+  }
+}
+
+void phase_lock(group_shared_mutex& mutex, char role) {
+  if (role == 'R') mutex.lock_read();
+  if (role == 'U') mutex.lock_update();
+  if (role == 'I') mutex.lock_update_read();
+}
+
+void phase_unlock(group_shared_mutex& mutex, char role, cudaStream_t stream) {
+  if (role == 'R') mutex.unlock_read(stream);
+  if (role == 'U') mutex.unlock_update(stream);
+  if (role == 'I') mutex.unlock_update_read(stream);
+}
+
+}  // namespace
+
+TEST(GroupSharedMutexTest, NonBlockingPhasePublicationAndReleaseSequences) {
+  for (const auto roles : {"RU", "RI", "UR", "UI", "IR", "IU", "II"}) {
+    for (const bool explicit_events : {false, true}) {
+      SCOPED_TRACE(roles);
+      SCOPED_TRACE(explicit_events);
+      group_shared_mutex mutex;
+      CUDA_CHECK(cudaStreamSynchronize(0));
+      const int producers = roles[0] == 'I' ? 1 : 2;
+      const int count = producers * 64;
+      std::vector<int> values(count, 7);
+      int* device_values = nullptr;
+      int* device_reads = nullptr;
+      int* device_observed = nullptr;
+      CUDA_CHECK(cudaMalloc(&device_values, count * sizeof(int)));
+      CUDA_CHECK(cudaMalloc(&device_reads, count * sizeof(int)));
+      CUDA_CHECK(cudaMalloc(&device_observed, count * sizeof(int)));
+      CUDA_CHECK(cudaMemcpy(device_values, values.data(), count * sizeof(int),
+                            cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemset(device_reads, 0xff, count * sizeof(int)));
+      CUDA_CHECK(cudaMemset(device_observed, 0xff, count * sizeof(int)));
+      std::vector<cudaStream_t> streams(producers);
+      std::vector<cudaEvent_t> events(producers);
+      for (int producer = 0; producer < producers; ++producer) {
+        CUDA_CHECK(cudaStreamCreateWithFlags(&streams[producer],
+                                             cudaStreamNonBlocking));
+        CUDA_CHECK(cudaEventCreateWithFlags(&events[producer],
+                                            cudaEventDisableTiming));
+      }
+      cudaStream_t consumer;
+      CUDA_CHECK(cudaStreamCreateWithFlags(&consumer, cudaStreamNonBlocking));
+      int device = 0;
+      CUDA_CHECK(cudaGetDevice(&device));
+      std::atomic<int> ready{0};
+      std::atomic<bool> start{false};
+      std::vector<std::exception_ptr> failures(producers);
+      std::vector<std::thread> threads;
+      for (int producer = 0; producer < producers; ++producer) {
+        threads.emplace_back([&, producer] {
+          bool announced = false;
+          try {
+            CUDA_CHECK(cudaSetDevice(device));
+            phase_lock(mutex, roles[0]);
+            ready.fetch_add(1);
+            announced = true;
+            while (!start.load()) std::this_thread::yield();
+            phase_producer<<<1, 64, 0, streams[producer]>>>(
+                device_values, device_reads, producer, roles[0] == 'R');
+            CUDA_CHECK(cudaGetLastError());
+            CUDA_CHECK(cudaEventRecord(events[producer], streams[producer]));
+            phase_unlock(mutex, roles[0], streams[producer]);
+          } catch (...) {
+            failures[producer] = std::current_exception();
+            if (!announced) ready.fetch_add(1);
+          }
+        });
+      }
+      while (ready.load() != producers) std::this_thread::yield();
+      start.store(true);
+      for (auto& thread : threads) thread.join();
+      for (auto failure : failures) {
+        if (failure) std::rethrow_exception(failure);
+      }
+      phase_lock(mutex, roles[1]);
+      if (explicit_events) {
+        for (auto event : events) {
+          CUDA_CHECK(cudaStreamWaitEvent(consumer, event, 0));
+        }
+      }
+      phase_consumer<<<producers, 64, 0, consumer>>>(
+          device_values, device_observed, count, roles[1] == 'R');
+      CUDA_CHECK(cudaGetLastError());
+      phase_unlock(mutex, roles[1], consumer);
+      CUDA_CHECK(cudaStreamSynchronize(consumer));
+      for (auto stream : streams) CUDA_CHECK(cudaStreamSynchronize(stream));
+      CUDA_CHECK(cudaMemcpy(values.data(), device_observed, count * sizeof(int),
+                            cudaMemcpyDeviceToHost));
+      for (int offset = 0; offset < count; ++offset) {
+        EXPECT_EQ(values[offset], roles[0] == 'R' ? 7 : 101 + offset / 64);
+      }
+      if (roles[0] == 'R') {
+        CUDA_CHECK(cudaMemcpy(values.data(), device_reads, count * sizeof(int),
+                              cudaMemcpyDeviceToHost));
+        for (auto value : values) EXPECT_EQ(value, 7);
+      }
+      for (auto event : events) CUDA_CHECK(cudaEventDestroy(event));
+      for (auto stream : streams) CUDA_CHECK(cudaStreamDestroy(stream));
+      CUDA_CHECK(cudaStreamDestroy(consumer));
+      CUDA_CHECK(cudaFree(device_values));
+      CUDA_CHECK(cudaFree(device_reads));
+      CUDA_CHECK(cudaFree(device_observed));
+    }
+  }
+}
 
 // Test the basic functionality of the group_shared_mutex
 TEST(GroupSharedMutexTest, BasicFunctionality) {

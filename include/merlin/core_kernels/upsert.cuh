@@ -82,7 +82,7 @@ __global__ void tlp_v1_upsert_kernel_with_io(
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
     D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
-    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Load digests_vec = load_digest_vector(digests_ptr);
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
@@ -152,17 +152,17 @@ __global__ void tlp_v1_upsert_kernel_with_io(
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-      __pipeline_memcpy_async(sm_bucket_scores[tx] + j, bucket_scores_ptr + j,
-                              sizeof(S) * Load_LEN_S);
+      copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
+                                     bucket_scores_ptr + j);
     }
     __pipeline_commit();
     for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
       if (i < bucket_capacity - STRIDE_S) {
 #pragma unroll
         for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-          __pipeline_memcpy_async(
+          copy_bucket_scores<Load_LEN_S>(
               sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
-              bucket_scores_ptr + i + STRIDE_S + j, sizeof(S) * Load_LEN_S);
+              bucket_scores_ptr + i + STRIDE_S + j);
         }
       }
       __pipeline_commit();
@@ -176,7 +176,7 @@ __global__ void tlp_v1_upsert_kernel_with_io(
 #pragma unroll
         for (int j = 0; j < Load_LEN_S; j += 1) {
           S temp_score = temp_scores[j];
-          if (temp_score < min_score) {
+          if (min_pos < 0 || temp_score < min_score) {
             min_score = temp_score;
             min_pos = i + k + j;
           }
@@ -297,7 +297,7 @@ __global__ void tlp_v2_upsert_kernel_with_io(
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
     D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
-    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Load digests_vec = load_digest_vector(digests_ptr);
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
@@ -366,17 +366,17 @@ __global__ void tlp_v2_upsert_kernel_with_io(
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-      __pipeline_memcpy_async(sm_bucket_scores[tx] + j, bucket_scores_ptr + j,
-                              sizeof(S) * Load_LEN_S);
+      copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
+                                     bucket_scores_ptr + j);
     }
     __pipeline_commit();
     for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
       if (i < bucket_capacity - STRIDE_S) {
 #pragma unroll
         for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-          __pipeline_memcpy_async(
+          copy_bucket_scores<Load_LEN_S>(
               sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
-              bucket_scores_ptr + i + STRIDE_S + j, sizeof(S) * Load_LEN_S);
+              bucket_scores_ptr + i + STRIDE_S + j);
         }
       }
       __pipeline_commit();
@@ -390,7 +390,7 @@ __global__ void tlp_v2_upsert_kernel_with_io(
 #pragma unroll
         for (int j = 0; j < Load_LEN_S; j += 1) {
           S temp_score = temp_scores[j];
-          if (temp_score < min_score) {
+          if (min_pos < 0 || temp_score < min_score) {
             auto verify_key_ptr = BUCKET::keys(bucket_keys_ptr, i + k + j);
             auto verify_key =
                 verify_key_ptr->load(cuda::std::memory_order_relaxed);
@@ -409,6 +409,7 @@ __global__ void tlp_v2_upsert_kernel_with_io(
       occupy_result = OccupyResult::REFUSED;
       break;
     }
+    if (min_pos < 0) continue;
     auto min_score_key = BUCKET::keys(bucket_keys_ptr, min_pos);
     auto expected_key = min_score_key->load(cuda::std::memory_order_relaxed);
     if (expected_key != static_cast<K>(LOCKED_KEY) &&
@@ -493,6 +494,7 @@ __global__ void tlp_v2_upsert_kernel_with_io(
     }
   }
 
+  g.sync();
   if ((occupy_result != OccupyResult::ILLEGAL) &&
       (occupy_result != OccupyResult::REFUSED)) {
     auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
@@ -586,10 +588,13 @@ __global__ void pipeline_upsert_kernel_with_io(
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
   K key{static_cast<K>(EMPTY_KEY)};
-  VecD_Comp target_digests;
+  VecD_Comp target_digests{};
   K* bucket_keys_ptr{nullptr};
   OccupyResult occupy_result{OccupyResult::INITIAL};
   uint32_t key_pos = 0;
+  SMM::param_scores(smem)[tx] = 0;
+  SMM::buckets_size_ptr(smem)[tx] = nullptr;
+  SMM::bucket_values_ptr(smem)[tx] = nullptr;
   if (kv_idx < n) {
     key = keys[kv_idx];
     if (scores != nullptr) {
@@ -628,10 +633,12 @@ __global__ void pipeline_upsert_kernel_with_io(
     D* dst = sm_bucket_digests + rank * Load_LEN;
     D* src = BUCKET::digests(keys_ptr_next, BUCKET_SIZE, rank * Load_LEN);
     if (rank * Load_LEN < BUCKET_SIZE) {
-      __pipeline_memcpy_async(dst, src, sizeof(VecD_Load));
+      *reinterpret_cast<VecD_Load*>(dst) = load_digest_vector(src);
     }
   }
   __pipeline_commit();
+  __pipeline_wait_prior(0);
+  g.sync();
   // Padding, meet the param of the first `__pipeline_wait_prior`
   // in the first loop.
   __pipeline_commit();
@@ -646,7 +653,7 @@ __global__ void pipeline_upsert_kernel_with_io(
         D* dst = sm_bucket_digests + rank * Load_LEN;
         D* src = BUCKET::digests(keys_ptr_next, BUCKET_SIZE, rank * Load_LEN);
         if (rank * Load_LEN < BUCKET_SIZE) {
-          __pipeline_memcpy_async(dst, src, sizeof(VecD_Load));
+          *reinterpret_cast<VecD_Load*>(dst) = load_digest_vector(src);
         }
       }
     }
@@ -661,8 +668,10 @@ __global__ void pipeline_upsert_kernel_with_io(
       auto target_digests_cur = g.shfl(target_digests, i);
       auto start_pos_cur = g.shfl(key_pos, i);
       auto keys_ptr_cur = g.shfl(bucket_keys_ptr, i);
-      auto bucket_size_cur = *bucket_size_ptr;
+      auto bucket_size_cur =
+          g.shfl(rank == 0 ? atomicAdd(bucket_size_ptr, 0) : 0, 0);
       __pipeline_wait_prior(3);
+      g.sync();
       D* src = SMM::bucket_digests(smem, groupID, same_buf(i));
       uint32_t start_offset = start_pos_cur / Comp_LEN;
       uint32_t probe_offset =
@@ -688,6 +697,7 @@ __global__ void pipeline_upsert_kernel_with_io(
       if (found_vote) {
         int32_t src_lane = __ffs(found_vote) - 1;
         possible_pos = g.shfl(possible_pos, src_lane);
+        g.sync();
         if (rank == i) {
           occupy_result = OccupyResult::DUPLICATE;
           key_pos = possible_pos;
@@ -721,6 +731,7 @@ __global__ void pipeline_upsert_kernel_with_io(
           if (found_vote) {
             int32_t src_lane = __ffs(found_vote) - 1;
             possible_pos = g.shfl(possible_pos, src_lane);
+            g.sync();
             if (rank == i) {
               occupy_result = OccupyResult::OCCUPIED_EMPTY;
               S* sm_param_scores = SMM::param_scores(smem);
@@ -743,11 +754,12 @@ __global__ void pipeline_upsert_kernel_with_io(
         S* src = BUCKET::scores(keys_ptr_cur, BUCKET_SIZE, rank * Load_LEN_S);
 #pragma unroll
         for (int32_t k = 0; k < BUCKET_SIZE; k += GROUP_SIZE * Load_LEN_S) {
-          __pipeline_memcpy_async(dst + k, src + k, sizeof(S) * Load_LEN_S);
+          copy_bucket_scores<Load_LEN_S>(dst + k, src + k);
         }
       }
     }
     __pipeline_commit();
+    g.sync();
     // Step 3: reduce to get the key with the minimum score.
     if (i > 0) {
       occupy_result_cur = g.shfl(occupy_result, i - 1);
@@ -755,12 +767,16 @@ __global__ void pipeline_upsert_kernel_with_io(
       S* sm_param_scores = SMM::param_scores(smem);
       S score_cur = ScoreFunctor::desired_when_missed(sm_param_scores, tx_cur,
                                                       global_epoch);
+      score_cur = g.shfl(score_cur, i - 1);
       int** sm_buckets_size_ptr = SMM::buckets_size_ptr(smem);
       auto bucket_size_ptr = sm_buckets_size_ptr[tx_cur];
       __pipeline_wait_prior(3);
+      g.sync();
       S* src = SMM::bucket_scores(smem, groupID, diff_buf(i));
+      uint32_t remaining_candidates = (1u << (BUCKET_SIZE / GROUP_SIZE)) - 1;
       while (occupy_result_cur == OccupyResult::INITIAL) {
         int min_pos_local = -1;
+        int min_idx_local = -1;
         S min_score_local = static_cast<S>(MAX_SCORE);
 #pragma unroll
         for (int j = 0; j < BUCKET_SIZE; j += GROUP_SIZE * Load_LEN_S) {
@@ -770,9 +786,12 @@ __global__ void pipeline_upsert_kernel_with_io(
 #pragma unroll
           for (int k = 0; k < Load_LEN_S; k++) {
             S temp_score = temp_scores[k];
-            if (temp_score < min_score_local) {
+            const int candidate_idx = j / GROUP_SIZE + k;
+            if ((remaining_candidates & (1u << candidate_idx)) &&
+                (min_pos_local < 0 || temp_score < min_score_local)) {
               min_score_local = temp_score;
               min_pos_local = rank * Load_LEN_S + j + k;
+              min_idx_local = candidate_idx;
             }
           }
         }
@@ -785,12 +804,15 @@ __global__ void pipeline_upsert_kernel_with_io(
           occupy_result_cur = g.shfl(occupy_result, i - 1);
           break;
         }
-        uint32_t vote = g.ballot(min_score_local <= min_score_global);
+        uint32_t vote =
+            g.ballot(min_pos_local >= 0 && min_score_local <= min_score_global);
         if (vote) {
           int src_lane = __ffs(vote) - 1;
           int min_pos_global = g.shfl(min_pos_local, src_lane);
+          if (rank == src_lane) {
+            remaining_candidates &= ~(1u << min_idx_local);
+          }
           if (rank == i - 1) {
-            src[min_pos_global] = static_cast<S>(MAX_SCORE);  // Mark visited.
             auto min_score_key = BUCKET::keys(bucket_keys_ptr, min_pos_global);
             auto expected_key =
                 min_score_key->load(cuda::std::memory_order_relaxed);
@@ -826,6 +848,12 @@ __global__ void pipeline_upsert_kernel_with_io(
             }
           }
           occupy_result_cur = g.shfl(occupy_result, i - 1);
+        } else {
+          if (rank == i - 1) {
+            occupy_result = OccupyResult::REFUSED;
+          }
+          occupy_result_cur = g.shfl(occupy_result, i - 1);
+          break;
         }
       }
       // Prefetch values to shared memory.
@@ -851,7 +879,9 @@ __global__ void pipeline_upsert_kernel_with_io(
         auto key_pos_cur = g.shfl(key_pos, i - 2);
         VecV* dst = bucket_values_ptr + key_pos_cur * dim;
         __pipeline_wait_prior(3);
+        g.sync();
         CopyValue::lds_stg(rank, dst, src, dim);
+        g.sync();
         if (rank == i - 2) {
           auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
           key_address->store(key, cuda::std::memory_order_release);
@@ -864,12 +894,16 @@ __global__ void pipeline_upsert_kernel_with_io(
   S* sm_param_scores = SMM::param_scores(smem);
   S score_cur =
       ScoreFunctor::desired_when_missed(sm_param_scores, tx_cur, global_epoch);
+  score_cur = g.shfl(score_cur, GROUP_SIZE - 1);
   int** sm_buckets_size_ptr = SMM::buckets_size_ptr(smem);
   auto bucket_size_ptr = sm_buckets_size_ptr[tx_cur];
   __pipeline_wait_prior(1);
+  g.sync();
   S* src = SMM::bucket_scores(smem, groupID, diff_buf(GROUP_SIZE));
+  uint32_t remaining_candidates = (1u << (BUCKET_SIZE / GROUP_SIZE)) - 1;
   while (occupy_result_cur == OccupyResult::INITIAL) {
     int min_pos_local = -1;
+    int min_idx_local = -1;
     S min_score_local = static_cast<S>(MAX_SCORE);
 #pragma unroll
     for (int j = 0; j < BUCKET_SIZE; j += GROUP_SIZE * Load_LEN_S) {
@@ -879,9 +913,12 @@ __global__ void pipeline_upsert_kernel_with_io(
 #pragma unroll
       for (int k = 0; k < Load_LEN_S; k++) {
         S temp_score = temp_scores[k];
-        if (temp_score < min_score_local) {
+        const int candidate_idx = j / GROUP_SIZE + k;
+        if ((remaining_candidates & (1u << candidate_idx)) &&
+            (min_pos_local < 0 || temp_score < min_score_local)) {
           min_score_local = temp_score;
           min_pos_local = rank * Load_LEN_S + j + k;
+          min_idx_local = candidate_idx;
         }
       }
     }
@@ -893,12 +930,15 @@ __global__ void pipeline_upsert_kernel_with_io(
       occupy_result_cur = g.shfl(occupy_result, GROUP_SIZE - 1);
       break;
     }
-    uint32_t vote = g.ballot(min_score_local <= min_score_global);
+    uint32_t vote =
+        g.ballot(min_pos_local >= 0 && min_score_local <= min_score_global);
     if (vote) {
       int src_lane = __ffs(vote) - 1;
       int min_pos_global = g.shfl(min_pos_local, src_lane);
+      if (rank == src_lane) {
+        remaining_candidates &= ~(1u << min_idx_local);
+      }
       if (rank == GROUP_SIZE - 1) {
-        src[min_pos_global] = static_cast<S>(MAX_SCORE);  // Mark visited.
         auto min_score_key = BUCKET::keys(bucket_keys_ptr, min_pos_global);
         auto expected_key =
             min_score_key->load(cuda::std::memory_order_relaxed);
@@ -935,6 +975,12 @@ __global__ void pipeline_upsert_kernel_with_io(
         }
       }
       occupy_result_cur = g.shfl(occupy_result, GROUP_SIZE - 1);
+    } else {
+      if (rank == GROUP_SIZE - 1) {
+        occupy_result = OccupyResult::REFUSED;
+      }
+      occupy_result_cur = g.shfl(occupy_result, GROUP_SIZE - 1);
+      break;
     }
   }
   // Prefetch values to shared memory.
@@ -958,7 +1004,9 @@ __global__ void pipeline_upsert_kernel_with_io(
     auto key_pos_cur = g.shfl(key_pos, GROUP_SIZE - 2);
     VecV* dst = bucket_values_ptr + key_pos_cur * dim;
     __pipeline_wait_prior(1);
+    g.sync();
     CopyValue::lds_stg(rank, dst, src, dim);
+    g.sync();
     if (rank == GROUP_SIZE - 2) {
       auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
       key_address->store(key, cuda::std::memory_order_release);
@@ -977,7 +1025,9 @@ __global__ void pipeline_upsert_kernel_with_io(
     auto key_pos_cur = g.shfl(key_pos, GROUP_SIZE - 1);
     VecV* dst = bucket_values_ptr + key_pos_cur * dim;
     __pipeline_wait_prior(0);
+    g.sync();
     CopyValue::lds_stg(rank, dst, src, dim);
+    g.sync();
     if (rank == GROUP_SIZE - 1) {
       auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
       key_address->store(key, cuda::std::memory_order_release);
@@ -1251,8 +1301,8 @@ __global__ void upsert_kernel_with_io_core(
       continue;
     }
 
-    const S insert_score =
-        ScoreFunctor::desired_when_missed(scores, key_idx, global_epoch);
+    const S insert_score = g.shfl(
+        ScoreFunctor::desired_when_missed(scores, key_idx, global_epoch), 0);
     const V* insert_value = values + key_idx * dim;
 
     size_t bkt_idx = 0;
@@ -1264,7 +1314,8 @@ __global__ void upsert_kernel_with_io_core(
         buckets, insert_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
     OccupyResult occupy_result{OccupyResult::INITIAL};
-    const int bucket_size = buckets_size[bkt_idx];
+    const int bucket_size = g.shfl(
+        g.thread_rank() == 0 ? atomicAdd(buckets_size + bkt_idx, 0) : 0, 0);
     do {
       if (bucket_size < bucket_max_size) {
         occupy_result = find_and_lock_when_vacant<K, V, S, TILE_SIZE>(
@@ -1279,13 +1330,16 @@ __global__ void upsert_kernel_with_io_core(
             key_pos, src_lane, bucket_max_size);
       }
 
-      occupy_result = g.shfl(occupy_result, src_lane);
+      if (src_lane >= 0) {
+        occupy_result = g.shfl(occupy_result, src_lane);
+      }
     } while (occupy_result == OccupyResult::CONTINUE);
 
     if (occupy_result == OccupyResult::REFUSED) {
       continue;
     }
 
+    g.sync();
     if ((occupy_result == OccupyResult::OCCUPIED_EMPTY ||
          occupy_result == OccupyResult::OCCUPIED_RECLAIMED) &&
         g.thread_rank() == src_lane) {
@@ -1294,6 +1348,7 @@ __global__ void upsert_kernel_with_io_core(
 
     copy_vector<V, TILE_SIZE>(g, insert_value, bucket->vectors + key_pos * dim,
                               dim);
+    g.sync();
     if (g.thread_rank() == src_lane) {
       ScoreFunctor::update(bucket, key_pos, scores, key_idx, insert_score,
                            (occupy_result != OccupyResult::DUPLICATE));
@@ -1314,29 +1369,30 @@ struct SelectUpsertKernelWithIO {
                              Bucket<K, V, S>* buckets, const K* __restrict keys,
                              const V* __restrict values,
                              const S* __restrict scores, const S global_epoch) {
+    const int launch_block_size = ((block_size + 31) / 32) * 32;
     if (load_factor <= 0.5) {
       const unsigned int tile_size = 4;
       const size_t N = n * tile_size;
-      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, launch_block_size);
       upsert_kernel_with_io_core<K, V, S, Strategy, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(
+          <<<grid_size, launch_block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, global_epoch, N);
 
     } else if (load_factor <= 0.875) {
       const unsigned int tile_size = 8;
       const size_t N = n * tile_size;
-      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, launch_block_size);
       upsert_kernel_with_io_core<K, V, S, Strategy, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(
+          <<<grid_size, launch_block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, global_epoch, N);
     } else {
       const unsigned int tile_size = 32;
       const size_t N = n * tile_size;
-      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, launch_block_size);
       upsert_kernel_with_io_core<K, V, S, Strategy, tile_size>
-          <<<grid_size, block_size, 0, stream>>>(
+          <<<grid_size, launch_block_size, 0, stream>>>(
               table, buckets, bucket_max_size, buckets_num, dim, keys, values,
               scores, global_epoch, N);
     }
@@ -1412,7 +1468,7 @@ __global__ void upsert_kernel_lock_key_hybrid(
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
     D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
-    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Load digests_vec = load_digest_vector(digests_ptr);
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
@@ -1482,17 +1538,17 @@ __global__ void upsert_kernel_lock_key_hybrid(
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-      __pipeline_memcpy_async(sm_bucket_scores[tx] + j, bucket_scores_ptr + j,
-                              sizeof(S) * Load_LEN_S);
+      copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
+                                     bucket_scores_ptr + j);
     }
     __pipeline_commit();
     for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
       if (i < bucket_capacity - STRIDE_S) {
 #pragma unroll
         for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-          __pipeline_memcpy_async(
+          copy_bucket_scores<Load_LEN_S>(
               sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
-              bucket_scores_ptr + i + STRIDE_S + j, sizeof(S) * Load_LEN_S);
+              bucket_scores_ptr + i + STRIDE_S + j);
         }
       }
       __pipeline_commit();
@@ -1604,7 +1660,7 @@ __global__ void upsert_kernel(const Table<K, V, S>* __restrict table,
                               const K* __restrict keys, V** __restrict vectors,
                               const S* __restrict scores,
                               int* __restrict src_offset, const S global_epoch,
-                              size_t N) {
+                              size_t N, int* __restrict successful_count) {
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int* buckets_size = table->buckets_size;
 
@@ -1628,10 +1684,6 @@ __global__ void upsert_kernel(const Table<K, V, S>* __restrict table,
 
     Bucket<K, V, S>* bucket = get_key_position<K>(
         buckets, insert_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
-
-    if (src_offset != nullptr && g.thread_rank() == 0) {
-      *(src_offset + key_idx) = key_idx;
-    }
 
     OccupyResult occupy_result{OccupyResult::INITIAL};
     const int bucket_size = buckets_size[bkt_idx];
@@ -1659,12 +1711,14 @@ __global__ void upsert_kernel(const Table<K, V, S>* __restrict table,
     }
 
     if (g.thread_rank() == src_lane) {
-      *(vectors + key_idx) = (bucket->vectors + key_pos * dim);
+      const int write_index = atomicAdd(successful_count, 1);
+      vectors[write_index] = bucket->vectors + key_pos * dim;
+      src_offset[write_index] = static_cast<int>(key_idx);
       ScoreFunctor::update(bucket, key_pos, scores, key_idx, insert_score,
                            (occupy_result != OccupyResult::DUPLICATE));
       bucket->digests(key_pos)[0] = get_digest<K>(insert_key);
       (bucket->keys(key_pos))
-          ->store(insert_key, cuda::std::memory_order_relaxed);
+          ->store(insert_key, cuda::std::memory_order_release);
     }
   }
 }
@@ -1679,7 +1733,7 @@ __global__ void upsert_kernel(const Table<K, V, S>* __restrict table,
           memory on HBM or HMEM.
    `N`: Number of vectors that need to be written.
 */
-template <class K, class V, class S>
+template <class K, class V, class S, bool LAST_WRITER_ONLY = false>
 __global__ void write_kernel(const V* __restrict src, V** __restrict dst,
                              const int* __restrict src_offset, const size_t dim,
                              const size_t N) {
@@ -1688,6 +1742,11 @@ __global__ void write_kernel(const V* __restrict src, V** __restrict dst,
   for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
     int vec_index = int(t / dim);
     int dim_index = t % dim;
+
+    if constexpr (LAST_WRITER_ONLY) {
+      if (vec_index + 1 < N / dim && dst[vec_index] == dst[vec_index + 1])
+        continue;
+    }
 
     if (dst[vec_index] != nullptr) {
       if (src_offset != nullptr) {
@@ -1707,17 +1766,20 @@ __global__ void write_kernel(const V* __restrict src, V** __restrict dst,
  * thru PCI-E, so we try to use the `memcpy` on CPU threads for writing work to
  * reach better performance.
  */
-template <class V>
+template <class V, bool LAST_WRITER_ONLY = false>
 void write_by_cpu(V** __restrict dst, const V* __restrict src,
                   const int* __restrict offset, size_t dim, int N,
                   int n_worker = 16) {
   std::vector<std::thread> thds;
   if (n_worker < 1) n_worker = 1;
 
-  auto functor = [dim](V** __restrict dst, const V* __restrict src,
-                       const int* __restrict offset, int handled_size,
-                       int trunk_size) -> void {
+  auto functor = [dim, N](V** __restrict dst, const V* __restrict src,
+                          const int* __restrict offset, int handled_size,
+                          int trunk_size) -> void {
     for (int i = handled_size; i < handled_size + trunk_size; i++) {
+      if constexpr (LAST_WRITER_ONLY) {
+        if (i + 1 < N && dst[i] == dst[i + 1]) continue;
+      }
       if (dst[i] != nullptr) {
         memcpy(dst[i], src + offset[i] * dim, sizeof(V) * dim);
       }

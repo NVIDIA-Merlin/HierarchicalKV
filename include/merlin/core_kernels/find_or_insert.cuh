@@ -82,7 +82,7 @@ __global__ void tlp_v1_find_or_insert_kernel_with_io(
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
     D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
-    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Load digests_vec = load_digest_vector(digests_ptr);
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
@@ -152,17 +152,17 @@ __global__ void tlp_v1_find_or_insert_kernel_with_io(
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-      __pipeline_memcpy_async(sm_bucket_scores[tx] + j, bucket_scores_ptr + j,
-                              sizeof(S) * Load_LEN_S);
+      copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
+                                     bucket_scores_ptr + j);
     }
     __pipeline_commit();
     for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
       if (i < bucket_capacity - STRIDE_S) {
 #pragma unroll
         for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-          __pipeline_memcpy_async(
+          copy_bucket_scores<Load_LEN_S>(
               sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
-              bucket_scores_ptr + i + STRIDE_S + j, sizeof(S) * Load_LEN_S);
+              bucket_scores_ptr + i + STRIDE_S + j);
         }
       }
       __pipeline_commit();
@@ -301,7 +301,7 @@ __global__ void tlp_v2_find_or_insert_kernel_with_io(
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
     D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
-    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Load digests_vec = load_digest_vector(digests_ptr);
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
@@ -370,17 +370,17 @@ __global__ void tlp_v2_find_or_insert_kernel_with_io(
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-      __pipeline_memcpy_async(sm_bucket_scores[tx] + j, bucket_scores_ptr + j,
-                              sizeof(S) * Load_LEN_S);
+      copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
+                                     bucket_scores_ptr + j);
     }
     __pipeline_commit();
     for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
       if (i < bucket_capacity - STRIDE_S) {
 #pragma unroll
         for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-          __pipeline_memcpy_async(
+          copy_bucket_scores<Load_LEN_S>(
               sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
-              bucket_scores_ptr + i + STRIDE_S + j, sizeof(S) * Load_LEN_S);
+              bucket_scores_ptr + i + STRIDE_S + j);
         }
       }
       __pipeline_commit();
@@ -651,7 +651,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
     D* dst = sm_bucket_digests + rank * Load_LEN;
     D* src = BUCKET::digests(keys_ptr_next, BUCKET_SIZE, rank * Load_LEN);
     if (rank * Load_LEN < BUCKET_SIZE) {
-      __pipeline_memcpy_async(dst, src, sizeof(VecD_Load));
+      *reinterpret_cast<VecD_Load*>(dst) = load_digest_vector(src);
     }
   }
   __pipeline_commit();
@@ -669,7 +669,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
         D* dst = sm_bucket_digests + rank * Load_LEN;
         D* src = BUCKET::digests(keys_ptr_next, BUCKET_SIZE, rank * Load_LEN);
         if (rank * Load_LEN < BUCKET_SIZE) {
-          __pipeline_memcpy_async(dst, src, sizeof(VecD_Load));
+          *reinterpret_cast<VecD_Load*>(dst) = load_digest_vector(src);
         }
       }
     }
@@ -766,7 +766,7 @@ __global__ void pipeline_find_or_insert_kernel_with_io(
         S* src = BUCKET::scores(keys_ptr_cur, BUCKET_SIZE, rank * Load_LEN_S);
 #pragma unroll
         for (int32_t k = 0; k < BUCKET_SIZE; k += GROUP_SIZE * Load_LEN_S) {
-          __pipeline_memcpy_async(dst + k, src + k, sizeof(S) * Load_LEN_S);
+          copy_bucket_scores<Load_LEN_S>(dst + k, src + k);
         }
       }
     }
@@ -1480,7 +1480,7 @@ __global__ void find_or_insert_kernel_lock_key_hybrid(
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
     D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
-    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Load digests_vec = load_digest_vector(digests_ptr);
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
@@ -1551,17 +1551,17 @@ __global__ void find_or_insert_kernel_lock_key_hybrid(
     int min_pos = -1;
 #pragma unroll
     for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-      __pipeline_memcpy_async(sm_bucket_scores[tx] + j, bucket_scores_ptr + j,
-                              sizeof(S) * Load_LEN_S);
+      copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
+                                     bucket_scores_ptr + j);
     }
     __pipeline_commit();
     for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
       if (i < bucket_capacity - STRIDE_S) {
 #pragma unroll
         for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-          __pipeline_memcpy_async(
+          copy_bucket_scores<Load_LEN_S>(
               sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
-              bucket_scores_ptr + i + STRIDE_S + j, sizeof(S) * Load_LEN_S);
+              bucket_scores_ptr + i + STRIDE_S + j);
         }
       }
       __pipeline_commit();

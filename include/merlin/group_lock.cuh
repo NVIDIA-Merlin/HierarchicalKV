@@ -85,8 +85,8 @@ class group_shared_mutex {
     for (;;) {
       while (h_update_count_.load(std::memory_order_acquire)) {
       }
-      h_read_count_.fetch_add(1, std::memory_order_acq_rel);
-      if (h_update_count_.load(std::memory_order_acquire) == 0) {
+      h_read_count_.fetch_add(1, std::memory_order_seq_cst);
+      if (h_update_count_.load(std::memory_order_seq_cst) == 0) {
         {
           cudaStream_t stream = get_lock_stream();
           group_lock::lock_read_kernel<<<1, 1, 0, stream>>>(d_update_count_,
@@ -108,8 +108,8 @@ class group_shared_mutex {
     for (;;) {
       while (h_read_count_.load(std::memory_order_acquire)) {
       }
-      h_update_count_.fetch_add(1, std::memory_order_acq_rel);
-      if (h_read_count_.load(std::memory_order_acquire) == 0) {
+      h_update_count_.fetch_add(1, std::memory_order_seq_cst);
+      if (h_read_count_.load(std::memory_order_seq_cst) == 0) {
         {
           cudaStream_t stream = get_lock_stream();
           group_lock::lock_update_kernel<<<1, 1, 0, stream>>>(d_update_count_,
@@ -139,8 +139,8 @@ class group_shared_mutex {
     for (;;) {
       while (h_update_count_.load(std::memory_order_acquire)) {
       }
-      h_read_count_.fetch_add(1, std::memory_order_acq_rel);
-      if (h_update_count_.load(std::memory_order_acquire) == 0) {
+      h_read_count_.fetch_add(1, std::memory_order_seq_cst);
+      if (h_update_count_.load(std::memory_order_seq_cst) == 0) {
         break;
       }
       h_read_count_.fetch_sub(1, std::memory_order_acq_rel);
@@ -150,8 +150,8 @@ class group_shared_mutex {
     for (;;) {
       while (h_read_count_.load(std::memory_order_acquire) > 1) {
       }
-      h_update_count_.fetch_add(1, std::memory_order_acq_rel);
-      if (h_read_count_.load(std::memory_order_acquire) == 1) {
+      h_update_count_.fetch_add(1, std::memory_order_seq_cst);
+      if (h_read_count_.load(std::memory_order_seq_cst) == 1) {
         break;
       }
       h_update_count_.fetch_sub(1, std::memory_order_acq_rel);

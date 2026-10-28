@@ -173,7 +173,7 @@ __global__ void contains_kernel_pipeline(Bucket<K, V, S>* buckets,
     }
     __pipeline_commit();
 
-    /* Step3: check possible keys, and prefecth the value and score */
+    /* Step3: check possible keys, and prefetch the value and score */
     if (i > 0) {
       key_idx_block -= 1;
       int key_idx_grid = blockIdx.x * blockDim.x + key_idx_block;
@@ -243,8 +243,6 @@ __global__ void contains_kernel(const Table<K, V, S>* __restrict table,
                                 const size_t buckets_num, const size_t dim,
                                 const K* __restrict keys,
                                 bool* __restrict found, size_t N) {
-  int* buckets_size = table->buckets_size;
-
   auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
   int rank = g.thread_rank();
 
@@ -263,9 +261,11 @@ __global__ void contains_kernel(const Table<K, V, S>* __restrict table,
     Bucket<K, V, S>* bucket = get_key_position<K>(
         buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
 
-    const int bucket_size = buckets_size[bkt_idx];
-    if (bucket_size >= bucket_max_size) {
-      start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
+    if constexpr (TILE_SIZE != 4) {
+      const int bucket_size = table->buckets_size[bkt_idx];
+      if (bucket_size >= bucket_max_size) {
+        start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
+      }
     }
 
     OccupyResult occupy_result{OccupyResult::INITIAL};

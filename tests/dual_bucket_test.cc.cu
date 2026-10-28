@@ -70,6 +70,43 @@ void create_throughput_mode_table(Table& table, size_t capacity,
 // TestGroup 1: Basic Correctness
 // ==============================
 
+TEST(DualBucketTest, VectorPlacementRespectsTableMode) {
+  for (size_t requested_capacity : {size_t{256}, size_t{257}, size_t{512}}) {
+    for (size_t dimension : {size_t{4}, size_t{32}, size_t{224}}) {
+      for (int allocation_mode : {0, 1, 2}) {
+        const bool dual_bucket_mode = allocation_mode == 0;
+        const size_t rounded_capacity =
+            ((requested_capacity + 127) / 128) * 128;
+        const size_t payload_bytes = rounded_capacity * dimension * sizeof(V);
+        const size_t hbm_budget = allocation_mode == 2 ? payload_bytes : 0;
+        SCOPED_TRACE(::testing::Message()
+                     << "capacity=" << requested_capacity << " dimension="
+                     << dimension << " allocation_mode=" << allocation_mode);
+        nv::merlin::DefaultAllocator allocator;
+        nv::merlin::Table<K, V, S>* core = nullptr;
+        nv::merlin::create_table<K, V, S>(
+            &core, &allocator, dimension, requested_capacity,
+            requested_capacity, hbm_budget, 128, 1, 32, true, dual_bucket_mode);
+        const bool expect_device = allocation_mode != 1;
+        EXPECT_EQ(core->capacity, rounded_capacity);
+        EXPECT_GT(core->num_of_memory_slices, 0);
+        EXPECT_EQ(core->is_pure_hbm, expect_device);
+        EXPECT_EQ(core->max_hbm_for_vectors, expect_device ? payload_bytes : 0);
+        EXPECT_EQ(core->remaining_hbm_for_vectors, 0);
+        for (size_t slice_index = 0; slice_index < core->num_of_memory_slices;
+             ++slice_index) {
+          cudaPointerAttributes attributes{};
+          CUDA_CHECK(
+              cudaPointerGetAttributes(&attributes, core->slices[slice_index]));
+          EXPECT_EQ(attributes.type,
+                    expect_device ? cudaMemoryTypeDevice : cudaMemoryTypeHost);
+        }
+        nv::merlin::destroy_table<K, V, S>(&core, &allocator);
+      }
+    }
+  }
+}
+
 // T1.1: MEMORY_MODE insert_or_assign + find basic functionality.
 TEST(DualBucketTest, BasicInsertAndFind) {
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
@@ -399,12 +436,26 @@ TEST(DualBucketTest, ThroughputModeRegression) {
 TEST(DualBucketTest, FirstEvictionLoadFactor) {
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
+  const char* phase_log_env = getenv("HKV_FIRST_EVICTION_PHASE_LOG");
+  const bool phase_logging = phase_log_env != nullptr &&
+                             phase_log_env[0] == '1' &&
+                             phase_log_env[1] == '\0';
+  auto log_phase = [phase_logging](const char* phase, size_t batches = 0) {
+    if (phase_logging) {
+      fprintf(stderr, "[HKV_FIRST_EVICTION] phase=%s batches=%zu\n", phase,
+              batches);
+      fflush(stderr);
+    }
+  };
+
   constexpr size_t CAPACITY = 10 * 1024 * 1024;  // ~10M slots
 
   // Run for MEMORY_MODE.
   {
     Table table;
+    log_phase("before_table_init");
     create_memory_mode_table(table, CAPACITY);
+    log_phase("after_table_init");
 
     constexpr size_t BATCH = 128;
     std::vector<K> h_keys(BATCH);
@@ -421,6 +472,8 @@ TEST(DualBucketTest, FirstEvictionLoadFactor) {
     K next_key = 1;
     size_t total_inserted = 0;
     float first_eviction_lf = 0.0f;
+
+    log_phase("before_batches");
 
     // Insert in batches until table is nearly full.
     while (total_inserted < CAPACITY) {
@@ -442,6 +495,13 @@ TEST(DualBucketTest, FirstEvictionLoadFactor) {
       size_t table_size = table.size(0);
       CUDA_CHECK(cudaDeviceSynchronize());
 
+      if (phase_logging &&
+          (total_inserted == BATCH || (total_inserted / BATCH) % 16384 == 0)) {
+        log_phase(total_inserted == BATCH ? "first_batch_completed"
+                                          : "batch_milestone",
+                  total_inserted / BATCH);
+      }
+
       // If table_size < total_inserted, eviction occurred.
       if (table_size < total_inserted && first_eviction_lf == 0.0f) {
         first_eviction_lf =
@@ -450,6 +510,7 @@ TEST(DualBucketTest, FirstEvictionLoadFactor) {
       }
     }
 
+    log_phase("insert_loop_complete", total_inserted / BATCH);
     std::cout << "[MEMORY_MODE] First eviction LF: " << first_eviction_lf
               << " (total_inserted=" << total_inserted << ")" << std::endl;
 
@@ -461,7 +522,9 @@ TEST(DualBucketTest, FirstEvictionLoadFactor) {
     CUDA_CHECK(cudaFree(d_keys));
     CUDA_CHECK(cudaFree(d_values));
     CUDA_CHECK(cudaFree(d_scores));
+    log_phase("body_complete_before_destruction", total_inserted / BATCH);
   }
+  log_phase("after_table_destruction");
 }
 
 // ===================================
@@ -1241,8 +1304,7 @@ TEST(DualBucketTest, MinimumTwoBucketCapacity) {
   CUDA_CHECK(
       cudaMemcpy(h_founds, d_founds, N * sizeof(bool), cudaMemcpyDeviceToHost));
   for (size_t i = 0; i < N; i++) {
-    EXPECT_TRUE(h_founds[i])
-        << "Two-bucket: Key " << h_keys[i] << " not found";
+    EXPECT_TRUE(h_founds[i]) << "Two-bucket: Key " << h_keys[i] << " not found";
   }
 
   delete[] h_founds;
@@ -1527,7 +1589,7 @@ TEST(DualBucketTest, EvictionQualityAtFullLoad) {
 TEST(DualBucketTest, MultiStreamConcurrentUpsert) {
   using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
-  constexpr size_t CAPACITY = 128 * 1024;    // 128K slots
+  constexpr size_t CAPACITY = 128 * 1024;  // 128K slots
   constexpr int NUM_STREAMS = 4;
   constexpr size_t KEYS_PER_STREAM = CAPACITY;  // Each stream fills capacity
   constexpr size_t TOTAL_KEYS = NUM_STREAMS * KEYS_PER_STREAM;
@@ -1562,21 +1624,19 @@ TEST(DualBucketTest, MultiStreamConcurrentUpsert) {
       h_scores[i] = (rng() >> 1) | 1;  // Random positive score
     }
 
-    CUDA_CHECK(cudaMemcpy(d_keys[s], h_keys.data(),
-                          KEYS_PER_STREAM * sizeof(K),
+    CUDA_CHECK(cudaMemcpy(d_keys[s], h_keys.data(), KEYS_PER_STREAM * sizeof(K),
                           cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_values[s], h_values.data(),
                           KEYS_PER_STREAM * DIM * sizeof(V),
                           cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_scores[s], h_scores.data(),
-                          KEYS_PER_STREAM * sizeof(S),
-                          cudaMemcpyHostToDevice));
+                          KEYS_PER_STREAM * sizeof(S), cudaMemcpyHostToDevice));
   }
 
   // Launch concurrent inserts on all streams simultaneously.
   for (int s = 0; s < NUM_STREAMS; s++) {
-    table.insert_or_assign(KEYS_PER_STREAM, d_keys[s], d_values[s],
-                           d_scores[s], streams[s], /*unique_key=*/true);
+    table.insert_or_assign(KEYS_PER_STREAM, d_keys[s], d_values[s], d_scores[s],
+                           streams[s], /*unique_key=*/true);
   }
 
   // Synchronize all streams.
@@ -1726,19 +1786,39 @@ TEST(DualBucketTest, MultiStreamOverlappingKeys) {
   // All keys must be findable.
   bool* d_founds;
   V* d_found_values;
+  S* d_found_scores;
   CUDA_CHECK(cudaMalloc(&d_founds, N * sizeof(bool)));
   CUDA_CHECK(cudaMalloc(&d_found_values, N * DIM * sizeof(V)));
+  CUDA_CHECK(cudaMalloc(&d_found_scores, N * sizeof(S)));
 
-  table.find(N, d_keys[0], d_found_values, d_founds, nullptr, 0);
+  table.find(N, d_keys[0], d_found_values, d_founds, d_found_scores, 0);
   CUDA_CHECK(cudaDeviceSynchronize());
 
   bool* h_founds = new bool[N];
   CUDA_CHECK(
       cudaMemcpy(h_founds, d_founds, N * sizeof(bool), cudaMemcpyDeviceToHost));
+  std::vector<V> found_values(N * DIM);
+  std::vector<S> found_scores(N);
+  CUDA_CHECK(cudaMemcpy(found_values.data(), d_found_values,
+                        N * DIM * sizeof(V), cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(found_scores.data(), d_found_scores, N * sizeof(S),
+                        cudaMemcpyDeviceToHost));
 
   int found_count = 0;
   for (size_t i = 0; i < N; i++) {
-    if (h_founds[i]) found_count++;
+    if (!h_founds[i]) continue;
+    ++found_count;
+    bool legal = false;
+    for (int generation = 1; generation <= NUM_STREAMS; ++generation) {
+      if (found_scores[i] != static_cast<S>(generation * 1000) + i) continue;
+      bool whole = true;
+      for (size_t dim = 0; dim < DIM; ++dim)
+        whole =
+            whole && found_values[i * DIM + dim] == static_cast<V>(generation);
+      legal = legal || whole;
+    }
+    EXPECT_TRUE(legal) << "key=" << h_keys[i] << " score=" << found_scores[i]
+                       << " value=" << found_values[i * DIM];
   }
   EXPECT_EQ(found_count, static_cast<int>(N))
       << "All keys must be findable after concurrent overlapping inserts";
@@ -1753,6 +1833,84 @@ TEST(DualBucketTest, MultiStreamOverlappingKeys) {
   }
   CUDA_CHECK(cudaFree(d_founds));
   CUDA_CHECK(cudaFree(d_found_values));
+  CUDA_CHECK(cudaFree(d_found_scores));
+}
+
+TEST(DualBucketTest, ExistingKeyInSecondBucketWhileFirstHasSpace) {
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
+  constexpr size_t capacity = 512;
+  auto find_key = [](size_t first, size_t second) {
+    for (K candidate = (static_cast<K>(second) << 32) | first;; ++candidate) {
+      const uint64_t hash = nv::merlin::Murmur3HashHost(candidate);
+      const size_t bucket_first = static_cast<uint32_t>(hash) % 4;
+      size_t bucket_second = static_cast<uint32_t>(hash >> 32) % 4;
+      if (bucket_second == bucket_first)
+        bucket_second = (bucket_second + 1) % 4;
+      if (bucket_first == first && bucket_second == second) return candidate;
+    }
+  };
+  const K filler = find_key(0, 2);
+  const K target = find_key(0, 1);
+  {
+    TableOptions options;
+    options.init_capacity = capacity;
+    options.max_capacity = capacity;
+    options.max_bucket_size = 128;
+    options.max_hbm_for_vectors = 0;
+    options.dim = DIM;
+    options.table_mode = TableMode::kMemory;
+    Table table;
+    table.init(options);
+    K* device_keys = nullptr;
+    V* device_values = nullptr;
+    S* device_scores = nullptr;
+    CUDA_CHECK(cudaMalloc(&device_keys, capacity * sizeof(K)));
+    CUDA_CHECK(cudaMalloc(&device_values, capacity * DIM * sizeof(V)));
+    CUDA_CHECK(cudaMalloc(&device_scores, capacity * sizeof(S)));
+    auto insert = [&](K key, S score) {
+      const std::vector<V> values(DIM, static_cast<V>(1000 + score));
+      CUDA_CHECK(
+          cudaMemcpy(device_keys, &key, sizeof(K), cudaMemcpyHostToDevice));
+      CUDA_CHECK(cudaMemcpy(device_values, values.data(), DIM * sizeof(V),
+                            cudaMemcpyHostToDevice));
+      CUDA_CHECK(
+          cudaMemcpy(device_scores, &score, sizeof(S), cudaMemcpyHostToDevice));
+      table.insert_or_assign(1, device_keys, device_values, device_scores, 0,
+                             true);
+      CUDA_CHECK(cudaDeviceSynchronize());
+    };
+    insert(filler, 1);
+    insert(target, 2);
+    auto check_bucket = [&](size_t bucket, K expected_key, S expected_score) {
+      const size_t count = table.export_batch(128, bucket * 128, device_keys,
+                                              device_values, device_scores, 0);
+      CUDA_CHECK(cudaDeviceSynchronize());
+      EXPECT_EQ(count, size_t{1});
+      if (count != 1) return;
+      K key = 0;
+      S score = 0;
+      std::vector<V> values(DIM);
+      CUDA_CHECK(
+          cudaMemcpy(&key, device_keys, sizeof(K), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(
+          cudaMemcpy(&score, device_scores, sizeof(S), cudaMemcpyDeviceToHost));
+      CUDA_CHECK(cudaMemcpy(values.data(), device_values, DIM * sizeof(V),
+                            cudaMemcpyDeviceToHost));
+      EXPECT_EQ(key, expected_key);
+      EXPECT_EQ(score, expected_score);
+      for (V value : values)
+        EXPECT_EQ(value, static_cast<V>(1000 + expected_score));
+    };
+    check_bucket(0, filler, 1);
+    check_bucket(1, target, 2);
+    insert(target, 3);
+    EXPECT_EQ(table.size(0), size_t{2});
+    check_bucket(0, filler, 1);
+    check_bucket(1, target, 3);
+    CUDA_CHECK(cudaFree(device_keys));
+    CUDA_CHECK(cudaFree(device_values));
+    CUDA_CHECK(cudaFree(device_scores));
+  }
 }
 
 // ===================================
@@ -1807,7 +1965,8 @@ TEST(DualBucketTest, FindWithNullScores) {
   CUDA_CHECK(
       cudaMemcpy(h_founds, d_founds, N * sizeof(bool), cudaMemcpyDeviceToHost));
   for (size_t i = 0; i < N; i++) {
-    EXPECT_TRUE(h_founds[i]) << "Key " << h_keys[i] << " not found (null scores)";
+    EXPECT_TRUE(h_founds[i])
+        << "Key " << h_keys[i] << " not found (null scores)";
   }
 
   // Find with scores!=nullptr (CopyScoreByPassCache branch).
@@ -1909,8 +2068,8 @@ TEST(DualBucketTest, ClearAndReinsert) {
   }
 
   // Verify old keys are NOT findable.
-  CUDA_CHECK(cudaMemcpy(d_keys, h_keys.data(), N * sizeof(K),
-                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(
+      cudaMemcpy(d_keys, h_keys.data(), N * sizeof(K), cudaMemcpyHostToDevice));
   table.find(N, d_keys, d_found_values, d_founds, nullptr, 0);
   CUDA_CHECK(cudaDeviceSynchronize());
 

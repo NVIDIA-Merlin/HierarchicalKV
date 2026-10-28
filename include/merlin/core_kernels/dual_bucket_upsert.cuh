@@ -70,7 +70,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
   uint32_t tx = threadIdx.x;
   uint32_t kv_idx = blockIdx.x * blockDim.x + tx;
   K key{static_cast<K>(EMPTY_KEY)};
-  VecD_Comp target_digests;
+  VecD_Comp target_digests{};
   K* bucket_keys_ptr1{nullptr};
   K* bucket_keys_ptr2{nullptr};
   VecV* bucket_values_ptr2{nullptr};
@@ -147,10 +147,12 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
     D* dst = sm_bucket_digests + rank * Load_LEN;
     D* src = BUCKET::digests(keys_ptr_next, BUCKET_SIZE, rank * Load_LEN);
     if (rank * Load_LEN < BUCKET_SIZE) {
-      __pipeline_memcpy_async(dst, src, sizeof(VecD_Load));
+      *reinterpret_cast<VecD_Load*>(dst) = load_digest_vector(src);
     }
   }
   __pipeline_commit();
+  __pipeline_wait_prior(0);
+  g.sync();
   __pipeline_commit();
   __pipeline_commit();
 
@@ -164,7 +166,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
         D* dst = sm_bucket_digests + rank * Load_LEN;
         D* src = BUCKET::digests(keys_ptr_next, BUCKET_SIZE, rank * Load_LEN);
         if (rank * Load_LEN < BUCKET_SIZE) {
-          __pipeline_memcpy_async(dst, src, sizeof(VecD_Load));
+          *reinterpret_cast<VecD_Load*>(dst) = load_digest_vector(src);
         }
       }
     }
@@ -189,7 +191,8 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
                  i)));
       auto start_pos2_cur = g.shfl(key_pos2, i);
 
-      __pipeline_wait_prior(3);
+      __pipeline_wait_prior(2);
+      g.sync();
       D* digest_src = SMM::bucket_digests(smem, groupID, same_buf(i));
 
       // b1 probe offset (from b1's hash).
@@ -208,7 +211,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
       // Load b2 digests (synchronous read).
       D* b2_digests_ptr = BUCKET::digests(keys_ptr2_cur, BUCKET_SIZE, 0);
       VecD_Comp b2_probe_digests =
-          *reinterpret_cast<VecD_Comp*>(b2_digests_ptr + b2_probe_offset);
+          load_digest_word(b2_digests_ptr + b2_probe_offset);
       uint32_t b2_cmp = __vcmpeq4(b2_probe_digests, target_digests_cur);
       b2_cmp &= 0x01010101;
 
@@ -239,6 +242,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
         // DUPLICATE found in b1 -> update in place.
         int32_t src_lane = __ffs(found_vote) - 1;
         possible_pos = g.shfl(possible_pos, src_lane);
+        g.sync();
         if (rank == i) {
           occupy_result = OccupyResult::DUPLICATE;
           key_pos = possible_pos;
@@ -285,6 +289,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           // DUPLICATE found in b2.
           int32_t src_lane = __ffs(found_vote) - 1;
           possible_pos = g.shfl(possible_pos, src_lane);
+          g.sync();
           if (rank == i) {
             occupy_result = OccupyResult::DUPLICATE;
             key_pos = possible_pos;
@@ -308,8 +313,10 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
       // ============================================================
       occupy_result_cur = g.shfl(occupy_result, i);
       if (occupy_result_cur == OccupyResult::INITIAL) {
-        auto bucket_size1 = *bucket_size_ptr1;
-        auto bucket_size2 = *bsize_ptr2_cur;
+        auto bucket_size1 =
+            g.shfl(rank == 0 ? atomicAdd(bucket_size_ptr1, 0) : 0, 0);
+        auto bucket_size2 =
+            g.shfl(rank == 0 ? atomicAdd(bsize_ptr2_cur, 0) : 0, 0);
 
         // True Two-Choice: prefer the emptier bucket.
         bool prefer_b1 = (bucket_size1 <= bucket_size2);
@@ -361,6 +368,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
             if (found_vote) {
               int32_t src_lane = __ffs(found_vote) - 1;
               possible_pos = g.shfl(possible_pos, src_lane);
+              g.sync();
               if (rank == i) {
                 occupy_result = OccupyResult::OCCUPIED_EMPTY;
                 key_pos = possible_pos;
@@ -410,6 +418,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
             if (found_vote) {
               int32_t src_lane = __ffs(found_vote) - 1;
               possible_pos = g.shfl(possible_pos, src_lane);
+              g.sync();
               if (rank == i) {
                 occupy_result = OccupyResult::OCCUPIED_EMPTY;
                 key_pos = possible_pos;
@@ -439,6 +448,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
         S* sm_param_scores = SMM::param_scores(smem);
         S score_cur = ScoreFunctor_::desired_when_missed(sm_param_scores,
                                                          tx_cur, global_epoch);
+        score_cur = g.shfl(score_cur, i);
 
         S* b1_scores = BUCKET::scores(keys_ptr_cur, BUCKET_SIZE, 0);
         S* b2_scores = BUCKET::scores(keys_ptr2_cur, BUCKET_SIZE, 0);
@@ -454,8 +464,8 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           int idx = 0;
           for (int j = 0; j < BUCKET_SIZE; j += GROUP_SIZE * Load_LEN_S) {
             S tmp[Load_LEN_S];
-            *reinterpret_cast<byte16*>(tmp) =
-                *reinterpret_cast<byte16*>(b1_scores + rank * Load_LEN_S + j);
+            copy_bucket_scores<Load_LEN_S>(tmp,
+                                           b1_scores + rank * Load_LEN_S + j);
             for (int k = 0; k < Load_LEN_S; k++) {
               b1_cached[idx] = tmp[k];
               b1_pos_cached[idx] = rank * Load_LEN_S + j + k;
@@ -467,8 +477,8 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           int idx = 0;
           for (int j = 0; j < BUCKET_SIZE; j += GROUP_SIZE * Load_LEN_S) {
             S tmp[Load_LEN_S];
-            *reinterpret_cast<byte16*>(tmp) =
-                *reinterpret_cast<byte16*>(b2_scores + rank * Load_LEN_S + j);
+            copy_bucket_scores<Load_LEN_S>(tmp,
+                                           b2_scores + rank * Load_LEN_S + j);
             for (int k = 0; k < Load_LEN_S; k++) {
               b2_cached[idx] = tmp[k];
               b2_pos_cached[idx] = rank * Load_LEN_S + j + k;
@@ -486,7 +496,8 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           S min_b1_local = static_cast<S>(MAX_SCORE);
           int min_b1_idx = -1;
           for (int s = 0; s < SCORES_PER_THREAD; s++) {
-            if (b1_cached[s] < min_b1_local) {
+            if (b1_pos_cached[s] >= 0 &&
+                (min_b1_idx < 0 || b1_cached[s] < min_b1_local)) {
               min_b1_local = b1_cached[s];
               min_b1_idx = s;
             }
@@ -494,7 +505,8 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           S min_b2_local = static_cast<S>(MAX_SCORE);
           int min_b2_idx = -1;
           for (int s = 0; s < SCORES_PER_THREAD; s++) {
-            if (b2_cached[s] < min_b2_local) {
+            if (b2_pos_cached[s] >= 0 &&
+                (min_b2_idx < 0 || b2_cached[s] < min_b2_local)) {
               min_b2_local = b2_cached[s];
               min_b2_idx = s;
             }
@@ -514,7 +526,10 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           }
 
           // Pick the bucket with lower min_score (Two-Choice eviction).
-          bool use_b1 = (min_b1_global <= min_b2_global);
+          bool b1_has_candidates = g.ballot(min_b1_idx >= 0) != 0;
+          bool b2_has_candidates = g.ballot(min_b2_idx >= 0) != 0;
+          bool use_b1 = b1_has_candidates &&
+                        (!b2_has_candidates || min_b1_global <= min_b2_global);
           S min_score_local = use_b1 ? min_b1_local : min_b2_local;
           int min_local_idx = use_b1 ? min_b1_idx : min_b2_idx;
           int min_pos_local = (min_local_idx >= 0)
@@ -525,7 +540,8 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           K* evict_keys_ptr = use_b1 ? keys_ptr_cur : keys_ptr2_cur;
           int* evict_bsize_ptr = use_b1 ? bucket_size_ptr1 : bsize_ptr2_cur;
 
-          uint32_t vote = g.ballot(min_score_local <= min_score_global);
+          uint32_t vote = g.ballot(min_local_idx >= 0 &&
+                                   min_score_local <= min_score_global);
           if (vote) {
             int src_lane = __ffs(vote) - 1;
             int min_pos_evict = g.shfl(min_pos_local, src_lane);
@@ -534,11 +550,11 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
             if (use_b1) {
               int visited_idx = g.shfl(min_local_idx, src_lane);
               if (rank == src_lane && visited_idx >= 0)
-                b1_cached[visited_idx] = static_cast<S>(MAX_SCORE);
+                b1_pos_cached[visited_idx] = -1;
             } else {
               int visited_idx = g.shfl(min_local_idx, src_lane);
               if (rank == src_lane && visited_idx >= 0)
-                b2_cached[visited_idx] = static_cast<S>(MAX_SCORE);
+                b2_pos_cached[visited_idx] = -1;
             }
 
             if (rank == i) {
@@ -590,6 +606,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
         }  // while eviction retry
       }
     }  // end of INITIAL check
+    g.sync();
 
     // === Step 3: Prefetch values to shared memory for previous key ===
     if (i > 0) {
@@ -623,8 +640,10 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
           auto bv2 = g.shfl(bucket_values_ptr2, i - 2);
           dst = bv2 + key_pos_wb * dim;
         }
-        __pipeline_wait_prior(3);
+        __pipeline_wait_prior(2);
+        g.sync();
         CopyValue::lds_stg(rank, dst, src, dim);
+        g.sync();
 
         // Unlock key.
         if (rank == i - 2) {
@@ -670,7 +689,9 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
         dst = bv2 + key_pos_wb * dim;
       }
       __pipeline_wait_prior(1);
+      g.sync();
       CopyValue::lds_stg(rank, dst, src, dim);
+      g.sync();
       if (rank == GROUP_SIZE - 2) {
         K* target_keys_ptr =
             (target_bucket == 1) ? bucket_keys_ptr1 : bucket_keys_ptr2;
@@ -699,7 +720,9 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
         dst = bv2 + key_pos_wb * dim;
       }
       __pipeline_wait_prior(0);
+      g.sync();
       CopyValue::lds_stg(rank, dst, src, dim);
+      g.sync();
       if (rank == GROUP_SIZE - 1) {
         K* target_keys_ptr =
             (target_bucket == 1) ? bucket_keys_ptr1 : bucket_keys_ptr2;

@@ -41,8 +41,8 @@ __global__ void lock_read_kernel(
   for (;;) {
     while (update_count->load(cuda::std::memory_order_relaxed)) {
     }
-    read_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (update_count->load(cuda::std::memory_order_relaxed) == 0) {
+    read_count->fetch_add(1, cuda::std::memory_order_seq_cst);
+    if (update_count->load(cuda::std::memory_order_seq_cst) == 0) {
       break;
     }
     read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
@@ -52,7 +52,7 @@ __global__ void lock_read_kernel(
 template <typename T>
 __global__ void unlock_read_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* read_count) {
-  read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+  read_count->fetch_sub(1, cuda::std::memory_order_release);
 }
 
 template <typename T>
@@ -62,8 +62,8 @@ __global__ void lock_update_kernel(
   for (;;) {
     while (read_count->load(cuda::std::memory_order_relaxed)) {
     }
-    update_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (read_count->load(cuda::std::memory_order_relaxed) == 0) {
+    update_count->fetch_add(1, cuda::std::memory_order_seq_cst);
+    if (read_count->load(cuda::std::memory_order_seq_cst) == 0) {
       break;
     }
     update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
@@ -73,7 +73,7 @@ __global__ void lock_update_kernel(
 template <typename T>
 __global__ void unlock_update_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count) {
-  update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
+  update_count->fetch_sub(1, cuda::std::memory_order_release);
 }
 
 template <typename T>
@@ -84,6 +84,7 @@ __global__ void lock_update_read_kernel(
   /* Lock unique flag */
   bool expected = false;
   while (!unique_flag->compare_exchange_weak(expected, true,
+                                             cuda::std::memory_order_acquire,
                                              cuda::std::memory_order_relaxed)) {
     expected = false;
   }
@@ -92,8 +93,8 @@ __global__ void lock_update_read_kernel(
   for (;;) {
     while (update_count->load(cuda::std::memory_order_relaxed)) {
     }
-    read_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (update_count->load(cuda::std::memory_order_relaxed) == 0) {
+    read_count->fetch_add(1, cuda::std::memory_order_seq_cst);
+    if (update_count->load(cuda::std::memory_order_seq_cst) == 0) {
       break;
     }
     read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
@@ -103,8 +104,8 @@ __global__ void lock_update_read_kernel(
   for (;;) {
     while (read_count->load(cuda::std::memory_order_relaxed) > 1) {
     }
-    update_count->fetch_add(1, cuda::std::memory_order_relaxed);
-    if (read_count->load(cuda::std::memory_order_relaxed) == 1) {
+    update_count->fetch_add(1, cuda::std::memory_order_seq_cst);
+    if (read_count->load(cuda::std::memory_order_seq_cst) == 1) {
       break;
     }
     update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
@@ -116,9 +117,9 @@ __global__ void unlock_update_read_kernel(
     cuda::atomic<T, cuda::thread_scope_device>* update_count,
     cuda::atomic<T, cuda::thread_scope_device>* read_count,
     cuda::atomic<bool, cuda::thread_scope_device>* unique_flag) {
-  read_count->fetch_sub(1, cuda::std::memory_order_relaxed);
-  update_count->fetch_sub(1, cuda::std::memory_order_relaxed);
-  unique_flag->store(false, cuda::std::memory_order_relaxed);
+  read_count->fetch_sub(1, cuda::std::memory_order_release);
+  update_count->fetch_sub(1, cuda::std::memory_order_release);
+  unique_flag->store(false, cuda::std::memory_order_release);
 }
 
 template <typename T>

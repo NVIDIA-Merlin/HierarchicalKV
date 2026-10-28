@@ -3044,8 +3044,9 @@ void test_find_or_insert_multi_threads(size_t max_hbm_for_vectors,
     } else {
       if (found_num != KEY_NUM or err_times != 0) {
         std::cout << " [Thread " << task_n << "]\t"
-                  << "Number of keys(insert/found/error) : " << "(" << KEY_NUM
-                  << "/" << found_num << "/" << err_times << ") \t";
+                  << "Number of keys(insert/found/error) : "
+                  << "(" << KEY_NUM << "/" << found_num << "/" << err_times
+                  << ") \t";
         print_thread_id = true;
       }
     }
@@ -3173,8 +3174,9 @@ void test_find_or_insert_multi_threads(size_t max_hbm_for_vectors,
     } else {
       if (found_num != KEY_NUM or err_times != 0) {
         std::cout << " [Thread " << task_n << "]\t"
-                  << "Number of keys(insert/found/error) : " << "(" << KEY_NUM
-                  << "/" << found_num << "/" << err_times << ") \t";
+                  << "Number of keys(insert/found/error) : "
+                  << "(" << KEY_NUM << "/" << found_num << "/" << err_times
+                  << ") \t";
         print_thread_id = true;
       }
     }
@@ -3341,7 +3343,7 @@ void test_value_type_hbm_mode() {
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ(table_size_verify, table_size_after);
     CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
-                          cudaMemcpyHostToDevice));
+                          cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
                           cudaMemcpyDeviceToHost));
@@ -3395,7 +3397,7 @@ void test_value_type_hbm_mode() {
     CUDA_CHECK(cudaStreamSynchronize(stream));
     ASSERT_EQ(table_size_verify, table_size_after);
     CUDA_CHECK(cudaMemcpy(h_scores, d_scores, KEY_NUM * sizeof(S),
-                          cudaMemcpyHostToDevice));
+                          cudaMemcpyDeviceToHost));
     CUDA_CHECK(cudaMemcpy(h_vectors, d_vectors,
                           KEY_NUM * sizeof(V) * options.dim,
                           cudaMemcpyDeviceToHost));

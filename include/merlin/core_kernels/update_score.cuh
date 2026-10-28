@@ -58,11 +58,15 @@ __global__ void tlp_update_score_kernel(Bucket<K, V, S>* __restrict__ buckets,
   } else {
     return;
   }
+  const unsigned int active_warp_mask = __ballot_sync(0xffffffff, true);
+  bool retry_needed = false;
+  bool scan_complete = false;
 
   // Load `STRIDE` digests every time.
   constexpr uint32_t STRIDE = sizeof(VecD_Load) / sizeof(D);
   // One more loop to handle empty keys.
-  for (int offset = 0; offset < bucket_capacity + STRIDE; offset += STRIDE) {
+  for (int offset = 0; offset < bucket_capacity + STRIDE && !scan_complete;
+       offset += STRIDE) {
     if (occupy_result != OccupyResult::INITIAL) break;
 
     uint32_t pos_cur = align_to<STRIDE>(key_pos);
@@ -73,7 +77,7 @@ __global__ void tlp_update_score_kernel(Bucket<K, V, S>* __restrict__ buckets,
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 4 && !scan_complete; i++) {
       VecD_Comp probe_digests = digests_arr[i];
       uint32_t possible_pos = 0;
       bool result = false;
@@ -95,6 +99,7 @@ __global__ void tlp_update_score_kernel(Bucket<K, V, S>* __restrict__ buckets,
         result = current_key->compare_exchange_strong(
             expected_key, static_cast<K>(LOCKED_KEY),
             cuda::std::memory_order_acquire, cuda::std::memory_order_relaxed);
+        retry_needed |= expected_key == static_cast<K>(LOCKED_KEY);
       } while (!result);
       if (result) {
         occupy_result = OccupyResult::DUPLICATE;
@@ -120,11 +125,42 @@ __global__ void tlp_update_score_kernel(Bucket<K, V, S>* __restrict__ buckets,
         auto current_key = BUCKET::keys(bucket_keys_ptr, possible_pos);
         auto probe_key = current_key->load(cuda::std::memory_order_relaxed);
         if (probe_key == static_cast<K>(EMPTY_KEY)) {
-          return;
+          scan_complete = true;
+          break;
         }
       } while (true);
     }
   }
+  if (!retry_needed) return;
+  __syncwarp(active_warp_mask);
+  const unsigned int retry_warp_mask = __ballot_sync(active_warp_mask, true);
+  bool completed = false;
+  do {
+    if (!completed) {
+      bool has_locked_keys = false;
+      for (uint32_t position = 0; position < bucket_capacity; ++position) {
+        auto key_address = BUCKET::keys(bucket_keys_ptr, position);
+        const K possible_key =
+            key_address->load(cuda::std::memory_order_relaxed);
+        has_locked_keys |= possible_key == static_cast<K>(LOCKED_KEY);
+        if (possible_key != key) continue;
+        K expected_key = key;
+        if (key_address->compare_exchange_strong(
+                expected_key, static_cast<K>(LOCKED_KEY),
+                cuda::std::memory_order_acquire,
+                cuda::std::memory_order_relaxed)) {
+          ScoreFunctor::update_without_missed(bucket_keys_ptr, bucket_capacity,
+                                              position, scores, kv_idx,
+                                              global_epoch);
+          key_address->store(key, cuda::std::memory_order_release);
+          completed = true;
+          break;
+        }
+        has_locked_keys |= expected_key == static_cast<K>(LOCKED_KEY);
+      }
+      completed |= !has_locked_keys;
+    }
+  } while (__any_sync(retry_warp_mask, !completed));
 }
 template <typename K = uint64_t, typename V = byte4, typename S = uint64_t,
           uint32_t BLOCK_SIZE = 128, uint32_t GROUP_SIZE = 16,
@@ -159,12 +195,15 @@ __global__ void pipeline_update_score_kernel(
   __shared__ int sm_ranks[GROUP_NUM][2];
 
   bool CAS_res[2]{false};
+  unsigned int retry_mask = 0;
 
   // Initialization
   auto g = cg::tiled_partition<GROUP_SIZE>(cg::this_thread_block());
   int groupID = threadIdx.x / GROUP_SIZE;
   int rank = g.thread_rank();
   uint64_t key_idx_base = (blockIdx.x * blockDim.x) + groupID * GROUP_SIZE;
+  const unsigned int active_warp_mask =
+      __ballot_sync(0xffffffff, key_idx_base < n);
   if (key_idx_base >= n) return;
   int loop_num =
       (n - key_idx_base) < GROUP_SIZE ? (n - key_idx_base) : GROUP_SIZE;
@@ -182,6 +221,7 @@ __global__ void pipeline_update_score_kernel(
     __pipeline_commit();
   }
   __pipeline_wait_prior(0);
+  g.sync();
 
   // Pipeline loading
   K* keys_ptr = sm_keys_ptr[groupID * GROUP_SIZE];
@@ -209,8 +249,10 @@ __global__ void pipeline_update_score_kernel(
 
     /* Step2: check digests and load possible keys */
     VecD_Comp target_digests = sm_target_digests[key_idx_block];
-    sm_counts[key_idx_block] = 0;
+    g.sync();
+    if (rank == 0) sm_counts[key_idx_block] = 0;
     __pipeline_wait_prior(3);
+    g.sync();
     VecD_Comp probing_digests = *reinterpret_cast<VecD_Comp*>(
         &sm_digests[groupID][same_buf(i) * BUCKET_SIZE + rank * Comp_LEN]);
     uint32_t find_result_ = __vcmpeq4(probing_digests, target_digests);
@@ -245,9 +287,9 @@ __global__ void pipeline_update_score_kernel(
                             : ((GROUP_SIZE + rank - 1) * 4 + digest_idx);
           sm_possible_pos[groupID][same_buf(i) * RESERVE + group_base] =
               key_pos;
-          __pipeline_memcpy_async(
-              sm_possible_keys[groupID] + same_buf(i) * RESERVE + group_base,
-              key_ptr + key_pos, sizeof(K));
+          sm_possible_keys[groupID][same_buf(i) * RESERVE + group_base] =
+              BUCKET::keys(key_ptr, key_pos)
+                  ->load(cuda::std::memory_order_relaxed);
           group_base += 1;
         } else {
           break;
@@ -255,7 +297,8 @@ __global__ void pipeline_update_score_kernel(
       } while (true);
     } else {
       K target_key = sm_target_keys[key_idx_block];
-      sm_counts[key_idx_block] = 0;
+      if (rank == 0) sm_counts[key_idx_block] = 0;
+      g.sync();
       int found_vote = 0;
       bool found = false;
       do {
@@ -265,7 +308,8 @@ __global__ void pipeline_update_score_kernel(
           int key_pos = digest_idx < 4
                             ? (rank * 4 + digest_idx)
                             : ((GROUP_SIZE + rank - 1) * 4 + digest_idx);
-          K possible_key = key_ptr[key_pos];
+          K possible_key = BUCKET::keys(key_ptr, key_pos)
+                               ->load(cuda::std::memory_order_relaxed);
           if (possible_key == target_key) {
             found = true;
             sm_counts[key_idx_block] = 1;
@@ -280,16 +324,23 @@ __global__ void pipeline_update_score_kernel(
         found_vote = digest_idx >= 0;
       } while (g.any(found_vote));
     }
+    g.sync();
     __pipeline_commit();
 
-    /* Step3: check possible keys, and prefecth the value and score */
+    /* Step3: check possible keys, and prefetch the value and score */
     if (i > 0) {
       key_idx_block -= 1;
       K target_key = sm_target_keys[key_idx_block];
       K* keys_ptr = sm_keys_ptr[key_idx_block];
-      int possible_num = sm_counts[key_idx_block];
-      sm_position[key_idx_block] = -1;
       __pipeline_wait_prior(3);
+      g.sync();
+      int possible_num = sm_counts[key_idx_block];
+      g.sync();
+      if (rank == 0) {
+        sm_position[key_idx_block] = -1;
+        sm_ranks[groupID][diff_buf(i)] = 0;
+      }
+      g.sync();
       int key_pos;
       bool found_flag = false;
       if (rank < possible_num) {
@@ -322,8 +373,9 @@ __global__ void pipeline_update_score_kernel(
       if (found_vote) {
         int src_lane = __ffs(found_vote) - 1;
         int target_pos = g.shfl(key_pos, src_lane);
-        sm_position[key_idx_block] = target_pos;
+        if (rank == 0) sm_position[key_idx_block] = target_pos;
       }
+      g.sync();
     }
     __pipeline_commit();
 
@@ -335,17 +387,22 @@ __global__ void pipeline_update_score_kernel(
       K* keys_ptr = sm_keys_ptr[key_idx_block];
       int src_lane = sm_ranks[groupID][same_buf(i)];
       __pipeline_wait_prior(3);
+      g.sync();
       int succ = 0;
       if (rank == src_lane) {
         bool CAS_res_cur = same_buf(i) == 0 ? CAS_res[0] : CAS_res[1];
         succ = CAS_res_cur ? 1 : 0;
       }
       succ = g.shfl(succ, src_lane);
+      if (target_pos < 0 || succ == 0) {
+        retry_mask |= 1U << (i - 2);
+      }
       if (target_pos >= 0 && succ == 1) {
-        ScoreFunctor::update_without_missed(keys_ptr, BUCKET_SIZE, target_pos,
-                                            sm_scores[groupID] + same_buf(i), 0,
-                                            global_epoch);
         if (rank == 0) {
+          ScoreFunctor::update_without_missed(
+              keys_ptr, BUCKET_SIZE, target_pos,
+              scores ? sm_scores[groupID] + same_buf(i) : nullptr, 0,
+              global_epoch);
           auto key_address = BUCKET::keys(keys_ptr, target_pos);
           key_address->store(target_key, cuda::std::memory_order_release);
         }
@@ -358,9 +415,15 @@ __global__ void pipeline_update_score_kernel(
     int key_idx_block = groupID * GROUP_SIZE + (loop_num - 1);
     K target_key = sm_target_keys[key_idx_block];
     K* keys_ptr = sm_keys_ptr[key_idx_block];
-    int possible_num = sm_counts[key_idx_block];
-    sm_position[key_idx_block] = -1;
     __pipeline_wait_prior(1);
+    g.sync();
+    int possible_num = sm_counts[key_idx_block];
+    g.sync();
+    if (rank == 0) {
+      sm_position[key_idx_block] = -1;
+      sm_ranks[groupID][diff_buf(loop_num)] = 0;
+    }
+    g.sync();
     int key_pos;
     bool found_flag = false;
     if (rank < possible_num) {
@@ -392,8 +455,9 @@ __global__ void pipeline_update_score_kernel(
     if (found_vote) {
       int src_lane = __ffs(found_vote) - 1;
       int target_pos = g.shfl(key_pos, src_lane);
-      sm_position[key_idx_block] = target_pos;
+      if (rank == 0) sm_position[key_idx_block] = target_pos;
     }
+    g.sync();
   }
   __pipeline_commit();
 
@@ -405,19 +469,22 @@ __global__ void pipeline_update_score_kernel(
     K* keys_ptr = sm_keys_ptr[key_idx_block];
     int src_lane = sm_ranks[groupID][same_buf(loop_num)];
     __pipeline_wait_prior(1);
+    g.sync();
     int succ = 0;
     if (rank == src_lane) {
       bool CAS_res_cur = same_buf(loop_num) == 0 ? CAS_res[0] : CAS_res[1];
       succ = CAS_res_cur ? 1 : 0;
     }
     succ = g.shfl(succ, src_lane);
+    if (target_pos < 0 || succ == 0) {
+      retry_mask |= 1U << (loop_num - 2);
+    }
     if (target_pos >= 0 && succ == 1) {
-      ScoreFunctor::update_without_missed(
-          keys_ptr, BUCKET_SIZE, target_pos,
-          sm_scores[groupID] + same_buf(loop_num), 0, global_epoch);
-
-      auto key_ptr = BUCKET::keys(keys_ptr, target_pos);
       if (rank == 0) {
+        ScoreFunctor::update_without_missed(
+            keys_ptr, BUCKET_SIZE, target_pos,
+            scores ? sm_scores[groupID] + same_buf(loop_num) : nullptr, 0,
+            global_epoch);
         auto key_address = BUCKET::keys(keys_ptr, target_pos);
         key_address->store(target_key, cuda::std::memory_order_release);
       }
@@ -432,21 +499,81 @@ __global__ void pipeline_update_score_kernel(
     K* keys_ptr = sm_keys_ptr[key_idx_block];
     int src_lane = sm_ranks[groupID][same_buf(loop_num + 1)];
     __pipeline_wait_prior(0);
+    g.sync();
     int succ = 0;
     if (rank == src_lane) {
       bool CAS_res_cur = same_buf(loop_num + 1) == 0 ? CAS_res[0] : CAS_res[1];
       succ = CAS_res_cur ? 1 : 0;
     }
     succ = g.shfl(succ, src_lane);
+    if (target_pos < 0 || succ == 0) {
+      retry_mask |= 1U << (loop_num - 1);
+    }
     if (target_pos >= 0 && succ == 1) {
-      ScoreFunctor::update_without_missed(
-          keys_ptr, BUCKET_SIZE, target_pos,
-          sm_scores[groupID] + same_buf(loop_num + 1), 0, global_epoch);
       if (rank == 0) {
+        ScoreFunctor::update_without_missed(
+            keys_ptr, BUCKET_SIZE, target_pos,
+            scores ? sm_scores[groupID] + same_buf(loop_num + 1) : nullptr, 0,
+            global_epoch);
         auto key_address = BUCKET::keys(keys_ptr, target_pos);
         key_address->store(target_key, cuda::std::memory_order_release);
       }
     }
+  }
+  g.sync();
+  __syncwarp(active_warp_mask);
+
+  while (retry_mask != 0) {
+    const int retry_index = __ffs(retry_mask) - 1;
+    const int retry_key_idx = groupID * GROUP_SIZE + retry_index;
+    const uint64_t retry_input_idx = key_idx_base + retry_index;
+    const K retry_key = sm_target_keys[retry_key_idx];
+    K* retry_keys_ptr = sm_keys_ptr[retry_key_idx];
+    int retry_pos = sm_position[retry_key_idx];
+    if (retry_pos < 0 && !IS_RESERVED_KEY<K>(retry_key)) {
+      bool has_locked_keys = false;
+      do {
+        int possible_pos = -1;
+        has_locked_keys = false;
+        for (int position = rank; position < BUCKET_SIZE;
+             position += GROUP_SIZE) {
+          const K possible_key = BUCKET::keys(retry_keys_ptr, position)
+                                     ->load(cuda::std::memory_order_relaxed);
+          if (possible_key == retry_key) {
+            possible_pos = position;
+          }
+          has_locked_keys |= possible_key == static_cast<K>(LOCKED_KEY);
+        }
+        const auto found_vote = g.ballot(possible_pos >= 0);
+        if (found_vote) {
+          retry_pos = g.shfl(possible_pos, __ffs(found_vote) - 1);
+        }
+        has_locked_keys = g.any(has_locked_keys);
+      } while (retry_pos < 0 && has_locked_keys);
+    }
+    if (retry_pos < 0) {
+      retry_mask &= retry_mask - 1;
+      continue;
+    }
+    auto retry_key_address = BUCKET::keys(retry_keys_ptr, retry_pos);
+    int acquired = 0;
+    do {
+      if (rank == 0) {
+        K expected_key = retry_key;
+        acquired = retry_key_address->compare_exchange_strong(
+            expected_key, static_cast<K>(LOCKED_KEY),
+            cuda::std::memory_order_acquire, cuda::std::memory_order_relaxed);
+      }
+      acquired = g.shfl(acquired, 0);
+    } while (acquired == 0);
+    if (rank == 0) {
+      ScoreFunctor::update_without_missed(retry_keys_ptr, BUCKET_SIZE,
+                                          retry_pos, scores, retry_input_idx,
+                                          global_epoch);
+      retry_key_address->store(retry_key, cuda::std::memory_order_release);
+    }
+    g.sync();
+    retry_mask &= retry_mask - 1;
   }
 }  // End function
 
