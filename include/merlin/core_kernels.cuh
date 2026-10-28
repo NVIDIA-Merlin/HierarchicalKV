@@ -20,11 +20,11 @@
 #include <cub/cub.cuh>
 #include <cuda/std/functional>
 #include "allocator.cuh"
-#include "core_kernels/kernel_utils.cuh"
 #include "core_kernels/accum_or_assign.cuh"
 #include "core_kernels/contains.cuh"
 #include "core_kernels/find_or_insert.cuh"
 #include "core_kernels/find_ptr_or_insert.cuh"
+#include "core_kernels/kernel_utils.cuh"
 #include "core_kernels/lookup.cuh"
 #include "core_kernels/lookup_ptr.cuh"
 #include "core_kernels/update.cuh"
@@ -35,9 +35,9 @@
 // Dual-bucket headers depend on types from lookup.cuh and upsert.cuh
 // (FoundFunctorV1, LookupValueBufConfig, Params_Upsert,
 // SharedMemoryManager_Pipeline_Upsert), so they must come after.
-#include "core_kernels/dual_bucket_utils.cuh"
-#include "core_kernels/dual_bucket_upsert.cuh"
 #include "core_kernels/dual_bucket_lookup.cuh"
+#include "core_kernels/dual_bucket_upsert.cuh"
+#include "core_kernels/dual_bucket_utils.cuh"
 
 namespace nv {
 namespace merlin {
@@ -357,8 +357,10 @@ void create_table(Table<K, V, S>** table, BaseAllocator* allocator,
   }
 
   (*table)->capacity = (*table)->buckets_num * (*table)->bucket_max_size;
-  (*table)->max_hbm_for_vectors = max_hbm_for_vectors;
-  (*table)->remaining_hbm_for_vectors = max_hbm_for_vectors;
+  (*table)->max_hbm_for_vectors = dual_bucket_mode
+                                      ? (*table)->capacity * dim * sizeof(V)
+                                      : max_hbm_for_vectors;
+  (*table)->remaining_hbm_for_vectors = (*table)->max_hbm_for_vectors;
   (*table)->primary = primary;
 
   allocator->alloc(MemoryType::Device, (void**)&((*table)->locks),
@@ -1290,7 +1292,7 @@ __global__ void lock_kernel_with_filter(
     pos_cur = (pos_cur + offset) & (bucket_capacity - 1);
 
     D* digests_ptr = BUCKET::digests(bucket_keys_ptr, bucket_capacity, pos_cur);
-    VecD_Load digests_vec = *(reinterpret_cast<VecD_Load*>(digests_ptr));
+    VecD_Load digests_vec = load_digest_vector(digests_ptr);
     VecD_Comp digests_arr[4] = {digests_vec.x, digests_vec.y, digests_vec.z,
                                 digests_vec.w};
 
@@ -1309,7 +1311,8 @@ __global__ void lock_kernel_with_filter(
         uint32_t index = (__ffs(cmp_result) - 1) >> 3;
         cmp_result &= (cmp_result - 1);
         possible_pos = pos_cur + i * 4 + index;
-        auto current_key = bucket_keys_ptr[possible_pos];
+        auto current_key = BUCKET::keys(bucket_keys_ptr, possible_pos)
+                               ->load(cuda::std::memory_order_relaxed);
         if (current_key == key) {
           key_pos = possible_pos;
           occupy_result = OccupyResult::DUPLICATE;
@@ -1325,7 +1328,8 @@ __global__ void lock_kernel_with_filter(
         cmp_result &= (cmp_result - 1);
         possible_pos = pos_cur + i * 4 + index;
         if (offset == 0 && possible_pos < key_pos) continue;
-        auto current_key = bucket_keys_ptr[possible_pos];
+        auto current_key = BUCKET::keys(bucket_keys_ptr, possible_pos)
+                               ->load(cuda::std::memory_order_relaxed);
         if (current_key == static_cast<K>(EMPTY_KEY)) {
           occupy_result = OccupyResult::OCCUPIED_EMPTY;
           goto WRITE_BACK;
@@ -1402,7 +1406,7 @@ struct SumOp {
     num_items = batch;
     cub::DeviceReduce::Reduce<InputIteratorT, OutputIteratorT>(
         d_temp_storage, temp_storage_bytes, nullptr, nullptr, num_items,
-        cuda::std::plus<>(), 0, stream);
+        cuda::std::plus<>(), OutputT{0}, stream);
     return temp_storage_bytes;
   }
 
@@ -1414,7 +1418,8 @@ struct SumOp {
       throw std::runtime_error("Number of items is not matched when sum.");
     }
     cub::DeviceReduce::Reduce(d_temp_storage, temp_storage_bytes, d_in, d_out,
-                              num_items, cuda::std::plus<>(), 0, stream);
+                              num_items, cuda::std::plus<>(), OutputT{0},
+                              stream);
   }
 
   void* d_temp_storage{nullptr};

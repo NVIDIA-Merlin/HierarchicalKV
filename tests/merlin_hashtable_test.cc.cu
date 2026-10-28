@@ -106,8 +106,8 @@ struct ExportIfPredFunctor {
 
 class CustomizedAllocator : public virtual BaseAllocator {
  public:
-  CustomizedAllocator() {};
-  ~CustomizedAllocator() override {};
+  CustomizedAllocator(){};
+  ~CustomizedAllocator() override{};
 
   void alloc(const MemoryType type, void** ptr, size_t size,
              unsigned int pinned_flags = cudaHostAllocDefault) override {
@@ -3315,8 +3315,9 @@ void test_insert_or_assign_multi_threads(size_t max_hbm_for_vectors,
     } else {
       if (found_num != KEY_NUM or err_times != 0) {
         std::cout << " [Thread " << task_n << "]\t"
-                  << "Number of keys(insert/found/error) : " << "(" << KEY_NUM
-                  << "/" << found_num << "/" << err_times << ") \t";
+                  << "Number of keys(insert/found/error) : "
+                  << "(" << KEY_NUM << "/" << found_num << "/" << err_times
+                  << ") \t";
         print_thread_id = true;
       }
     }
@@ -3447,8 +3448,9 @@ void test_insert_or_assign_multi_threads(size_t max_hbm_for_vectors,
     } else {
       if (found_num != KEY_NUM or err_times != 0) {
         std::cout << " [Thread " << task_n << "]\t"
-                  << "Number of keys(insert/found/error) : " << "(" << KEY_NUM
-                  << "/" << found_num << "/" << err_times << ") \t";
+                  << "Number of keys(insert/found/error) : "
+                  << "(" << KEY_NUM << "/" << found_num << "/" << err_times
+                  << ") \t";
         print_thread_id = true;
       }
     }
@@ -3792,6 +3794,41 @@ void test_bucket_size(bool load_scores = true) {
   CUDA_CHECK(cudaDeviceSynchronize());
 
   CudaCheckError();
+}
+
+TEST(MerlinHashTableTest, test_size_sum_exceeds_int_max) {
+  // Valid full bucket counts: 2^24 buckets * 128 entries = 2^31 keys.
+  // Exercise size()'s reduction without allocating a billion-key table.
+  constexpr int kBucketCount = 1 << 24;
+  constexpr int kBucketSize = 128;
+  ASSERT_EQ(TableOptions{}.max_bucket_size, kBucketSize);
+  std::vector<int> counts(kBucketCount, kBucketSize);
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+  int* d_counts = nullptr;
+  int64_t* d_sum = nullptr;
+  CUDA_CHECK(cudaMalloc(&d_counts, counts.size() * sizeof(int)));
+  CUDA_CHECK(cudaMalloc(&d_sum, sizeof(int64_t)));
+  CUDA_CHECK(cudaMemcpyAsync(d_counts, counts.data(),
+                             counts.size() * sizeof(int),
+                             cudaMemcpyHostToDevice, stream));
+  for (int batch : {1, kBucketCount - 1, kBucketCount}) {
+    nv::merlin::SumOp<int, int64_t> sum;
+    const size_t bytes = sum.get_storage_bytes(batch, stream);
+    void* storage = nullptr;
+    CUDA_CHECK(cudaMalloc(&storage, bytes));
+    sum.set_storage(storage);
+    sum.sum(batch, d_counts, d_sum, stream);
+    int64_t actual = -1;
+    CUDA_CHECK(cudaMemcpyAsync(&actual, d_sum, sizeof(actual),
+                               cudaMemcpyDeviceToHost, stream));
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaFree(storage));
+    EXPECT_EQ(actual, int64_t{batch} * kBucketSize) << "bucket_count=" << batch;
+  }
+  CUDA_CHECK(cudaFree(d_sum));
+  CUDA_CHECK(cudaFree(d_counts));
+  CUDA_CHECK(cudaStreamDestroy(stream));
 }
 
 TEST(MerlinHashTableTest, test_export_batch_if) {

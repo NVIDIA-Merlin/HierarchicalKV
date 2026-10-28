@@ -40,9 +40,13 @@ using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
 
 void print_tile() {
   std::cout << std::endl
-            << "|    \u03BB " << "| capacity " << "| max_hbm_for_vectors "
-            << "| max_bucket_size " << "| dim " << "| missed_ratio "
-            << "| througput(BillionKV/secs) ";
+            << "|    \u03BB "
+            << "| capacity "
+            << "| max_hbm_for_vectors "
+            << "| max_bucket_size "
+            << "| dim "
+            << "| missed_ratio "
+            << "| throughput(BillionKV/secs) ";
   std::cout << "|\n";
 
   //<< "| load_factor "
@@ -57,7 +61,7 @@ void print_tile() {
             << "|-----"
             //<< "| missed_ratio "
             << "|--------------"
-            //<< "| througput(BillionKV/secs) "
+            //<< "| throughput(BillionKV/secs) "
             << "|---------------------------";
   std::cout << "|\n";
 }
@@ -69,14 +73,14 @@ void print_w(const T& t, size_t width) {
 
 void print_result(double load_factor, size_t capacity,
                   size_t max_hbm_for_vectors, size_t max_bucket_size,
-                  size_t dim, double missed_ratio, float througput) {
+                  size_t dim, double missed_ratio, float throughput) {
   print_w(load_factor, 6);
   print_w(capacity, 10);
   print_w(max_hbm_for_vectors, 21);
   print_w(max_bucket_size, 17);
   print_w(dim, 5);
   print_w(missed_ratio, 14);
-  print_w(througput, 27);
+  print_w(throughput, 27);
   std::cout << "|\n";
 }
 
@@ -163,9 +167,9 @@ void test_find(size_t capacity, size_t dim, size_t max_hbm_for_vectors,
   CUDA_CHECK(cudaFree(d_missed_size));
 
   CudaCheckError();
-  float througput = insert_num / timer.getResult() / (1024 * 1024 * 1024.0f);
+  float throughput = insert_num / timer.getResult() / (1024 * 1024 * 1024.0f);
   print_result(load_factor, capacity, max_hbm_for_vectors, max_bucket_size, dim,
-               missed_ratio, througput);
+               missed_ratio, throughput);
 }
 
 void test_main(double load_factor, double missed_ratio) {

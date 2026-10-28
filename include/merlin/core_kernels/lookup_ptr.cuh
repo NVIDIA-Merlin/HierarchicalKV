@@ -90,32 +90,19 @@ __global__ void tlp_lookup_ptr_kernel_with_filter(
         uint32_t index = (__ffs(cmp_result) - 1) >> 3;
         cmp_result &= (cmp_result - 1);
         possible_pos = pos_cur + i * 4 + index;
-        if (update_score) {
-          auto current_key = BUCKET::keys(bucket_keys_ptr, possible_pos);
-          K expected_key = key;
-          // Modifications to the bucket will not before this instruction.
-          bool result = current_key->compare_exchange_strong(
-              expected_key, static_cast<K>(LOCKED_KEY),
-              cuda::std::memory_order_acquire, cuda::std::memory_order_relaxed);
-          if (result) {
-            occupy_result = OccupyResult::DUPLICATE;
-            key_pos = possible_pos;
-            ScoreFunctor::update_with_digest(bucket_keys_ptr, key_pos, scores,
-                                             kv_idx, score, bucket_capacity,
-                                             get_digest<K>(key), false);
-            current_key->store(key, cuda::std::memory_order_release);
-            score = *BUCKET::scores(bucket_keys_ptr, bucket_capacity, key_pos);
-            goto WRITE_BACK;
+        const K current_key = BUCKET::keys(bucket_keys_ptr, possible_pos)
+                                  ->load(cuda::std::memory_order_relaxed);
+        if (current_key == key) {
+          if (update_score) {
+            ScoreFunctor::update_score_without_key_lock(
+                bucket_keys_ptr, bucket_capacity, possible_pos, scores, kv_idx,
+                score);
           }
-        } else {
-          auto current_key = bucket_keys_ptr[possible_pos];
-          score =
-              *BUCKET::scores(bucket_keys_ptr, bucket_capacity, possible_pos);
-          if (current_key == key) {
-            key_pos = possible_pos;
-            occupy_result = OccupyResult::DUPLICATE;
-            goto WRITE_BACK;
-          }
+          score = load_bucket_score(
+              BUCKET::scores(bucket_keys_ptr, bucket_capacity, possible_pos));
+          key_pos = possible_pos;
+          occupy_result = OccupyResult::DUPLICATE;
+          goto WRITE_BACK;
         }
       } while (true);
       VecD_Comp empty_digests_ = empty_digests<K>();
@@ -322,7 +309,7 @@ __global__ void lookup_ptr_kernel_with_pipeline(
           if (scores) {
             S* score_ptr =
                 reinterpret_cast<S*>(sm_keys_ptr[prev_idx_block] + BUCKET_SIZE);
-            scores[key_idx_grid] = score_ptr[target_pos];
+            scores[key_idx_grid] = load_bucket_score(score_ptr + target_pos);
           }
         }
       }
@@ -357,7 +344,7 @@ __global__ void lookup_ptr_kernel_with_pipeline(
         if (scores) {
           S* score_ptr =
               reinterpret_cast<S*>(sm_keys_ptr[key_idx_block] + BUCKET_SIZE);
-          scores[key_idx_grid] = score_ptr[target_pos];
+          scores[key_idx_grid] = load_bucket_score(score_ptr + target_pos);
         }
       }
     }

@@ -253,7 +253,7 @@ class HashTableBase {
    * overwritten by new key unless the score of the new key is even less than
    * minimum score of the target bucket. The overwritten key with minimum
    * score will be evicted, with its values and score, to evicted_keys,
-   * evicted_values, evcted_scores seperately in compact format.
+   * evicted_values, evcted_scores separately in compact format.
    *
    * @param n Number of key-value-score tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
@@ -310,7 +310,7 @@ class HashTableBase {
    * overwritten by new key unless the score of the new key is even less than
    * minimum score of the target bucket. The overwritten key with minimum
    * score will be evicted, with its values and score, to evicted_keys,
-   * evicted_values, evcted_scores seperately in compact format.
+   * evicted_values, evcted_scores separately in compact format.
    *
    * @param n Number of key-value-score tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
@@ -1044,7 +1044,7 @@ class HashTable : public HashTableBase<K, V, S> {
     MERLIN_CHECK(
         (((options_.max_bucket_size * (sizeof(key_type) + sizeof(score_type))) %
           128) == 0),
-        "Storage size of keys and scores in one bucket should be the mutiple "
+        "Storage size of keys and scores in one bucket should be the multiple "
         "of cache line size");
 
     // Construct table.
@@ -1214,8 +1214,8 @@ class HashTable : public HashTableBase<K, V, S> {
       auto sortOp = SortPairOp<uintptr_t, int>();
       auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
 
-      MultiVector<value_type*, int, value_type*, int, key_type*, uint8_t> mv(
-          n, n, n, n, n, d_sort_bytes);
+      MultiVector<value_type*, int, value_type*, int, key_type*, uint8_t, int>
+          mv(n, n, n, n, n, d_sort_bytes, 1);
       const size_type dev_ws_size = mv.total_size();
       auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
       auto temp_storage = dev_ws.get<uint8_t*>(0);
@@ -1225,6 +1225,7 @@ class HashTable : public HashTableBase<K, V, S> {
       auto d_src_offset_sorted = get_vector<3>(mv, temp_storage);
       auto keys_ptr = get_vector<4>(mv, temp_storage);
       auto d_sort_storage = get_vector<5>(mv, temp_storage);
+      auto d_successful_count = get_vector<6>(mv, temp_storage);
       sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
 
       CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
@@ -1255,7 +1256,7 @@ class HashTable : public HashTableBase<K, V, S> {
                       TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
             d_table_, table_->buckets, options_.max_bucket_size,
             table_->buckets_num, options_.dim, keys, d_dst, scores,
-            d_src_offset, global_epoch_, N);
+            d_src_offset, global_epoch_, N, d_successful_count);
       }
 
       sortOp.sort(n, reinterpret_cast<uintptr_t*>(d_dst),
@@ -1288,14 +1289,14 @@ class HashTable : public HashTableBase<K, V, S> {
                                    cudaMemcpyDeviceToHost, stream));
         CUDA_CHECK(cudaStreamSynchronize(stream));
 
-        write_by_cpu<value_type>(h_dst_sorted, h_values, h_src_offset_sorted,
-                                 dim(), n);
+        write_by_cpu<value_type, true>(h_dst_sorted, h_values,
+                                       h_src_offset_sorted, dim(), n);
       } else {
         const size_t block_size = options_.io_block_size;
         const size_t N = n * dim();
         const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
 
-        write_kernel<key_type, value_type, score_type>
+        write_kernel<key_type, value_type, score_type, true>
             <<<grid_size, block_size, 0, stream>>>(
                 values, d_dst_sorted, d_src_offset_sorted, dim(), N);
       }
@@ -1312,7 +1313,7 @@ class HashTable : public HashTableBase<K, V, S> {
    * overwritten by new key unless the score of the new key is even less than
    * minimum score of the target bucket. The overwritten key with minimum
    * score will be evicted, with its values and score, to evicted_keys,
-   * evicted_values, evcted_scores seperately in compact format.
+   * evicted_values, evcted_scores separately in compact format.
    *
    * @param n Number of key-value-score tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
@@ -1480,7 +1481,7 @@ class HashTable : public HashTableBase<K, V, S> {
    * overwritten by new key unless the score of the new key is even less than
    * minimum score of the target bucket. The overwritten key with minimum
    * score will be evicted, with its values and score, to evicted_keys,
-   * evicted_values, evcted_scores seperately in compact format.
+   * evicted_values, evcted_scores separately in compact format.
    *
    * @param n Number of key-value-score tuples to insert or assign.
    * @param keys The keys to insert on GPU-accessible memory with shape
@@ -3454,7 +3455,7 @@ class HashTable : public HashTableBase<K, V, S> {
    * @brief Returns the number of keys if meet PredFunctor.
    *
    * @param stream The CUDA stream that is used to execute the operation.
-   * @return The table size match condiction of PredFunctor.
+   * @return The table size match condition of PredFunctor.
    */
   template <template <typename, typename> class PredFunctor>
   void size_if(const key_type& pattern, const score_type& threshold,
