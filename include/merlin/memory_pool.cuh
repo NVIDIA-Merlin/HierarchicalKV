@@ -32,7 +32,7 @@ namespace merlin {
 
 /**
  * Allocators are used by the memory pool (and maybe other classes) to create
- * RAII complient containers for buffers allocated in different memory areas.
+ * RAII compliant containers for buffers allocated in different memory areas.
  */
 template <class T, class Allocator>
 struct AllocatorBase {
@@ -153,7 +153,7 @@ std::ostream& operator<<(std::ostream&, const MemoryPool<Allocator>&);
 
 /**
  * CUDA deferred execution aware memory pool implementation. As for every memory
- * pool, the general idea is to have resuable buffers. All buffers have the same
+ * pool, the general idea is to have reusable buffers. All buffers have the same
  * size.
  *
  * General behavior:
@@ -185,19 +185,19 @@ std::ostream& operator<<(std::ostream&, const MemoryPool<Allocator>&);
  * Buffer return:
  *
  * If no context is provided, we cannot make any assumptions regarding the usage
- * one the device. So we sychronize the device first and then return the buffer
+ * one the device. So we synchronize the device first and then return the buffer
  * to the stock. If a streaming context was provided, we queue an event and add
  * the buffer to the `pending` pool. That means, the buffer has been
  * reqlinquished by the CPU, but may still be used by the GPU. If no pending
  * slot is available, we probe the currently pending buffers events for
  * completion. Completed pending buffers are returned to the reserve. If so, we
- * queue the buffer in the freed slot. If that was unsucessful (i.e., all
+ * queue the buffer in the freed slot. If that was unsuccessful (i.e., all
  * currently pending buffers are still in use by the GPU), we have no choice but
  * the free the buffer using the current stream.
  *
  * In either case, `max_reserve` represents the maxmum size of the stock. If
- * returning a buffer would lead to the stock exeeding this quantity, the buffer
- * is queued for destruction.
+ * returning a buffer would lead to the stock exceeding this quantity, the
+ * buffer is queued for destruction.
  */
 template <class Allocator>
 class MemoryPool final {
@@ -382,6 +382,18 @@ class MemoryPool final {
     return pending_.size();
   }
 
+  template <class Visitor>
+  void visit_host_allocations(Visitor&& visitor) const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    visitor(stock_.data(), stock_.capacity() * sizeof(alloc_type*), "stock");
+    visitor(ready_events_.data(),
+            ready_events_.capacity() * sizeof(cudaEvent_t), "ready_events");
+    visitor(pending_.data(),
+            pending_.capacity() *
+                sizeof(std::tuple<alloc_type*, size_t, cudaEvent_t>),
+            "pending");
+  }
+
   void await_pending(cudaStream_t stream = 0) {
     std::lock_guard<std::mutex> lock(mutex_);
     while (!pending_.empty()) {
@@ -519,7 +531,8 @@ class MemoryPool final {
 
     // If allocation_size of the workspace differs from the current buffer_size
     // (i.e., somebody else requested a larger buffer since the original request
-    // occured), the provided buffers are incompatible and have to be discarded.
+    // occurred), the provided buffers are incompatible and have to be
+    // discarded.
     if (allocation_size != buffer_size_) {
       while (first != last) {
         Allocator::free(*first++, allocator_);

@@ -78,7 +78,11 @@ __global__ void contains_kernel_pipeline(Bucket<K, V, S>* buckets,
     K target_key = keys[key_idx_base + rank];
     sm_target_keys[idx_block] = target_key;
     const K hashed_key = Murmur3HashDevice(target_key);
+#ifdef DISABLE_DIGEST
+    const uint8_t target_digest = static_cast<uint8_t>(0x01);
+#else
     const uint8_t target_digest = static_cast<uint8_t>(hashed_key >> 32);
+#endif
     sm_target_digests[idx_block] = static_cast<uint32_t>(target_digest);
     int global_idx = hashed_key % (buckets_num * BUCKET_SIZE);
     int bkt_idx = global_idx / BUCKET_SIZE;
@@ -301,6 +305,92 @@ struct SelectContainsKernel {
           table, buckets, bucket_max_size, buckets_num, dim, keys, found, N);
     }
     return;
+  }
+};
+
+// Read-only value lookup for audit/fast-path experiments.
+//
+// This intentionally reuses the low-LF contains-style single-bucket search and
+// copies the value directly in the same kernel.  It does not read/update score,
+// does not return internal pointers, and does not handle cache-side effects.
+template <class K, class V, class S, uint32_t TILE_SIZE = 4,
+          bool RETURN_FOUND = true>
+__global__ void readonly_value_lookup_kernel(
+    const Table<K, V, S>* __restrict table, Bucket<K, V, S>* buckets,
+    const size_t bucket_max_size, const size_t buckets_num, const size_t dim,
+    const K* __restrict keys, V* __restrict values, bool* __restrict found,
+    size_t N) {
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  int rank = g.thread_rank();
+
+  for (size_t t = (blockIdx.x * blockDim.x) + threadIdx.x; t < N;
+       t += blockDim.x * gridDim.x) {
+    int key_idx = t / TILE_SIZE;
+
+    const K find_key = keys[key_idx];
+    if (IS_RESERVED_KEY<K>(find_key)) {
+      if constexpr (RETURN_FOUND) {
+        if (rank == 0) found[key_idx] = false;
+      }
+      continue;
+    }
+
+    int key_pos = -1;
+    int src_lane = -1;
+    size_t bkt_idx = 0;
+    size_t start_idx = 0;
+
+    Bucket<K, V, S>* bucket = get_key_position<K>(
+        buckets, find_key, bkt_idx, start_idx, buckets_num, bucket_max_size);
+
+    if constexpr (TILE_SIZE != 4) {
+      const int bucket_size = table->buckets_size[bkt_idx];
+      if (bucket_size >= bucket_max_size) {
+        start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
+      }
+    }
+
+    OccupyResult occupy_result = find_without_lock<K, V, S, TILE_SIZE>(
+        g, bucket, find_key, start_idx, key_pos, src_lane, bucket_max_size);
+    const bool hit = occupy_result == OccupyResult::DUPLICATE;
+
+    if constexpr (RETURN_FOUND) {
+      if (rank == 0) found[key_idx] = hit;
+    }
+    if (hit) {
+      copy_vector<V, TILE_SIZE>(g, bucket->vectors + key_pos * dim,
+                                values + key_idx * dim, dim);
+    }
+  }
+}
+
+template <typename K, typename V, typename S>
+struct SelectReadonlyValueLookupKernel {
+  template <bool RETURN_FOUND>
+  static void execute_kernel(const float& load_factor, const int& block_size,
+                             const size_t bucket_max_size,
+                             const size_t buckets_num, const size_t dim,
+                             cudaStream_t& stream, const size_t& n,
+                             const Table<K, V, S>* __restrict table,
+                             Bucket<K, V, S>* buckets, const K* __restrict keys,
+                             V* __restrict values, bool* __restrict found) {
+    if (load_factor <= 0.75) {
+      const unsigned int tile_size = 4;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      readonly_value_lookup_kernel<K, V, S, tile_size, RETURN_FOUND>
+          <<<grid_size, block_size, 0, stream>>>(table, buckets,
+                                                 bucket_max_size, buckets_num,
+                                                 dim, keys, values, found, N);
+    } else {
+      const unsigned int tile_size = 16;
+      const size_t N = n * tile_size;
+      const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
+      readonly_value_lookup_kernel<K, V, S, tile_size, RETURN_FOUND>
+          <<<grid_size, block_size, 0, stream>>>(table, buckets,
+                                                 bucket_max_size, buckets_num,
+                                                 dim, keys, values, found, N);
+    }
   }
 };
 

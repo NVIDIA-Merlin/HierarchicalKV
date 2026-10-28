@@ -1,0 +1,105 @@
+{
+  "scaffold_sha256": "dcfa420dcad80aba850a17bcf9dcb31c7af369a32dc9ae5b04ed241b80aea717",
+  "loaded_objects_sha256": {
+    "dynamicemb": {
+      "dynamicemb_extensions.cpython-310-x86_64-linux-gnu.so": "dc3b4000dac266d0b559b65b9a3a500dfabcb3e9681cf25f06915f4670578a63",
+      "fbgemm_gpu_config.so": "dd14512343d32fbc1f5f228e7bc86ca9ee0db849ebc840ad9ed3df4b5ca37d9f",
+      "fbgemm_gpu_py.so": "43a53c7e0e63a115cb186521c7a2ebdea001c4955c9453d92ce39ca3227224b8",
+      "fbgemm_gpu_tbe_index_select.so": "11da434f8248187e97aa609ebfe2c9ad4d8c689b6cf6c1d9d22926c945537075",
+      "fbgemm_gpu_tbe_inference.so": "51dc43fb3987fc34ad1bd42508dedea2a11ede9714e58f23cd105fb5c9b9f72e",
+      "fbgemm_gpu_tbe_optimizers.so": "d6c63c9023c4e369132612d6767904e5723bb3219144f9000230305843a5634f",
+      "fbgemm_gpu_tbe_training_backward.so": "bb06fcbb7051c595e1c3399fa4c45500eb36f9d1f69db1219603cf2a2979255c",
+      "fbgemm_gpu_tbe_training_backward_dense.so": "9093943841e9c0936ff07f35768b3091eb2af2badfebd6ce148f8d5eb2308bf3",
+      "fbgemm_gpu_tbe_training_backward_gwd.so": "960937099858218a3a3aa224245e57d41ee807d4c513e0328a2142590eef6223",
+      "fbgemm_gpu_tbe_training_backward_pt2.so": "f4bb7b39ac11aff0637226187da3a9895a99fb95ed3a84ebc8040ac48d067e0c",
+      "fbgemm_gpu_tbe_training_backward_split_host.so": "bb6b6d02b6f4aaae28131031b1f9d817a31ab4b64b73f6cbefbc7bf55f6ed4d9",
+      "fbgemm_gpu_tbe_training_backward_vbe.so": "de24d1da01cf4fd2a6e4d65b083eb789859fb7ea9e0d23bb04a97ae055b2645b",
+      "fbgemm_gpu_tbe_training_forward.so": "311f137d86156b6c09f7fee16cdc7a229a9c9139f0a6177cc586a837f3ea5233",
+      "fbgemm_gpu_tbe_utils.so": "4d4e3eadaa182b3467e67e917bf3d809d1400233c9cca952d2cd91f55207dbe9"
+    },
+    "torchrec": {
+      "fbgemm_gpu_config.so": "dd14512343d32fbc1f5f228e7bc86ca9ee0db849ebc840ad9ed3df4b5ca37d9f",
+      "fbgemm_gpu_py.so": "43a53c7e0e63a115cb186521c7a2ebdea001c4955c9453d92ce39ca3227224b8",
+      "fbgemm_gpu_tbe_index_select.so": "11da434f8248187e97aa609ebfe2c9ad4d8c689b6cf6c1d9d22926c945537075",
+      "fbgemm_gpu_tbe_inference.so": "51dc43fb3987fc34ad1bd42508dedea2a11ede9714e58f23cd105fb5c9b9f72e",
+      "fbgemm_gpu_tbe_optimizers.so": "d6c63c9023c4e369132612d6767904e5723bb3219144f9000230305843a5634f",
+      "fbgemm_gpu_tbe_training_backward.so": "bb06fcbb7051c595e1c3399fa4c45500eb36f9d1f69db1219603cf2a2979255c",
+      "fbgemm_gpu_tbe_training_backward_dense.so": "9093943841e9c0936ff07f35768b3091eb2af2badfebd6ce148f8d5eb2308bf3",
+      "fbgemm_gpu_tbe_training_backward_gwd.so": "960937099858218a3a3aa224245e57d41ee807d4c513e0328a2142590eef6223",
+      "fbgemm_gpu_tbe_training_backward_pt2.so": "f4bb7b39ac11aff0637226187da3a9895a99fb95ed3a84ebc8040ac48d067e0c",
+      "fbgemm_gpu_tbe_training_backward_split_host.so": "bb6b6d02b6f4aaae28131031b1f9d817a31ab4b64b73f6cbefbc7bf55f6ed4d9",
+      "fbgemm_gpu_tbe_training_backward_vbe.so": "de24d1da01cf4fd2a6e4d65b083eb789859fb7ea9e0d23bb04a97ae055b2645b",
+      "fbgemm_gpu_tbe_training_forward.so": "311f137d86156b6c09f7fee16cdc7a229a9c9139f0a6177cc586a837f3ea5233",
+      "fbgemm_gpu_tbe_utils.so": "4d4e3eadaa182b3467e67e917bf3d809d1400233c9cca952d2cd91f55207dbe9"
+    }
+  },
+  "backend_module_sha256": {
+    "dynamicemb": "0fde6c71a03b3a23870556c6477e7ed6c4bbba191611281822cfd98fea923f59",
+    "torchrec": "359b4732f0d0d99020bfe994b444c8837b1b1f218883d7a1e147dcb1f2e19730"
+  },
+  "event_contract": {
+    "metric": "CUDA-event elapsed service envelope",
+    "primary_metric": "measurement.host_wall_seconds",
+    "includes": "host-dispatch/layout/copy/idle gaps and final flush; not kernel busy-time",
+    "wall_overhead": "stop-event enqueue is included in the unchanged primary wall timer",
+    "coverage": "source-traced fixed single-device LRU/EXACT_SGD lookup+flush, no prefetch pipeline; not runtime timeline validation",
+    "coverage_provenance": {
+      "task": "44fc651b",
+      "handoff_sha256": "327287d1dcb4d64c8eaeb7984d82086a1ce6746ab3a20d16967e5f1e9f88d275",
+      "runtime_identity": "native (same raw record); requires frozen build/source alignment"
+    }
+  },
+  "hkv_layout": "shared",
+  "shared_dirty_oracle_logical_tables": 26,
+  "flush_repeat_cells": {
+    "42-dynamicemb-warm.jsonl": 1,
+    "42-torchrec-warm.jsonl": 1,
+    "43-dynamicemb-warm.jsonl": 1,
+    "43-torchrec-warm.jsonl": 1,
+    "44-dynamicemb-warm.jsonl": 1,
+    "44-torchrec-warm.jsonl": 1,
+    "45-dynamicemb-warm.jsonl": 1,
+    "45-torchrec-warm.jsonl": 1,
+    "46-dynamicemb-warm.jsonl": 1,
+    "46-torchrec-warm.jsonl": 1
+  },
+  "native_lru_score": {
+    "evidence_basename": "native-f52-reader-focused-evidence.json",
+    "run_count": 1,
+    "failure_count": 0,
+    "source_sha256": {
+      "key_value_table.py": "e31ed6b49c1e72f0cab241a116a5f1250f32010c39158f11e119f8f1208bbf5e",
+      "batched_dynamicemb_function.py": "33392ce5b8ea17a84e9556673f049009312cdcb2e748957be116cacf8e2754f1",
+      "batched_dynamicemb_tables.py": "1a823daae28c5187da07c9e8c2799f1862fb6b18981b084bd6dc1e1cbba18a51"
+    },
+    "extension_sha256": "dc3b4000dac266d0b559b65b9a3a500dfabcb3e9681cf25f06915f4670578a63",
+    "reader_companion_sha256": "9e069594ff1db48dc51096532f42727569ef05755b2fec169e98a800fb25f3f6",
+    "test_sha256": "844ebda186aa9e2c74318d35a5e00933bec5a5552201962c0b1e801f7184966b",
+    "group_lock_source_sha256": "c12d77929dc2124a2c8dd724f2fde4f16d6ec59fc16389421e7d6dea6e89a1fa",
+    "focused_method": "test_readonly_f52_allocation_roster_after_real_forward",
+    "archived_three_evidence_sha256": "e827d78a246971236b1e8a28276199cf887a19733897d0f189ebbbdf8d22fe8e"
+  },
+  "f52_source_proof": {
+    "full391_sha256": "1a652ab278bd140b95903d149e0201205d65f29d7ab7b89a6fd45c29edf86eb0",
+    "tracked149_sha256": "eaa83cc858a8fb2813ae12c559e00a0d152441b2eaf3344f5d628e294840165a",
+    "accepted_googletest242_sha256": "1c449f0b53bdc70c5325304c439dfc887d962319c1b0b1c3f7db4839590ce390",
+    "compiled_actual27_sha256": "0417ffa15ff894640364bb287ba61b3ae321aa57e102392fda8cf71c20eabfa2",
+    "historical_runtime_source136_sha256": "5f9c1eb7bc3fb12cd482bd41298e28ad5edd4dbc825e7ad9435637240f15bf56",
+    "compiled_recsys_source132_sha256": "e30dd8a7df113ee127833071f207f8f4960e9e804ed17153a51a44e04dde6fd7",
+    "reader_source8_sha256": "7dc61c0525e5dcebd2f5e59316890eb3df5a9ea9fe12f11fd682944182896109"
+  },
+  "f52_posttimer_diagnostic": {
+    "driver_sha256": "643782630022445885ffdeb1bd1cf3ab314eb73783aa12a69b77a64d18219e12",
+    "native_sha256": "dc3b4000dac266d0b559b65b9a3a500dfabcb3e9681cf25f06915f4670578a63",
+    "reader_sha256": "bca78cc76984eda081e1d52bc7011f68fd27f6c2240e9b6524c246b93fb8d901",
+    "native_build_id": "2f36cfb73774aad1e9ef466f502e69efc1c212dd",
+    "group_lock_source_sha256": "c12d77929dc2124a2c8dd724f2fde4f16d6ec59fc16389421e7d6dea6e89a1fa",
+    "group_rows_per_owner": 3,
+    "native_owners": 2,
+    "timestamp_guard_offset": "0x292e0988",
+    "timestamp_object_offset": "0x292e0990",
+    "budget_qualification": "HOLD",
+    "coverage_complete": false,
+    "reader_adjacent_source_sha256": "350cdbb1b2a03105dd55c6d9821f8dfe20c2ecc9a6eba1c0c10269f13e5ef14b"
+  }
+}

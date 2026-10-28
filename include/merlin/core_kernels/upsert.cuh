@@ -241,7 +241,8 @@ __global__ void tlp_v2_upsert_kernel_with_io(
     Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, uint32_t bucket_capacity, const uint32_t dim,
     const K* __restrict__ keys, const VecV* __restrict__ values,
-    const S* __restrict__ scores, uint64_t n, const S global_epoch) {
+    const S* __restrict__ scores, uint64_t n, const S global_epoch,
+    OccupyResult* outcomes = nullptr) {
   using BUCKET = Bucket<K, V, S>;
   using CopyValue = CopyValueMultipleGroup<VecV, GROUP_SIZE>;
   using ScoreFunctor = ScoreFunctor<K, V, S, Strategy>;
@@ -502,6 +503,9 @@ __global__ void tlp_v2_upsert_kernel_with_io(
     // Modifications to the bucket will not after this instruction.
     key_address->store(key, cuda::std::memory_order_release);
   }
+  if (outcomes != nullptr && kv_idx < n) {
+    outcomes[kv_idx] = occupy_result;
+  }
 }
 
 template <
@@ -567,7 +571,7 @@ __global__ void pipeline_upsert_kernel_with_io(
     Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, const uint32_t dim, const K* __restrict__ keys,
     const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n,
-    const S global_epoch) {
+    const S global_epoch, OccupyResult* outcomes = nullptr) {
   // Here, GROUP_SIZE * Comp_LEN = BUCKET_SIZE.
   constexpr uint32_t BUCKET_SIZE = 128;
   constexpr uint32_t GROUP_SIZE = 32;
@@ -1033,6 +1037,9 @@ __global__ void pipeline_upsert_kernel_with_io(
       key_address->store(key, cuda::std::memory_order_release);
     }
   }
+  if (outcomes != nullptr && kv_idx < n) {
+    outcomes[kv_idx] = occupy_result;
+  }
 }
 
 template <typename K = uint64_t, typename V = float, typename S = uint64_t>
@@ -1041,7 +1048,8 @@ struct Params_Upsert {
                 int* buckets_size_, size_t buckets_num_,
                 uint32_t bucket_capacity_, uint32_t dim_,
                 const K* __restrict__ keys_, const V* __restrict__ values_,
-                const S* __restrict__ scores_, size_t n_, const S global_epoch_)
+                const S* __restrict__ scores_, size_t n_, const S global_epoch_,
+                OccupyResult* outcomes_ = nullptr)
       : load_factor(load_factor_),
         buckets(buckets_),
         buckets_size(buckets_size_),
@@ -1052,7 +1060,8 @@ struct Params_Upsert {
         values(values_),
         scores(scores_),
         n(n_),
-        global_epoch(global_epoch_) {}
+        global_epoch(global_epoch_),
+        outcomes(outcomes_) {}
   float load_factor;
   Bucket<K, V, S>* __restrict__ buckets;
   int* buckets_size;
@@ -1064,6 +1073,7 @@ struct Params_Upsert {
   const S* __restrict__ scores;
   uint64_t n;
   const S global_epoch;
+  OccupyResult* outcomes;
 };
 
 template <typename K, typename V, typename S, typename VecV, int Strategy>
@@ -1097,7 +1107,7 @@ struct Launch_TLPv2_Upsert {
               params.buckets, params.buckets_size, params.buckets_num,
               params.bucket_capacity, params.dim, params.keys,
               reinterpret_cast<const VecV*>(params.values), params.scores,
-              params.n, params.global_epoch);
+              params.n, params.global_epoch, params.outcomes);
     } else {
       constexpr int GROUP_SIZE = 16;
       tlp_v2_upsert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, GROUP_SIZE,
@@ -1106,7 +1116,7 @@ struct Launch_TLPv2_Upsert {
               params.buckets, params.buckets_size, params.buckets_num,
               params.bucket_capacity, params.dim, params.keys,
               reinterpret_cast<const VecV*>(params.values), params.scores,
-              params.n, params.global_epoch);
+              params.n, params.global_epoch, params.outcomes);
     }
   }
 };
@@ -1127,10 +1137,10 @@ struct Launch_Pipeline_Upsert {
         (shared_mem + sizeof(byte16) - 1) / sizeof(byte16) * sizeof(byte16);
     pipeline_upsert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE, Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
-           stream>>>(params.buckets, params.buckets_size, params.buckets_num,
-                     params.dim, params.keys,
-                     reinterpret_cast<const VecV*>(params.values),
-                     params.scores, params.n, params.global_epoch);
+           stream>>>(
+            params.buckets, params.buckets_size, params.buckets_num, params.dim,
+            params.keys, reinterpret_cast<const VecV*>(params.values),
+            params.scores, params.n, params.global_epoch, params.outcomes);
   }
 };
 

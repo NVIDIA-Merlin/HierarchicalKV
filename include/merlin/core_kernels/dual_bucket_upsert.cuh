@@ -51,7 +51,7 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
     Bucket<K, V, S>* __restrict__ buckets, int32_t* __restrict__ buckets_size,
     const uint64_t buckets_num, const uint32_t dim, const K* __restrict__ keys,
     const VecV* __restrict__ values, const S* __restrict__ scores, uint64_t n,
-    const S global_epoch) {
+    const S global_epoch, OccupyResult* outcomes = nullptr) {
   constexpr uint32_t BUCKET_SIZE = 128;
   constexpr uint32_t GROUP_SIZE = 32;
   constexpr uint32_t Comp_LEN = sizeof(VecD_Comp) / sizeof(D);
@@ -731,6 +731,9 @@ __global__ void dual_bucket_pipeline_upsert_kernel_with_io(
       }
     }
   }
+  if (outcomes != nullptr && kv_idx < n) {
+    outcomes[kv_idx] = occupy_result;
+  }
 }
 
 // --- Kernel Launcher ---
@@ -752,10 +755,10 @@ struct Launch_DualBucket_Pipeline_Upsert {
     dual_bucket_pipeline_upsert_kernel_with_io<K, V, S, VecV, BLOCK_SIZE,
                                                Strategy>
         <<<(params.n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, shared_mem,
-           stream>>>(params.buckets, params.buckets_size, params.buckets_num,
-                     params.dim, params.keys,
-                     reinterpret_cast<const VecV*>(params.values),
-                     params.scores, params.n, params.global_epoch);
+           stream>>>(
+            params.buckets, params.buckets_size, params.buckets_num, params.dim,
+            params.keys, reinterpret_cast<const VecV*>(params.values),
+            params.scores, params.n, params.global_epoch, params.outcomes);
   }
 };
 

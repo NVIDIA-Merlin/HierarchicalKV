@@ -27,6 +27,7 @@
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
+#include <string>
 #include <type_traits>
 #include "merlin/allocator.cuh"
 #include "merlin/array_kernels.cuh"
@@ -37,6 +38,14 @@
 #include "merlin/multi_vector.hpp"
 #include "merlin/types.cuh"
 #include "merlin/utils.cuh"
+
+#ifndef HKV_CONTAINS_LOW_LF_TLP
+#define HKV_CONTAINS_LOW_LF_TLP 0
+#endif
+
+#ifndef HKV_CONTAINS_TLP_LF_THRESHOLD
+#define HKV_CONTAINS_TLP_LF_THRESHOLD 0.75f
+#endif
 
 namespace nv {
 namespace merlin {
@@ -948,6 +957,27 @@ class HashTable : public HashTableBase<K, V, S> {
                   "use uint64_t.");
   };
 
+  template <class Visitor>
+  void visit_host_allocations(Visitor&& visitor) const {
+    if (dev_mem_pool_) {
+      visitor(dev_mem_pool_.get(), sizeof(DeviceMemoryPool),
+              "device_pool_object");
+      dev_mem_pool_->visit_host_allocations(
+          [&](const void* pointer, size_t bytes, const char* origin) {
+            const auto label = std::string("device_pool.") + origin;
+            visitor(pointer, bytes, label.c_str());
+          });
+    }
+    if (host_mem_pool_) {
+      visitor(host_mem_pool_.get(), sizeof(HostMemoryPool), "host_pool_object");
+      host_mem_pool_->visit_host_allocations(
+          [&](const void* pointer, size_t bytes, const char* origin) {
+            const auto label = std::string("host_pool.") + origin;
+            visitor(pointer, bytes, label.c_str());
+          });
+    }
+  }
+
   /**
    * @brief Frees the resources used by the hash table and destroys the hash
    * table object.
@@ -1143,7 +1173,50 @@ class HashTable : public HashTableBase<K, V, S> {
                              const value_type* values,  // (n, DIM)
                              const score_type* scores,  // (n)
                              cudaStream_t stream, bool unique_key,
-                             bool ignore_evict_strategy) {
+                             bool ignore_evict_strategy,
+                             OccupyResult* outcomes = nullptr) {
+    if (outcomes != nullptr) {
+      MERLIN_CHECK(initialized_,
+                   "[UPSERT_OUTCOMES] Table must be initialized.");
+      MERLIN_CHECK(
+          (std::is_same<key_type, uint64_t>::value &&
+           std::is_same<value_type, float>::value &&
+           std::is_same<score_type, uint64_t>::value),
+          "[UPSERT_OUTCOMES] Requires uint64_t keys/scores and float values.");
+      MERLIN_CHECK(
+          evict_strategy == EvictStrategy::kCustomized &&
+              evict_strategy_ == EvictStrategy::kCustomized &&
+              !ignore_evict_strategy,
+          "[UPSERT_OUTCOMES] Requires the customized policy without override.");
+      MERLIN_CHECK(unique_key && is_fast_mode() &&
+                       options_.max_bucket_size == 128 && options_.dim == 32,
+                   "[UPSERT_OUTCOMES] Requires unique batches, pure HBM, "
+                   "bucket 128 and dim 32.");
+      MERLIN_CHECK(options_.table_mode == TableMode::kThroughput ||
+                       options_.table_mode == TableMode::kMemory,
+                   "[UPSERT_OUTCOMES] Unsupported table mode.");
+      MERLIN_CHECK(n <= std::numeric_limits<uint32_t>::max() - 127,
+                   "[UPSERT_OUTCOMES] Batch exceeds the kernels' padded 32-bit "
+                   "indexing.");
+      MERLIN_CHECK(
+          n == 0 || (keys != nullptr && values != nullptr && scores != nullptr),
+          "[UPSERT_OUTCOMES] Nonempty batches require keys, values and "
+          "scores.");
+#if defined(CUDART_VERSION) && (CUDART_VERSION >= 11030)
+      using OutcomeSelector =
+          KernelSelector_Upsert<key_type, value_type, score_type,
+                                evict_strategy_, ArchTag>;
+      MERLIN_CHECK(
+          OutcomeSelector::callable(
+              unique_key, static_cast<uint32_t>(options_.max_bucket_size),
+              static_cast<uint32_t>(options_.dim)) &&
+              options_.dim * sizeof(value_type) >
+                  OutcomeSelector::ValueConfig::size_tlp_v1,
+          "[UPSERT_OUTCOMES] Selected upsert path is not instrumented.");
+#else
+      MERLIN_CHECK(false, "[UPSERT_OUTCOMES] Requires CUDA 11.3 or newer.");
+#endif
+    }
     if (n == 0) {
       return;
     }
@@ -1175,7 +1248,7 @@ class HashTable : public HashTableBase<K, V, S> {
           /*load_factor=*/0.0f, table_->buckets, table_->buckets_size,
           table_->buckets_num, static_cast<uint32_t>(options_.max_bucket_size),
           static_cast<uint32_t>(options_.dim), keys, values, scores, n,
-          global_epoch_);
+          global_epoch_, outcomes);
       DualSelector::select_kernel(kernelParams, stream);
       CudaCheckError();
       return;
@@ -1199,7 +1272,7 @@ class HashTable : public HashTableBase<K, V, S> {
             table_->buckets_num,
             static_cast<uint32_t>(options_.max_bucket_size),
             static_cast<uint32_t>(options_.dim), keys, values, scores, n,
-            global_epoch_);
+            global_epoch_, outcomes);
         Selector::select_kernel(kernelParams, stream);
       } else {
         using Selector = SelectUpsertKernelWithIO<key_type, value_type,
@@ -2080,10 +2153,19 @@ class HashTable : public HashTableBase<K, V, S> {
 
     check_evict_strategy(scores);
 
+#ifdef USE_RW_LOCK
+    // Ablation: assign takes exclusive (insert_unique) lock, simulating
+    // a conventional R/W lock where updates are treated as writes.
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
+#else
     std::unique_ptr<update_shared_lock> lock_ptr;
     if (options_.api_lock) {
       lock_ptr = std::make_unique<update_shared_lock>(mutex_, stream);
     }
+#endif
 
     if (is_fast_mode()) {
       static thread_local int step_counter = 0;
@@ -2241,10 +2323,17 @@ class HashTable : public HashTableBase<K, V, S> {
     check_evict_strategy(scores);
 
     {
+#ifdef USE_RW_LOCK
+      std::unique_ptr<insert_unique_lock> lock_ptr;
+      if (options_.api_lock) {
+        lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+      }
+#else
       std::unique_ptr<update_shared_lock> lock_ptr;
       if (options_.api_lock) {
         lock_ptr = std::make_unique<update_shared_lock>(mutex_, stream);
       }
+#endif
       static thread_local int step_counter = 0;
       static thread_local float load_factor = 0.0;
 
@@ -2309,10 +2398,17 @@ class HashTable : public HashTableBase<K, V, S> {
       return;
     }
 
+#ifdef USE_RW_LOCK
+    std::unique_ptr<insert_unique_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<insert_unique_lock>(mutex_, stream);
+    }
+#else
     std::unique_ptr<update_shared_lock> lock_ptr;
     if (options_.api_lock) {
       lock_ptr = std::make_unique<update_shared_lock>(mutex_, stream);
     }
+#endif
 
     if (is_fast_mode()) {
       static thread_local int step_counter = 0;
@@ -2871,13 +2967,31 @@ class HashTable : public HashTableBase<K, V, S> {
     }
 
     if (options_.max_bucket_size == 128) {
-      // Pipeline lookup kernel only supports "bucket_size = 128".
-      using Selector = SelectPipelineContainsKernel<key_type, value_type,
-                                                    score_type, ArchTag>;
-      ContainsKernelParams<key_type, value_type, score_type> containsParams(
-          table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
-          keys, founds, n);
-      Selector::select_kernel(containsParams, stream);
+#if HKV_CONTAINS_LOW_LF_TLP
+      static thread_local int step_counter = 0;
+      static thread_local float load_factor = 0.0;
+
+      if (((step_counter++) % kernel_select_interval_) == 0) {
+        load_factor = fast_load_factor(0, stream, false);
+      }
+
+      if (load_factor <= HKV_CONTAINS_TLP_LF_THRESHOLD) {
+        using Selector = SelectContainsKernel<key_type, value_type, score_type>;
+        Selector::execute_kernel(load_factor, options_.block_size,
+                                 options_.max_bucket_size, table_->buckets_num,
+                                 options_.dim, stream, n, d_table_,
+                                 table_->buckets, keys, founds);
+      } else
+#endif
+      {
+        // Pipeline lookup kernel only supports "bucket_size = 128".
+        using Selector = SelectPipelineContainsKernel<key_type, value_type,
+                                                      score_type, ArchTag>;
+        ContainsKernelParams<key_type, value_type, score_type> containsParams(
+            table_->buckets, table_->buckets_num, static_cast<uint32_t>(dim()),
+            keys, founds, n);
+        Selector::select_kernel(containsParams, stream);
+      }
     } else {
       using Selector = SelectContainsKernel<key_type, value_type, score_type>;
       static thread_local int step_counter = 0;
@@ -2890,6 +3004,58 @@ class HashTable : public HashTableBase<K, V, S> {
                                options_.max_bucket_size, table_->buckets_num,
                                options_.dim, stream, n, d_table_,
                                table_->buckets, keys, founds);
+    }
+    CudaCheckError();
+  }
+
+  /**
+   * @brief Read-only direct value lookup for audit/fast-path experiments.
+   *
+   * This path preserves the hash table layout and single-bucket search, but it
+   * deliberately skips cache-side score maintenance, miss collection, pointer
+   * materialization, and eviction/admission semantics.  It exists to isolate
+   * bucket-search + value-copy cost from the full industrial cache API cost.
+   *
+   * @warning This is not a replacement for find() in online serving/training
+   * paths that require score/LRU updates, miss handling, or concurrent cache
+   * semantics.
+   */
+  void find_readonly_fast(const size_type n, const key_type* keys,  // (n)
+                          value_type* values,                       // (n, DIM)
+                          bool* founds = nullptr,                   // (n)
+                          cudaStream_t stream = 0) const {
+    MERLIN_CHECK(
+        !is_memory_mode(),
+        "[MEMORY_MODE] find_readonly_fast() is not supported in dual-bucket "
+        "mode. Key may reside in either bucket.");
+    if (n == 0) {
+      return;
+    }
+
+    std::unique_ptr<read_shared_lock> lock_ptr;
+    if (options_.api_lock) {
+      lock_ptr = std::make_unique<read_shared_lock>(mutex_, stream);
+    }
+
+    using Selector =
+        SelectReadonlyValueLookupKernel<key_type, value_type, score_type>;
+    static thread_local int step_counter = 0;
+    static thread_local float load_factor = 0.0;
+
+    if (((step_counter++) % kernel_select_interval_) == 0) {
+      load_factor = fast_load_factor(0, stream, false);
+    }
+
+    if (founds != nullptr) {
+      Selector::template execute_kernel<true>(
+          load_factor, options_.block_size, options_.max_bucket_size,
+          table_->buckets_num, options_.dim, stream, n, d_table_,
+          table_->buckets, keys, values, founds);
+    } else {
+      Selector::template execute_kernel<false>(
+          load_factor, options_.block_size, options_.max_bucket_size,
+          table_->buckets_num, options_.dim, stream, n, d_table_,
+          table_->buckets, keys, values, nullptr);
     }
     CudaCheckError();
   }
