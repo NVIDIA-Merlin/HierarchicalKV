@@ -6,7 +6,8 @@ on:
 
 jobs:
   build:
-    runs-on: "ubuntu-latest"
+    # Python 3.8 has no setup-python distribution for Ubuntu 26.04.
+    runs-on: "ubuntu-22.04"
 
     steps:
       - uses: actions/checkout@v3
