@@ -1,0 +1,208 @@
+{
+  "schema_version": 1,
+  "scope": "configured native resident cache-forward; warmed single-batch serial replay; not full-service, policy-equivalence or equal-total-memory evidence",
+  "source": {
+    "hkv_branch_commit": "cc797335de5cef92be6f604f07c92e2b38133e45",
+    "hkv_core_parent": "d1cb1a2c",
+    "recsys_base": "250aaa8bbbda2b6dd7995ef7f363754e4571066e",
+    "recsys_overlay": "third_party/recsys-examples/legacy-250aaa.patch",
+    "recsys_overlay_sha256": "1163257fa8247a7306faacfa9bc22bf69f502cf34fcbbce76d390c0c1fb45052",
+    "native_elf_sha256": "b928115e0b645e3b721a051ca60953ff98f4c1721301d8a0cfef12630ffc1bc2",
+    "native_build_id": "c97ba0b318ab42c249b8ee5d400a9e4c209ab744",
+    "python_driver_sha256": "fe252661e68ba6013f63d3b993236ce057c52dd95a1b4a32727dec97bd1e1508",
+    "torch": "2.7.0+cu126",
+    "fbgemm_gpu": "1.2.0+cu126",
+    "tbe_native_modified": false,
+    "cuda_runtime": "12.6",
+    "gpu_driver_recorded": "580.196.07",
+    "tested_runtime_overlay_sha256": {
+      "dynamicemb/batched_dynamicemb_tables.py": "ae198e80bc89939424efeb94b8614293528d75a536c3729868b6e646fca84c9f",
+      "dynamicemb/batched_dynamicemb_function.py": "d1974294d478639fb434a7793274278bab18edec28fe5582db6dcc3c560e1709",
+      "dynamicemb/key_value_table.py": "6c4ac10e67e277595afd70fc9868231b488416f866d62f63874146cada41a423",
+      "benchmark/criteo_experiment/embedding_config.py": "ac1074ada9d93d98c04eb59832663b57611553fc7a8af03ce03305374eb20f63"
+    },
+    "native_CUDA_ELF_unchanged": true
+  },
+  "inputs": {
+    "contract": "benchmark/native_tbe/input-contract-legacy.json",
+    "seeds": [
+      42,
+      43,
+      44,
+      45,
+      46
+    ],
+    "prepare_argv_template": [
+      "python",
+      "-m",
+      "benchmark.criteo_experiment.native_tbe_comparison",
+      "prepare",
+      "--output",
+      "{input_dir}/seed{seed}.pt",
+      "--seed",
+      "{seed}",
+      "--distribution",
+      "uniform",
+      "--target-miss-percent",
+      "25",
+      "--occupancy",
+      "full-overfill",
+      "--eviction",
+      "lru",
+      "--cache-rows",
+      "65536",
+      "--vocab-rows",
+      "262144",
+      "--batch-size",
+      "8192",
+      "--batches",
+      "1"
+    ],
+    "require_digest_match_before_run": true,
+    "input_payload_bundled": false,
+    "logical_tables": 26,
+    "dim": 32
+  },
+  "execution": {
+    "fresh_processes": 10,
+    "order": [
+      {
+        "seed": 42,
+        "backends": [
+          "dynamicemb",
+          "torchrec"
+        ]
+      },
+      {
+        "seed": 43,
+        "backends": [
+          "torchrec",
+          "dynamicemb"
+        ]
+      },
+      {
+        "seed": 44,
+        "backends": [
+          "dynamicemb",
+          "torchrec"
+        ]
+      },
+      {
+        "seed": 45,
+        "backends": [
+          "torchrec",
+          "dynamicemb"
+        ]
+      },
+      {
+        "seed": 46,
+        "backends": [
+          "dynamicemb",
+          "torchrec"
+        ]
+      }
+    ],
+    "common_run_argv": [
+      "python",
+      "-m",
+      "benchmark.criteo_experiment.native_tbe_comparison",
+      "run",
+      "--input",
+      "{input_dir}/seed{seed}.pt",
+      "--backend",
+      "{backend}",
+      "--state",
+      "warm",
+      "--cuda-event-service",
+      "--cache-rows",
+      "65536",
+      "--output",
+      "{result_dir}/{seed}-{backend}-warm.jsonl",
+      "--cache-only",
+      "--cache-only-warmup-iterations",
+      "20",
+      "--cache-only-iterations",
+      "200",
+      "--cache-only-output-group-size",
+      "8"
+    ],
+    "dynamicemb_env": {
+      "DYNAMICEMB_ALLOCATION_IDENTITIES": "0",
+      "DYNAMICEMB_EXPERIMENTAL_NATIVE_LRU_HIT_UPDATE": "1",
+      "DYNAMICEMB_EXPERIMENTAL_BACKING_HBM_FULL": "0",
+      "TBE_EXPERIMENTAL_UVM_PREFETCH": "0",
+      "DYNAMICEMB_BUCKETS_PER_ALLOCATION": "1024"
+    },
+    "dynamicemb_extra_argv": [
+      "--hkv-layout",
+      "shared",
+      "--diagnostic-flush-repeats",
+      "1"
+    ],
+    "torchrec_env": {
+      "DYNAMICEMB_ALLOCATION_IDENTITIES": "0",
+      "TBE_EXPERIMENTAL_UVM_PREFETCH": "0"
+    },
+    "torchrec_extra_argv": [],
+    "cache_rows_effective_total": 1703936,
+    "hkv_bucket_capacity": 128,
+    "tbe_associativity": 32,
+    "full_outputs_miss_dirty_backing_flush": true,
+    "flush_count_each": 1,
+    "one_gpu_fixed_source_and_inputs": true,
+    "gpu_model": "NVIDIA H100 NVL",
+    "same_gpu_uuid_observed_in_all_ten": true,
+    "caps_seconds": {
+      "actor": 4800,
+      "harvest_reserve": 360,
+      "preflight": 180,
+      "native_per_process": 3000,
+      "checker_or_summary": 60
+    },
+    "warmup_iterations_per_process": 20,
+    "timed_iterations_per_process": 200,
+    "output_group_size": 8,
+    "repeated_iterations_are_independent_samples": false,
+    "cache_value_capacity_bytes": 218103808,
+    "backing_placement": "host",
+    "num_of_buckets_per_alloc": 1024
+  },
+  "validation": {
+    "actual_reproducer": "driver internal all-hit/roster plus full output/miss/dirty26/backing/flush checks; source-bound validator; summarize all ten",
+    "external_validate_native_result_py": "historical f52; current cache-forward validator is validate_cache_forward_result.py with pins-cache-forward-host.json",
+    "summary_argv_template": [
+      "python",
+      "-m",
+      "benchmark.criteo_experiment.native_tbe_comparison",
+      "summarize",
+      "--raw",
+      "{all_ten_result_paths_in_execution_order}",
+      "--output",
+      "{result_dir}/warm-five-pair-summary.json"
+    ],
+    "interval": "paired-seed percentile bootstrap of log ratios",
+    "bootstrap_resamples": 10000,
+    "bootstrap_rng_seed": 20261020,
+    "failure_retention": "all planned cells; no seed replacement",
+    "recorded_per_cell_validation": "Source-rebound per-arm and paired checks retained scientific assertions; the checked-in legacy f52 validator was not applied unchanged.",
+    "source_bound_validator": "benchmark/native_tbe/validate_cache_forward_result.py",
+    "pins": "benchmark/native_tbe/pins-cache-forward-host.json",
+    "complete_outputs_verified": 2000,
+    "timing_includes": "native forward plus group completion synchronize",
+    "timing_excludes": "input preparation, H2D, D2H/oracle/hash, backing and complete flush checks"
+  },
+  "published_measurement": {
+    "file": "benchmark/native_tbe/timings-cache-forward-host.csv",
+    "tbe_over_hkv_wall_geomean": 2.0450739235960103,
+    "ci95": [
+      2.027914735281691,
+      2.062378304278866
+    ],
+    "independent_pairs": 5,
+    "per_forward_ms_geomean": {
+      "dynamicemb": 0.43164845777505506,
+      "torchrec": 0.8827530051561986
+    },
+    "status": "recorded configured-native cache-forward candidate; correctness tests are separate and not performance samples"
+  }
+}

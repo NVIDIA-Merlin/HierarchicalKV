@@ -762,10 +762,10 @@ index 0000000..3452c94
 +        return auc.item()
 diff --git a/corelib/dynamicemb/benchmark/criteo_experiment/embedding_config.py b/corelib/dynamicemb/benchmark/criteo_experiment/embedding_config.py
 new file mode 100644
-index 0000000..b902fed
+index 0000000..4b60800
 --- /dev/null
 +++ b/corelib/dynamicemb/benchmark/criteo_experiment/embedding_config.py
-@@ -0,0 +1,849 @@
+@@ -0,0 +1,921 @@
 +# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 +# SPDX-License-Identifier: Apache-2.0
 +#
@@ -855,15 +855,51 @@ index 0000000..b902fed
 +
 +
 +# ---------------------------------------------------------------------------
-+# DynamicEmb tables (HKV backend) -- v4 fixed 2.2 GB budget
++# DynamicEmb tables (HKV backend)
 +# ---------------------------------------------------------------------------
++
++
++def _hkv_layout(logical_vocab_sizes, layout):
++    """Describe an explicit layout; shared keys need the returned prefix offsets.
++
++    This helper never merges heterogeneous embedding dimensions, optimizers or
++    policies. The caller supplies one compatible construction group.
++    """
++    vocab_sizes = list(logical_vocab_sizes)
++    if not vocab_sizes or any(type(size) is not int or size <= 0 for size in vocab_sizes):
++        raise ValueError("logical vocab sizes must be positive integers")
++    if layout not in ("partitioned", "shared"):
++        raise ValueError("HKV layout must be partitioned or shared")
++    prefixes = [0]
++    for size in vocab_sizes:
++        prefixes.append(prefixes[-1] + size)
++    if prefixes[-1] >= (1 << 63) - 3:
++        raise ValueError("logical vocabulary reaches reserved int64 key range")
++    shared = layout == "shared"
++    return (
++        [prefixes[-1]] if shared else vocab_sizes,
++        [0] * len(vocab_sizes) if shared else list(range(len(vocab_sizes))),
++        prefixes[:-1] if shared else [0] * len(vocab_sizes),
++    )
 +
 +
 +def create_criteo_dynamicemb_tables(
 +    config: ExperimentConfig,
 +    device: torch.device,
++    *,
++    logical_vocab_sizes=None,
++    hkv_layout=None,
++    native_lru_hit_update=None,
++    backing_placement=None,
++    num_of_buckets_per_alloc=None,
 +) -> BatchedDynamicEmbeddingTablesV2:
-+    """Create native caches; per-table minima can exceed the requested budget."""
++    """Create compatible native caches with an explicit logical/physical layout.
++
++    The Criteo defaults remain unchanged. Generic callers may override vocabulary
++    and layout, and must encode shared keys with result.logical_key_offsets.
++    The Criteo dataset/weight helpers retain their existing 26-feature contract.
++    Per-table minima can exceed the requested value-payload budget.
++    """
 +    from dynamicemb import (
 +        DynamicEmbInitializerArgs,
 +        DynamicEmbInitializerMode,
@@ -873,7 +909,7 @@ index 0000000..b902fed
 +    )
 +    from dynamicemb.batched_dynamicemb_tables import BatchedDynamicEmbeddingTablesV2
 +
-+    vocab_sizes = config.vocab_sizes
++    vocab_sizes = list(config.vocab_sizes if logical_vocab_sizes is None else logical_vocab_sizes)
 +    dim = config.embedding_dim
 +    num_tables = len(vocab_sizes)
 +    total_vocab = sum(vocab_sizes)
@@ -886,15 +922,16 @@ index 0000000..b902fed
 +
 +    optim_state_dim = _optim_state_dim(config.optimizer, dim)
 +
-+    # Minimum HBM per table: at least one cache bucket (1024 rows)
-+    cache_bucket_capacity = 1024  # hardcoded in BatchedDynamicEmbeddingTablesV2
++    # Match the native cache bucket configured in this SDK candidate.
++    cache_bucket_capacity = 128
 +    min_hbm_per_table = cache_bucket_capacity * (dim + optim_state_dim) * 4
 +
 +    # Total budget in bytes
 +    total_hbm_bytes = int(config.hbm_budget_gb * (1024**3))
 +
-+    shared = config.hkv_layout == "shared"
-+    physical_vocab_sizes = [total_vocab] if shared else vocab_sizes
++    layout = config.hkv_layout if hkv_layout is None else hkv_layout
++    physical_vocab_sizes, feature_table_map, key_offsets = _hkv_layout(vocab_sizes, layout)
++    shared = layout == "shared"
 +    table_options = []
 +    for vocab_size in physical_vocab_sizes:
 +        # Proportional allocation: larger vocab -> more HBM
@@ -921,10 +958,10 @@ index 0000000..b902fed
 +            )
 +        )
 +
-+    return BatchedDynamicEmbeddingTablesV2(
++    tables = BatchedDynamicEmbeddingTablesV2(
 +        table_options=table_options,
 +        table_names=["shared"] if shared else [f"t_{i}" for i in range(num_tables)],
-+        feature_table_map=[0] * num_tables if shared else None,
++        feature_table_map=feature_table_map,
 +        use_index_dedup=False,
 +        pooling_mode=DynamicEmbPoolingMode.NONE,
 +        output_dtype=torch.float32,
@@ -933,7 +970,14 @@ index 0000000..b902fed
 +        stochastic_rounding=False,
 +        learning_rate=config.learning_rate,
 +        eps=config.eps,
++        native_lru_hit_update=native_lru_hit_update,
++        backing_placement=backing_placement,
++        num_of_buckets_per_alloc=num_of_buckets_per_alloc,
 +    )
++    tables.logical_vocab_sizes = tuple(vocab_sizes)
++    tables.logical_key_offsets = tuple(key_offsets)
++    tables.hkv_layout = layout
++    return tables
 +
 +
 +# ---------------------------------------------------------------------------
@@ -1542,7 +1586,35 @@ index 0000000..b902fed
 +            versions[package] = importlib.metadata.version(package)
 +        except importlib.metadata.PackageNotFoundError:
 +            versions[package] = None
++    python_modules = {}
++    resource_configuration = None
++    if config.backend == "dynamicemb":
++        for name in ("dynamicemb.batched_dynamicemb_tables",
++                     "dynamicemb.batched_dynamicemb_function",
++                     "dynamicemb.key_value_table"):
++            path = importlib.import_module(name).__file__
++            python_modules[name] = {"path": path, "sha256": file_sha256(path)}
++
++        def table_options(table):
++            option = table.options
++            return {
++                "capacity": extension.dyn_emb_capacity(table.table),
++                "init_capacity": option.init_capacity,
++                "max_capacity": option.max_capacity,
++                "bucket_capacity": option.bucket_capacity,
++                "num_of_buckets_per_alloc": option.num_of_buckets_per_alloc,
++                "local_hbm_for_values": option.local_hbm_for_values,
++            }
++
++        resource_configuration = {
++            "backing_placement": tables.backing_placement,
++            "requested_num_of_buckets_per_alloc": tables.requested_num_of_buckets_per_alloc,
++            "caches": [table_options(table) for table in tables.caches if table is not None],
++            "backing": [table_options(table) for table in tables.tables],
++        }
 +    return {
++        "python_modules": python_modules,
++        "resource_configuration": resource_configuration,
 +        "backend": config.backend,
 +        "hkv_layout": config.hkv_layout,
 +        "concrete_type": f"{type(tables).__module__}.{type(tables).__qualname__}",
@@ -1617,10 +1689,10 @@ index 0000000..b902fed
 +    }
 diff --git a/corelib/dynamicemb/benchmark/criteo_experiment/native_tbe_comparison.py b/corelib/dynamicemb/benchmark/criteo_experiment/native_tbe_comparison.py
 new file mode 100644
-index 0000000..24669b8
+index 0000000..b9f2614
 --- /dev/null
 +++ b/corelib/dynamicemb/benchmark/criteo_experiment/native_tbe_comparison.py
-@@ -0,0 +1,3757 @@
+@@ -0,0 +1,4121 @@
 +"""Paired native V2 cache-service diagnostics; no DNN or formal-gate shortcut."""
 +
 +import argparse
@@ -1646,6 +1718,7 @@ index 0000000..24669b8
 +
 +
 +FORMAT = "hkv-native-tbe-v2-1"
++CACHE_ONLY_OUTPUT_GROUP_SIZE = 8
 +BUDGET_GLIBC_SOURCE_VERSIONS = frozenset(("2.35", "2.39"))
 +BACKENDS = ("dynamicemb", "torchrec")
 +NATIVE_TYPES = {
@@ -1942,6 +2015,85 @@ index 0000000..24669b8
 +    }
 +
 +
++def repeated_cache_forward(
++    forward, synchronize, validate_output, describe_output, *, iterations,
++    batch_rows, output_group_size=CACHE_ONLY_OUTPUT_GROUP_SIZE,
++    clock=time.perf_counter, begin_events=None, end_events=None,
++):
++    """Bounded serial-forward groups; validate every full output between groups.
++
++    Group intervals include dispatch, per-forward synchronization and Python
++    loop/completion bookkeeping.  D2H, parity, hashes and group-boundary work
++    are outside those intervals.  Internal replays are not independent runs.
++    """
++    for name, value in (("iterations", iterations), ("batch_rows", batch_rows),
++                        ("output_group_size", output_group_size)):
++        if type(value) is not int or value < 1:
++            raise ValueError(f"{name} must be a positive integer")
++    elapsed = 0.0
++    batches, groups, output_digests = [], [], []
++    group_gaps = []
++    peak_retained_bytes = 0
++    for first in range(0, iterations, output_group_size):
++        retained = []
++        if begin_events is not None:
++            begin_events()
++        start = clock()
++        count = min(output_group_size, iterations - first)
++        for offset in range(count):
++            values = forward()
++            synchronize()
++            completed = clock()
++            retained.append(values)
++            batches.append({
++                "batch": first + offset,
++                "source_batch": 0,
++                "first_request_id": (first + offset) * batch_rows,
++                "rows": batch_rows,
++                "completed_seconds": elapsed + (completed - start),
++            })
++        duration = completed - start
++        if not math.isfinite(duration) or duration <= 0:
++            raise ValueError("invalid completed cache-forward group interval")
++        elapsed += duration
++        gap_start = clock()
++        event = end_events() if end_events is not None else None
++        descriptions = [describe_output(value) for value in retained]
++        ranges = sorted((item["storage_pointer"], item["storage_pointer"]
++                         + item["storage_bytes"]) for item in descriptions)
++        if any(begin < previous_end
++               for (_, previous_end), (begin, _) in zip(ranges, ranges[1:])):
++            raise RuntimeError("native outputs alias within a retained group")
++        retained_bytes = sum(item["storage_bytes"] for item in descriptions)
++        peak_retained_bytes = max(peak_retained_bytes, retained_bytes)
++        for offset, values in enumerate(retained):
++            output_digests.append(validate_output(first + offset, values))
++        # No previous group's final output is retained during the next group.
++        del values
++        retained.clear()
++        gap = clock() - gap_start
++        group_gaps.append(gap)
++        groups.append({
++            "first_iteration": first,
++            "iterations": count,
++            "host_wall_seconds": duration,
++            "completed_seconds": elapsed,
++            "output_storage_nonoverlap_verified": True,
++            "retained_output_storage_bytes": retained_bytes,
++            "full_outputs_exact_verified": count,
++            "post_group_oracle_and_event_gap_seconds": gap,
++            "cuda_event_service": event,
++        })
++    return {
++        "batches": batches,
++        "groups": groups,
++        "host_wall_seconds": elapsed,
++        "output_sha256": output_digests,
++        "peak_retained_output_storage_bytes": peak_retained_bytes,
++        "group_gap_seconds": sum(group_gaps),
++    }
++
++
 +def prepare_cuda_service_events(tables, config, device, *, enabled):
 +    if not enabled:
 +        return None
@@ -1996,7 +2148,7 @@ index 0000000..24669b8
 +    return events
 +
 +
-+def cuda_service_event_measurement(events):
++def cuda_service_event_measurement(events, *, cache_only=False):
 +    seconds = float(events[0].elapsed_time(events[1])) / 1000
 +    if not math.isfinite(seconds) or seconds <= 0:
 +        raise ValueError(
@@ -2004,16 +2156,38 @@ index 0000000..24669b8
 +        )
 +    return {
 +        "seconds": seconds,
-+        "metric": "CUDA-event elapsed service envelope",
++        "metric": (
++            "CUDA-event elapsed native cache-forward envelope"
++            if cache_only else "CUDA-event elapsed service envelope"
++        ),
 +        "primary_metric": "measurement.host_wall_seconds",
-+        "includes": "host-dispatch/layout/copy/idle gaps and final flush; not kernel busy-time",
-+        "wall_overhead": "stop-event enqueue is included in the unchanged primary wall timer",
-+        "coverage": "source-traced fixed single-device LRU/EXACT_SGD lookup+flush, no prefetch pipeline; not runtime timeline validation",
-+        "coverage_provenance": {
-+            "task": "44fc651b",
-+            "handoff_sha256": "327287d1dcb4d64c8eaeb7984d82086a1ce6746ab3a20d16967e5f1e9f88d275",
-+            "runtime_identity": "native (same raw record); requires frozen build/source alignment",
-+        },
++        "includes": (
++            "native forward dispatch/cache metadata and device completion; not kernel busy-time"
++            if cache_only else
++            "host-dispatch/layout/copy/idle gaps and final flush; not kernel busy-time"
++        ),
++        "wall_overhead": (
++            "stop-event enqueue follows the primary wall timestamp"
++            if cache_only else
++            "stop-event enqueue is included in the unchanged primary wall timer"
++        ),
++        "coverage": (
++            "source-traced fixed single-device all-hit native forward, no prefetch pipeline; not runtime timeline validation"
++            if cache_only else
++            "source-traced fixed single-device LRU/EXACT_SGD lookup+flush, no prefetch pipeline; not runtime timeline validation"
++        ),
++        "coverage_provenance": (
++            {
++                "candidate_scope": "cache-only native-forward source trace",
++                "runtime_profile": "NOT_RUN",
++                "runtime_identity": "native (same raw record); requires frozen build/source alignment",
++            }
++            if cache_only else {
++                "task": "44fc651b",
++                "handoff_sha256": "327287d1dcb4d64c8eaeb7984d82086a1ce6746ab3a20d16967e5f1e9f88d275",
++                "runtime_identity": "native (same raw record); requires frozen build/source alignment",
++            }
++        ),
 +    }
 +
 +
@@ -2043,6 +2217,7 @@ index 0000000..24669b8
 +    signatures = set()
 +    capacity_signatures = {backend: set() for backend in BACKENDS}
 +    hkv_layouts = set()
++    service_scopes = set()
 +    for record in records:
 +        if not isinstance(record, dict) or record.get("status") != "complete":
 +            problems.append("failed/interrupted run retained")
@@ -2050,14 +2225,29 @@ index 0000000..24669b8
 +        try:
 +            cell = dict(record["cell"])
 +            validated_cell = Cell(**cell)
-+            if record["expected_requests"] != cell["batch_size"] * cell["batches"]:
-+                raise ValueError("completed count does not match configured trace")
++            trace_requests = cell["batch_size"] * cell["batches"]
++            if record["expected_requests"] != trace_requests:
++                raise ValueError("configured input trace count changed")
++            schedule = record.get("cache_only_schedule")
++            repetitions = schedule["timed_iterations"] if schedule else 1
++            executed_requests = record.get("executed_requests", trace_requests)
++            if executed_requests != trace_requests * repetitions:
++                raise ValueError("executed replay denominator differs from schedule")
 +            seed = cell.pop("seed")
 +            if record["format"] != FORMAT or record["state"] not in ("cold", "warm"):
 +                raise ValueError("raw format/state mismatch")
 +            if record["hardware"].get("uuid") in (None, "", "None", "unavailable"):
 +                raise ValueError("physical GPU identity unavailable")
 +            backend = record["backend"]
++            service_scope = record.get("service_scope", "full_service")
++            if service_scope not in ("full_service", "cache_only_all_hit"):
++                raise ValueError("unsupported timed service scope")
++            service_scopes.add(service_scope)
++            if service_scope == "cache_only_all_hit" and (
++                record.get("cache_only_witness", {}).get("status") != "PASS"
++                or record["cache_only_witness"].get("timed_metrics_enabled") is not False
++            ):
++                raise ValueError("cache-only all-hit witness missing")
 +            if backend == "dynamicemb":
 +                hkv_layouts.add(record.get("hkv_layout", "partitioned"))
 +            native = record["native"]
@@ -2068,7 +2258,7 @@ index 0000000..24669b8
 +                raise ValueError("not the named actual backend")
 +            checked = completed_denominator(
 +                record["batches"],
-+                record["expected_requests"],
++                executed_requests,
 +                record["measurement"]["host_wall_seconds"],
 +            )
 +            if (
@@ -2099,6 +2289,7 @@ index 0000000..24669b8
 +                    [
 +                        cell, workload, record["state"], record["hardware"],
 +                        record.get("cuda_event_service") is not None,
++                        schedule,
 +                    ],
 +                    sort_keys=True,
 +                )
@@ -2122,6 +2313,8 @@ index 0000000..24669b8
 +        problems.append("per-arm native capacity changed across seeds")
 +    if len(hkv_layouts) != 1 or not hkv_layouts <= {"partitioned", "shared"}:
 +        problems.append("mixed or missing HKV layout across seeds")
++    if len(service_scopes) != 1:
++        problems.append("mixed or missing timed service scope")
 +    ratios = []
 +    independent_traces = set()
 +    backend_identities = {backend: set() for backend in BACKENDS}
@@ -2138,9 +2331,13 @@ index 0000000..24669b8
 +                "trace_sha256",
 +                "weights_sha256",
 +                "expected_requests",
++                "executed_requests",
++                "cache_only_schedule",
++                "output_sha256",
++                "service_contract",
 +            )
 +        ):
-+            problems.append("pair inputs differ")
++            problems.append("pair inputs/schedule/output contract differ")
 +        for backend, record in pair.items():
 +            native = record["native"]
 +            backend_identities[backend].add(
@@ -2170,7 +2367,11 @@ index 0000000..24669b8
 +    return {
 +        "format": FORMAT,
 +        "hkv_layout": next(iter(hkv_layouts)) if len(hkv_layouts) == 1 else None,
-+        "scope": "diagnostic full cache service, never formal V2 admission",
++        "scope": (
++            "diagnostic all-hit native cache forward, never formal V2 admission"
++            if service_scopes == {"cache_only_all_hit"} else
++            "diagnostic full cache service, never formal V2 admission"
++        ),
 +        "status": "INCOMPLETE" if problems else "DIAGNOSTIC_ONLY",
 +        "problems": sorted(set(problems)),
 +        "input_records": len(records),
@@ -2387,6 +2588,55 @@ index 0000000..24669b8
 +    except Exception as error:
 +        result["error"] = f"{type(error).__name__}: {error}"
 +    return result
++
++
++def cache_only_residency_witness(tables, config, requests):
++    """Read the measured table's native roster without retaining exported values."""
++    requested = {
++        (table, int(row[table]))
++        for sparse in requests
++        for row in sparse.tolist()
++        for table in range(26)
++    }
++    snapshot = diagnostic_cache_snapshot(tables, config)
++    if snapshot["status"] != "observed":
++        raise RuntimeError(
++            "cache-only native roster unavailable: " + str(snapshot.get("error"))
++        )
++    missing = requested.copy()
++    digest = hashlib.sha256()
++    for table, key, _score in snapshot["entries"]:
++        missing.discard((table, key))
++        digest.update(struct.pack("<qq", table, key))
++    if missing:
++        raise RuntimeError(
++            f"cache-only timed query is not all resident: {len(missing)} missing keys"
++        )
++    return {
++        "status": "all_requested_resident",
++        "requested_unique_table_keys": len(requested),
++        "resident_rows": len(snapshot["entries"]),
++        "resident_table_keys_sha256": digest.hexdigest(),
++        "native_object_id": id(tables),
++        "scope": "untimed exact native roster of the final measured table",
++    }
++
++
++def cache_only_native_inputs(sparse, config, device):
++    """Prepare exactly the inputs of serving_replay._lookup outside the timer."""
++    import torch
++
++    if config.backend == "dynamicemb" and config.hkv_layout == "shared":
++        table_major = sparse.t().contiguous().to(device)
++        table_offsets = (
++            torch.arange(table_major.shape[0], dtype=torch.int64, device=device)
++            * config.vocab_sizes[0]
++        )
++        indices = (table_major + table_offsets[:, None]).flatten()
++    else:
++        indices = sparse.t().contiguous().flatten().to(device)
++    offsets = torch.arange(indices.numel() + 1, dtype=torch.int64, device=device)
++    return indices, offsets
 +
 +
 +def timing_cache_boundary(tables, config, run, phase):
@@ -4846,6 +5096,10 @@ index 0000000..24669b8
 +    cuda_event_service=False,
 +    hkv_layout="partitioned",
 +    diagnostic_flush_repeats=1,
++    cache_only=False,
++    cache_only_warmup_iterations=20,
++    cache_only_iterations=200,
++    cache_only_output_group_size=CACHE_ONLY_OUTPUT_GROUP_SIZE,
 +):
 +    if os.environ.get("TBE_EXPERIMENTAL_UVM_PREFETCH", "0") != "0":
 +        raise ValueError("fixed comparison requires TBE_EXPERIMENTAL_UVM_PREFETCH=0")
@@ -4859,6 +5113,22 @@ index 0000000..24669b8
 +        backend != "dynamicemb" or hkv_layout != "shared"
 +    ):
 +        raise ValueError("repeated flush is only for the shared HKV diagnostic")
++    if cache_only and (state != "warm" or diagnostic_flush_repeats != 1):
++        raise ValueError("cache-only requires warm state and exactly one post-timer flush")
++    if cache_only and backend == "dynamicemb" and hkv_layout != "shared":
++        raise ValueError("cache-only HKV comparison requires the frozen shared layout")
++    if cache_only and (
++        allocation_identities_enabled()
++        or os.environ.get("DYNAMICEMB_POST_TIMER_BUDGET_BOUND") == "1"
++    ):
++        raise ValueError("cache-only comparison requires observer-off timing")
++    for name, value in (
++        ("cache_only_warmup_iterations", cache_only_warmup_iterations),
++        ("cache_only_iterations", cache_only_iterations),
++        ("cache_only_output_group_size", cache_only_output_group_size),
++    ):
++        if type(value) is not int or value < 1:
++            raise ValueError(f"{name} must be a positive integer")
 +    budget_range_open = False
 +    allocator_history_active = False
 +    raw = {
@@ -4866,6 +5136,7 @@ index 0000000..24669b8
 +        "backend": backend,
 +        "hkv_layout": hkv_layout,
 +        "requested_flush_repeats": diagnostic_flush_repeats,
++        "service_scope": "cache_only_all_hit" if cache_only else "full_service",
 +        "state": state,
 +        "status": "started",
 +        "started_utc": datetime.now(timezone.utc).isoformat(),
@@ -4901,6 +5172,7 @@ index 0000000..24669b8
 +            from .config import ExperimentConfig
 +            from .embedding_config import (
 +                create_embedding_tables,
++                flatten_embeddings,
 +                load_frozen_weights,
 +                reset_and_check_cache,
 +                runtime_manifest,
@@ -4966,6 +5238,24 @@ index 0000000..24669b8
 +                "excludes": "DNN/network, input load, initial frozen-weight load, preflight, warm priming, counters, oracle/hash/report work",
 +                "updates": "read-only frozen weights; no dirty training updates",
 +            }
++            if cache_only:
++                raw["executed_requests"] = raw["expected_requests"] * cache_only_iterations
++                raw["cache_only_schedule"] = {
++                    "warmup_iterations": cache_only_warmup_iterations,
++                    "timed_iterations": cache_only_iterations,
++                    "output_group_size": cache_only_output_group_size,
++                    "distinct_input_batches": 1,
++                    "input_replay": "same frozen resident request batch every iteration",
++                    "independent_samples": "one backend process, not internal replays",
++                    "timing": "sum of serial forward-plus-sync group host-wall intervals",
++                    "group_gap_policy": "all full-output oracle/D2H/hash/event work excluded between groups",
++                    "working_set_limit": "repeated resident working set; hot L2 reuse possible; not distinct-query or overlapped pipeline throughput",
++                }
++                raw["service_contract"].update(
++                    includes="serial native table forwards and cache metadata updates through per-forward device synchronization; within-group Python loop/completion bookkeeping",
++                    excludes="DNN/network, input load, initial frozen-weight load, preflight, original prime, timed-query prewarm, H2D/index/offset construction, output reshape/D2H/oracle, backing snapshot, final flush",
++                    timed_query_requirement="all unique table-keys resident before and after native forward; untimed enabled-counter probe reports zero miss; timed metrics disabled",
++                )
 +            weights, requests = artifact["weights"], artifact["requests"]
 +            expected = [reference_embeddings(weights, sparse) for sparse in requests]
 +
@@ -5159,6 +5449,39 @@ index 0000000..24669b8
 +                if state == "warm":
 +                    for sparse in artifact["prime"].split(cell.batch_size):
 +                        _lookup(tables, config, sparse, device)
++                if cache_only:
++                    if cell.batches != 1 or len(requests) != 1:
++                        raise ValueError("frozen cache-only comparison requires one timed query batch")
++                    for sparse in requests:
++                        _lookup(tables, config, sparse, device)
++                    torch.cuda.synchronize(device)
++                    diagnostic_metrics(tables, config, True)
++                    counter_before = observe(tables, config, metrics_enabled=True)
++                    for sparse in requests:
++                        _lookup(tables, config, sparse, device)
++                    torch.cuda.synchronize(device)
++                    counter_after = observe(tables, config, metrics_enabled=True)
++                    counter_probe = diagnostic_counter_delta(
++                        backend,
++                        counter_before,
++                        counter_after,
++                        diagnostic_denominators(requests[0]),
++                    )
++                    if (counter_probe["status"] != "observed"
++                            or counter_probe["unique_misses"] != 0):
++                        raise RuntimeError("untimed cache-only native counter probe did not prove all hits")
++                    diagnostic_metrics(tables, config, False)
++                    before_witness = cache_only_residency_witness(tables, config, requests)
++                    timed_indices, timed_offsets = cache_only_native_inputs(
++                        requests[0], config, device
++                    )
++                    raw["cache_only_witness"] = {
++                        "status": "pre_timer_verified",
++                        "counter_probe": counter_probe,
++                        "before": before_witness,
++                        "timed_metrics_enabled": False,
++                        "native_forward_only": True,
++                    }
 +                service_events = prepare_cuda_service_events(
 +                    tables, config, device, enabled=cuda_event_service
 +                )
@@ -5182,59 +5505,150 @@ index 0000000..24669b8
 +                )
 +                torch.cuda.reset_peak_memory_stats(device)
 +                observed = []
++                if cache_only:
++                    for _ in range(cache_only_warmup_iterations):
++                        tables(timed_indices, timed_offsets)
++                        torch.cuda.synchronize(device)
++                    raw["cache_only_witness"]["direct_native_warmup_count"] = cache_only_warmup_iterations
 +                mark_allocation_phase("service_begin")
-+                if service_events is not None:
++                if not cache_only and service_events is not None:
 +                    torch.cuda.nvtx.range_push("native_service/" + backend)
 +                    service_events[0].record()
-+                start = time.perf_counter()
-+                for index, sparse in enumerate(requests):
-+                    values = _lookup(tables, config, sparse, device).cpu()
-+                    torch.cuda.synchronize(device)
-+                    completed = time.perf_counter()
-+                    observed.append(values)
-+                    raw["batches"].append(
-+                        {
-+                            "batch": index,
-+                            "first_request_id": index * cell.batch_size,
-+                            "rows": len(sparse),
-+                            "completed_seconds": completed - start,
++                if not cache_only:
++                    start = time.perf_counter()
++                if cache_only:
++                    def begin_cache_events():
++                        torch.cuda.nvtx.range_push("native_service/" + backend)
++                        service_events[0].record()
++
++                    def end_cache_events():
++                        service_events[1].record()
++                        torch.cuda.nvtx.range_pop()
++                        service_events[1].synchronize()
++                        return cuda_service_event_measurement(service_events, cache_only=True)
++
++                    def describe_cache_output(values):
++                        if values.device != device:
++                            raise RuntimeError("native forward did not return a CUDA output")
++                        storage = values.untyped_storage()
++                        return {"storage_pointer": storage.data_ptr(), "storage_bytes": storage.nbytes()}
++
++                    def validate_cache_output(index, native_values):
++                        values = flatten_embeddings(
++                            native_values, config, requests[0].shape[0]
++                        ).cpu()
++                        _assert_parity(values, expected[0], exact=True)
++                        return tensor_sha256(values)
++
++                    repeated = repeated_cache_forward(
++                        lambda: tables(timed_indices, timed_offsets),
++                        lambda: torch.cuda.synchronize(device),
++                        validate_cache_output, describe_cache_output,
++                        iterations=cache_only_iterations,
++                        batch_rows=len(requests[0]),
++                        output_group_size=cache_only_output_group_size,
++                        begin_events=begin_cache_events if service_events is not None else None,
++                        end_events=end_cache_events if service_events is not None else None,
++                    )
++                    raw["batches"] = repeated.pop("batches")
++                    raw["output_sha256"] = repeated.pop("output_sha256")
++                    elapsed = repeated["host_wall_seconds"]
++                    raw["cache_only_replay"] = repeated
++                    if service_events is not None:
++                        events = [group["cuda_event_service"] for group in repeated["groups"]]
++                        raw["cuda_event_service"] = {
++                            **events[0],
++                            "seconds": sum(event["seconds"] for event in events),
++                            "aggregation": "sum of serial group event envelopes; oracle gaps excluded",
++                            "groups": len(events),
 +                        }
++                    raw["timing_final_state"] = observe(
++                        tables, config, metrics_enabled=False
 +                    )
-+                mark_allocation_phase("flush_begin")
-+                flush_count = 0
-+                torch.cuda.nvtx.range_push("native_flush")
-+                try:
-+                    for _ in range(diagnostic_flush_repeats):
++                    after_witness = cache_only_residency_witness(
++                        tables, config, requests
++                    )
++                    if (
++                        after_witness["native_object_id"]
++                        != before_witness["native_object_id"]
++                        or after_witness["resident_rows"]
++                        != before_witness["resident_rows"]
++                        or after_witness["resident_table_keys_sha256"]
++                        != before_witness["resident_table_keys_sha256"]
++                    ):
++                        raise RuntimeError(
++                            "cache-only native roster changed across timed forward"
++                        )
++                    raw["cache_only_witness"].update(
++                        status="PASS",
++                        after=after_witness,
++                        inference="all timed keys resident at both boundaries; no concurrent writers, read-only forward and unchanged roster exclude timed backing/admission",
++                    )
++                    raw["cache_only_witness"]["full_outputs_exact_verified"] = cache_only_iterations
++                    raw["cache_only_witness"]["output_storage_nonoverlap_verified"] = True
++                    mark_allocation_phase("flush_begin")
++                    torch.cuda.nvtx.range_push("native_flush")
++                    try:
 +                        tables.flush()
-+                        flush_count += 1
-+                finally:
-+                    torch.cuda.nvtx.range_pop()
-+                raw["flush_count"] = flush_count
-+                raw["diagnostic_work_scaling"] = flush_count == 2
-+                if service_events is not None:
-+                    service_events[1].record()
-+                torch.cuda.synchronize(device)
-+                elapsed = time.perf_counter() - start
-+                if service_events is not None:
-+                    torch.cuda.nvtx.range_pop()
-+                    raw["cuda_event_service"] = cuda_service_event_measurement(
-+                        service_events
-+                    )
-+                mark_allocation_phase("flush_sync_complete")
++                        raw["flush_count"] = 1
++                    finally:
++                        torch.cuda.nvtx.range_pop()
++                    raw["diagnostic_work_scaling"] = False
++                    torch.cuda.synchronize(device)
++                    mark_allocation_phase("flush_sync_complete")
++                else:
++                    for index, sparse in enumerate(requests):
++                        values = _lookup(tables, config, sparse, device).cpu()
++                        torch.cuda.synchronize(device)
++                        completed = time.perf_counter()
++                        observed.append(values)
++                        raw["batches"].append(
++                            {
++                                "batch": index,
++                                "first_request_id": index * cell.batch_size,
++                                "rows": len(sparse),
++                                "completed_seconds": completed - start,
++                            }
++                        )
++                    mark_allocation_phase("flush_begin")
++                    flush_count = 0
++                    torch.cuda.nvtx.range_push("native_flush")
++                    try:
++                        for _ in range(diagnostic_flush_repeats):
++                            tables.flush()
++                            flush_count += 1
++                    finally:
++                        torch.cuda.nvtx.range_pop()
++                    raw["flush_count"] = flush_count
++                    raw["diagnostic_work_scaling"] = flush_count == 2
++                    if service_events is not None:
++                        service_events[1].record()
++                    torch.cuda.synchronize(device)
++                    elapsed = time.perf_counter() - start
++                    if service_events is not None:
++                        torch.cuda.nvtx.range_pop()
++                        raw["cuda_event_service"] = cuda_service_event_measurement(
++                            service_events
++                        )
++                    mark_allocation_phase("flush_sync_complete")
 +                if budget_range_open:
 +                    torch.cuda.nvtx.range_pop()
 +                    budget_range_open = False
 +                raw["measurement"] = completed_denominator(
-+                    raw["batches"], raw["expected_requests"], elapsed
++                    raw["batches"], raw.get("executed_requests", raw["expected_requests"]), elapsed
 +                )
 +                raw["diagnostic_label"] = (
-+                    "target-hit-only diagnostic; not verified timed hit-only"
-+                    if cell.target_miss_percent == 0
-+                    else "full cache-service diagnostic"
++                    "verified all-hit native cache-forward diagnostic"
++                    if cache_only else (
++                        "target-hit-only diagnostic; not verified timed hit-only"
++                        if cell.target_miss_percent == 0
++                        else "full cache-service diagnostic"
++                    )
 +                )
-+                raw["timing_final_state"] = observe(
-+                    tables, config, metrics_enabled=False
-+                )
++                if not cache_only:
++                    raw["timing_final_state"] = observe(
++                        tables, config, metrics_enabled=False
++                    )
 +                if allocation_identities_enabled():
 +                    raw["timing_final_state"]["cache_boundary"] = timing_cache_boundary(
 +                        tables, config, raw, "after_final_flush_sync_and_timer"
@@ -5257,7 +5671,8 @@ index 0000000..24669b8
 +                    allocator_history_active = False
 +                for actual, oracle in zip(observed, expected):
 +                    _assert_parity(actual, oracle, exact=True)
-+                raw["output_sha256"] = [tensor_sha256(values) for values in observed]
++                if not cache_only:
++                    raw["output_sha256"] = [tensor_sha256(values) for values in observed]
 +                if sha256(input_path) != raw["input_sha256"]:
 +                    raise ValueError("frozen inputs changed during run")
 +                raw["parity"] = "exact"
@@ -5350,6 +5765,23 @@ index 0000000..24669b8
 +        action="store_true",
 +        help="opt-in current-stream service envelope, not GPU busy-time; wall timing remains primary",
 +    )
++    native.add_argument(
++        "--cache-only",
++        action="store_true",
++        help="time verified all-hit native forward only; prewarm, H2D, output oracle and flush remain untimed",
++    )
++    native.add_argument(
++        "--cache-only-warmup-iterations", type=int, default=20,
++        help="untimed direct native forward-plus-sync warmups; cache-only only",
++    )
++    native.add_argument(
++        "--cache-only-iterations", type=int, default=200,
++        help="serial timed replays of the same frozen resident batch; not independent samples",
++    )
++    native.add_argument(
++        "--cache-only-output-group-size", type=int, default=CACHE_ONLY_OUTPUT_GROUP_SIZE,
++        help="bounded complete GPU output retention per serial group; full oracle between groups",
++    )
 +    summary = commands.add_parser("summarize")
 +    summary.add_argument("--raw", nargs="+", required=True)
 +    summary.add_argument("--output", required=True)
@@ -5369,6 +5801,10 @@ index 0000000..24669b8
 +            cuda_event_service=arguments["cuda_event_service"],
 +            hkv_layout=arguments["hkv_layout"],
 +            diagnostic_flush_repeats=arguments["diagnostic_flush_repeats"],
++            cache_only=arguments["cache_only"],
++            cache_only_warmup_iterations=arguments["cache_only_warmup_iterations"],
++            cache_only_iterations=arguments["cache_only_iterations"],
++            cache_only_output_group_size=arguments["cache_only_output_group_size"],
 +        )
 +    else:
 +        result = summarize_files(arguments["raw"], output)
@@ -6850,10 +7286,10 @@ index 0000000..b43abd0
 +        assert_state_close(corrupt_restore, before, exact=True)
 diff --git a/corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_comparison.py b/corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_comparison.py
 new file mode 100644
-index 0000000..09aef74
+index 0000000..69bccd7
 --- /dev/null
 +++ b/corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_comparison.py
-@@ -0,0 +1,590 @@
+@@ -0,0 +1,599 @@
 +"""CPU helper tests only; fixtures below are not native runtime evidence."""
 +
 +import ast
@@ -6949,7 +7385,13 @@ index 0000000..09aef74
 +    timed_end = next(
 +        index
 +        for index, node in enumerate(body)
-+        if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "elapsed"
++        if isinstance(node, ast.If)
++        and ast.unparse(node.test) == "cache_only"
++        and any(
++            isinstance(child, ast.Assign)
++            and ast.unparse(child.targets[0]) == "elapsed"
++            for child in node.orelse
++        )
 +    )
 +    clocks = iter([10.0, 11.0, 12.0])
 +
@@ -6966,6 +7408,7 @@ index 0000000..09aef74
 +        "config": config,
 +        "device": "cuda:0",
 +        "cuda_event_service": enabled,
++        "cache_only": False,
 +        "backend": backend,
 +        "diagnostic_flush_repeats": 1,
 +        "torch": torch,
@@ -6979,7 +7422,7 @@ index 0000000..09aef74
 +        "cuda_service_event_measurement": comparison.cuda_service_event_measurement,
 +    }
 +    statements = (
-+        body[initialization : initialization + 2] + body[timed_start : timed_end + 2]
++        body[initialization : initialization + 2] + body[timed_start : timed_end + 1]
 +    )
 +    exec(
 +        compile(
@@ -7124,6 +7567,8 @@ index 0000000..09aef74
 +    assert calls == [{
 +        "cache_rows": None, "cuda_event_service": enabled,
 +        "hkv_layout": "partitioned", "diagnostic_flush_repeats": 1,
++        "cache_only": False, "cache_only_warmup_iterations": 20,
++        "cache_only_iterations": 200, "cache_only_output_group_size": 8,
 +    }]
 +
 +
@@ -7446,10 +7891,10 @@ index 0000000..09aef74
 +        comparison.run_native("missing-input", backend, "warm", tmp_path / "uncreated.jsonl", hkv_layout="invalid")
 diff --git a/corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_fairness.py b/corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_fairness.py
 new file mode 100644
-index 0000000..3132215
+index 0000000..31cf813
 --- /dev/null
 +++ b/corelib/dynamicemb/benchmark/criteo_experiment/test_native_tbe_fairness.py
-@@ -0,0 +1,1786 @@
+@@ -0,0 +1,1810 @@
 +"""Focused CPU observation tests; fake storage is not native fairness evidence."""
 +
 +import ast
@@ -7937,6 +8382,10 @@ index 0000000..3132215
 +            "cuda_event_service": False,
 +            "hkv_layout": "partitioned",
 +            "diagnostic_flush_repeats": 1,
++            "cache_only": False,
++            "cache_only_warmup_iterations": 20,
++            "cache_only_iterations": 200,
++            "cache_only_output_group_size": 8,
 +        }
 +
 +
@@ -8396,7 +8845,10 @@ index 0000000..3132215
 +
 +def test_calibration_observations_remain_outside_fresh_timing_path():
 +    source = inspect.getsource(comparison.run_native)
-+    timed_workflow = source.split("                del tables", 1)[1]
++    fresh_workflow = source.split("                del tables", 1)[1]
++    # Cache-only mode adds a required all-hit counter probe BEFORE timer/event
++    # initialization. Neither timed branch may contain these diagnostic helpers.
++    timed_workflow = fresh_workflow.split("                service_events =", 1)[1]
 +    for helper in (
 +        "diagnostic_cache_snapshot",
 +        "diagnostic_counter_delta",
@@ -8404,9 +8856,26 @@ index 0000000..3132215
 +        "diagnostic_denominators",
 +    ):
 +        assert helper not in timed_workflow
-+    assert timed_workflow.count("metrics_enabled=False") == 2
-+    assert "diagnostic_metrics(tables, config, False)" in timed_workflow
++    assert "diagnostic_counter_delta" in fresh_workflow.split("                service_events =", 1)[0]
++    assert fresh_workflow.count("metrics_enabled=False") == 3
++    assert "diagnostic_metrics(tables, config, False)" in fresh_workflow
 +    tree = ast.parse(source)
++    final_observations = [
++        node for node in ast.walk(tree)
++        if isinstance(node, ast.Assign)
++        and any(
++            isinstance(target, ast.Subscript)
++            and isinstance(target.value, ast.Name)
++            and target.value.id == "raw"
++            and isinstance(target.slice, ast.Constant)
++            and target.slice.value == "timing_final_state"
++            for target in node.targets
++        )
++    ]
++    assert len(final_observations) == 2
++    for node in final_observations:
++        assert any(keyword.arg == "metrics_enabled" and isinstance(keyword.value, ast.Constant)
++                   and keyword.value.value is False for keyword in node.value.keywords)
 +    phase_loop = next(
 +        node
 +        for node in ast.walk(tree)
@@ -9921,27 +10390,38 @@ index 0000000..f18cf37
 +if __name__ == "__main__":
 +    main()
 diff --git a/corelib/dynamicemb/dynamicemb/batched_dynamicemb_function.py b/corelib/dynamicemb/dynamicemb/batched_dynamicemb_function.py
-index c2290df..d997ee4 100644
+index c2290df..8c61faf 100644
 --- a/corelib/dynamicemb/dynamicemb/batched_dynamicemb_function.py
 +++ b/corelib/dynamicemb/dynamicemb/batched_dynamicemb_function.py
-@@ -352,0 +353,3 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
-+        # The original trailing arg is the autograd anchor parameter. The
-+        # experiment adds a second trailing bool without changing old callers.
-+        native_lru_hit_update_call = len(args) == 2 and args[1] is True
-@@ -417,0 +421,8 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
+@@ -354,0 +355,15 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
++        # Preserve the original autograd anchor and old optional bool callers.
++        # New callers provide one capability bit for each physical cache.
++        native_lru_hit_update_call = (False,) * table_num
++        if len(args) == 2:
++            selection = args[1]
++            if type(selection) is bool:
++                native_lru_hit_update_call = (selection,) * table_num
++            elif (
++                isinstance(selection, tuple)
++                and len(selection) == table_num
++                and all(type(enabled) is bool for enabled in selection)
++            ):
++                native_lru_hit_update_call = selection
++            else:
++                raise ValueError("native KLru selection must match physical caches")
+@@ -417,0 +433,7 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
 +                    native_lru_hit_update_from_unique=(
-+                        native_lru_hit_update_call
++                        native_lru_hit_update_call[i]
 +                        and not training
 +                        and not enable_prefetch
 +                        and not input_dist_dedup
 +                        and frequency_counters is None
-+                        and table_num == 1
 +                    ),
-@@ -508 +519 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
+@@ -508 +530 @@ class DynamicEmbeddingFunctionV2(torch.autograd.Function):
 -        return (None,) * 14
 +        return (None,) * len(ctx.needs_input_grad)
 diff --git a/corelib/dynamicemb/dynamicemb/batched_dynamicemb_tables.py b/corelib/dynamicemb/dynamicemb/batched_dynamicemb_tables.py
-index 247ec12..acf6bbd 100644
+index 247ec12..e3c71e0 100644
 --- a/corelib/dynamicemb/dynamicemb/batched_dynamicemb_tables.py
 +++ b/corelib/dynamicemb/dynamicemb/batched_dynamicemb_tables.py
 @@ -17,0 +18 @@ import logging
@@ -9949,116 +10429,239 @@ index 247ec12..acf6bbd 100644
 @@ -38 +39 @@ from dynamicemb.utils import tabulate
 -from dynamicemb_extensions import DynamicEmbTable, OptimizerType, device_timestamp
 +from dynamicemb_extensions import DynamicEmbTable, EvictStrategy, OptimizerType, device_timestamp
-@@ -576,0 +578,29 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
-+        native_lru_flag = os.environ.get(
-+            "DYNAMICEMB_EXPERIMENTAL_NATIVE_LRU_HIT_UPDATE", "0"
+@@ -414,0 +416,8 @@ def _print_memory_consume(
++def _clamp_bucket_allocation_group(requested, capacity, bucket_capacity):
++    """Group metadata allocations without changing table capacity or values."""
++    if type(requested) is not int or requested <= 0 or requested & (requested - 1):
++        raise ValueError("num_of_buckets_per_alloc must be a positive power of two")
++    available = max(1, capacity // bucket_capacity)
++    return min(requested, 1 << (available.bit_length() - 1))
++
++
+@@ -420,0 +430,14 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++
++    native_lru_hit_update is a compatibility/capability selector: on rejects
++    incompatible caches/calls; auto selects compatible eval/no-grad calls.
++    None reads DYNAMICEMB_EXPERIMENTAL_NATIVE_LRU_HIT_UPDATE (off/auto).
++    No setting disables required LRU hit refresh. Correct fallback and selected
++    paths may call the same native primitive; this switch is not a speed ablation.
++    backing_placement selects host (default) or full native value-budget hbm
++    backing independently of the cache-hit optimization. Explicit arguments
++    override legacy env flags. Existing enforce_hbm=True is an alias for hbm;
++    combining it with explicit host is an error. Neither setting merges tables.
++    num_of_buckets_per_alloc overrides the existing per-table metadata allocation
++    grouping, or reads DYNAMICEMB_BUCKETS_PER_ALLOCATION when unset. The existing
++    default is preserved; groups are clamped to each physical table's initial
++    bucket count. This changes allocation granularity, not capacity or payload.
+@@ -466,0 +490,3 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++        native_lru_hit_update: Optional[str] = None,
++        backing_placement: Optional[str] = None,
++        num_of_buckets_per_alloc: Optional[int] = None,
+@@ -487,0 +514,26 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++        # Explicit constructor settings take precedence over the legacy env flags.
++        # None preserves old behavior (unset env => off / host).
++        self.native_lru_hit_update = self._resolve_cache_setting(
++            native_lru_hit_update,
++            "DYNAMICEMB_EXPERIMENTAL_NATIVE_LRU_HIT_UPDATE",
++            {"0": "off", "1": "auto"},
++            ("off", "auto", "on"),
 +        )
-+        if native_lru_flag not in ("0", "1"):
-+            raise ValueError("native KLru hit update flag must be 0 or 1")
-+        self.experimental_native_lru_hit_update = native_lru_flag == "1"
-+        if self.experimental_native_lru_hit_update and not (
++        if enforce_hbm and backing_placement not in (None, "hbm"):
++            raise ValueError("enforce_hbm=True conflicts with backing_placement=host")
++        self.backing_placement = self._resolve_cache_setting(
++            "hbm" if enforce_hbm else backing_placement,
++            "DYNAMICEMB_EXPERIMENTAL_BACKING_HBM_FULL",
++            {"0": "host", "1": "hbm"},
++            ("host", "hbm"),
++        )
++        if num_of_buckets_per_alloc is None:
++            raw_group = os.environ.get("DYNAMICEMB_BUCKETS_PER_ALLOCATION")
++            if raw_group is not None:
++                try:
++                    num_of_buckets_per_alloc = int(raw_group)
++                except ValueError as error:
++                    raise ValueError("DYNAMICEMB_BUCKETS_PER_ALLOCATION must be an integer") from error
++        if num_of_buckets_per_alloc is not None:
++            _clamp_bucket_allocation_group(num_of_buckets_per_alloc, 1, 1)
++        self.requested_num_of_buckets_per_alloc = num_of_buckets_per_alloc
+@@ -521,0 +574 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++        self.table_offsets_in_feature = self._feature_groups(self.feature_table_map, T_)
+@@ -536,8 +588,0 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
+-        # TODO:deal with shuffeld feature_table_map
+-        self.table_offsets_in_feature: List[int] = []
+-        old_table_id = -1
+-        for idx, table_id in enumerate(self.feature_table_map):
+-            if table_id != old_table_id:
+-                self.table_offsets_in_feature.append(idx)
+-                old_table_id = table_id
+-        self.table_offsets_in_feature.append(self.feature_num)
+@@ -576,0 +622,16 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++        self._native_lru_hit_update_per_cache = tuple(
++            self._supports_native_lru_hit_update(i) for i in range(len(self._caches))
++        )
++        if self.native_lru_hit_update == "on" and not all(
++            self._native_lru_hit_update_per_cache
++        ):
++            raise ValueError(
++                "native_lru_hit_update=on requires FP32/int64 sequence tables, "
++                "TIMESTAMP/KLru bucket128 caches and native backing, without "
++                "prefetch or input dedup; use auto for per-cache fallback"
++            )
++        # Retain the old read-only compatibility indicator; dispatch uses the mask.
++        self.experimental_native_lru_hit_update = (
++            self.native_lru_hit_update != "off"
++            and any(self._native_lru_hit_update_per_cache)
++        )
+@@ -618,0 +680,67 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++    @staticmethod
++    def _resolve_cache_setting(explicit, env_name, legacy_values, choices):
++        if explicit is None:
++            legacy = os.environ.get(env_name, "0")
++            if legacy not in legacy_values:
++                raise ValueError(f"{env_name} must be 0 or 1")
++            return legacy_values[legacy]
++        if explicit not in choices:
++            raise ValueError(f"cache setting must be one of {choices}, got {explicit!r}")
++        return explicit
++
++    @staticmethod
++    def _feature_groups(feature_table_map, physical_tables):
++        # Existing segmented-unique ranges require ordered contiguous groups.
++        if (
++            not feature_table_map
++            or any(type(t) is not int or not 0 <= t < physical_tables for t in feature_table_map)
++            or feature_table_map != sorted(feature_table_map)
++            or set(feature_table_map) != set(range(physical_tables))
++        ):
++            raise ValueError("feature_table_map must group all features in physical-table order")
++        return [
++            i for i, table_id in enumerate(feature_table_map)
++            if i == 0 or table_id != feature_table_map[i - 1]
++        ] + [len(feature_table_map)]
++
++    def _supports_native_lru_hit_update(self, i: int) -> bool:
++        cache, storage = self._caches[i], self._storages[i]
++        option = self._dynamicemb_options[i]
++        return (
 +            self.pooling_mode == DynamicEmbPoolingMode.NONE
 +            and self._caching
 +            and not self._enable_prefetch
 +            and not self.use_index_dedup
-+            and len(self._caches) == len(self._storages) == 1
-+            and isinstance(self._caches[0], KeyValueTable)
-+            and isinstance(self._storages[0], KeyValueTable)
-+            and self.feature_num == 26
-+            and self.feature_table_map == [0] * 26
-+            and self.table_offsets_in_feature == [0, 26]
-+            and self.dims == [32]
-+            and self.index_type == torch.int64
-+            and self.embedding_dtype == self.output_dtype == torch.float32
-+            and self._dynamicemb_options[0].score_strategy
-+            == DynamicEmbScoreStrategy.TIMESTAMP
-+            and self._caches[0].options.bucket_capacity == 128
-+            and self._caches[0].evict_strategy() == EvictStrategy.KLru
-+        ):
-+            raise ValueError(
-+                "native KLru hit update requires one shared 26-feature FP32/32 "
-+                "bucket128 TIMESTAMP cache and native backing"
++            and isinstance(cache, KeyValueTable)
++            and isinstance(storage, KeyValueTable)
++            and option.index_type == torch.int64
++            and option.embedding_dtype == self.output_dtype == torch.float32
++            and option.dim > 0
++            and option.score_strategy == DynamicEmbScoreStrategy.TIMESTAMP
++            and cache.options.bucket_capacity == 128
++            and cache.evict_strategy() == EvictStrategy.KLru
++        )
++
++    def _native_lru_hit_update_call_mask(self, **call_args) -> Tuple[bool, ...]:
++        if self.native_lru_hit_update == "off":
++            return (False,) * len(self._caches)
++        eligible = (
++            not self.training
++            and not torch.is_grad_enabled()
++            and not self._enable_prefetch
++            and not self.use_index_dedup
++            and all(value is None for value in call_args.values())
++        )
++        if self.native_lru_hit_update == "on" and not eligible:
++            raise RuntimeError(
++                "native_lru_hit_update=on requires eval/no-grad and no prefetch, "
++                "input dedup, weights or extra forward metadata; use auto for fallback"
 +            )
-@@ -635 +665 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++        selected = tuple(
++            eligible and self._supports_native_lru_hit_update(i)
++            for i in range(len(self._caches))
++        )
++        if self.native_lru_hit_update == "on" and not all(selected):
++            raise RuntimeError("native_lru_hit_update=on cache capability changed")
++        return selected
++
+@@ -624,0 +753,2 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++            if self.backing_placement == "hbm" and not (option.caching and option.training):
++                raise ValueError("backing_placement=hbm applies to native cache/backing mode")
+@@ -635 +765 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
 -                cache_option.bucket_capacity = 1024
 +                cache_option.bucket_capacity = 128
-@@ -653 +683,25 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
--                storage_option.local_hbm_for_values = 0
-+                backing_hbm_flag = os.environ.get(
-+                    "DYNAMICEMB_EXPERIMENTAL_BACKING_HBM_FULL", "0"
+@@ -649,0 +780,6 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++                cache_option.num_of_buckets_per_alloc = _clamp_bucket_allocation_group(
++                    self.requested_num_of_buckets_per_alloc
++                    if self.requested_num_of_buckets_per_alloc is not None
++                    else option.num_of_buckets_per_alloc,
++                    capacity, cache_option.bucket_capacity,
 +                )
-+                if backing_hbm_flag not in ("0", "1"):
-+                    raise ValueError("backing HBM diagnostic flag must be 0 or 1")
-+                if backing_hbm_flag == "1":
-+                    if not (
-+                        len(self._dynamicemb_options) == 1
-+                        and self.feature_num == 26
-+                        and self.feature_table_map == [0] * 26
-+                        and option.max_capacity == 13_631_488
-+                        and option.dim == 32
-+                        and option.embedding_dtype == torch.float32
-+                        and option.bucket_capacity == 128
-+                        and option.io_by_cpu is False
-+                        and self._optimizer_type.name == "EXACT_SGD"
-+                        and self._optimizer.get_state_dim(option.dim) == 0
-+                    ):
+@@ -653 +789,22 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
+-                storage_option.local_hbm_for_values = 0
++                storage_option.num_of_buckets_per_alloc = _clamp_bucket_allocation_group(
++                    self.requested_num_of_buckets_per_alloc
++                    if self.requested_num_of_buckets_per_alloc is not None
++                    else option.num_of_buckets_per_alloc,
++                    storage_option.init_capacity, storage_option.bucket_capacity,
++                )
++                if self.backing_placement == "hbm":
++                    if storage_option.external_storage is not None or option.io_by_cpu:
 +                        raise ValueError(
-+                            "backing HBM diagnostic requires frozen shared "
-+                            "26x262144 FP32/32 EXACT_SGD capacity"
++                            "backing_placement=hbm requires native GPU-accessed backing"
 +                        )
-+                    storage_option.local_hbm_for_values = 1_744_830_464
++                    # This is the native value budget, not total process memory.
++                    # Match HKVVariable's max_capacity * value_dim * sizeof(dtype).
++                    value_dim = option.dim + self._optimizer.get_state_dim(option.dim)
++                    value_budget = (
++                        option.max_capacity * value_dim * dtype_to_bytes(option.embedding_dtype)
++                    )
++                    if option.max_capacity <= 0 or value_dim <= 0 or not 0 < value_budget < 2**63:
++                        raise ValueError("HBM backing value budget outside native int64 range")
++                    storage_option.local_hbm_for_values = value_budget
 +                else:
 +                    storage_option.local_hbm_for_values = 0
-@@ -964,0 +1019,11 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
-+            native_lru_hit_update_call = (
-+                self.experimental_native_lru_hit_update
-+                and not self.training
-+                and not torch.is_grad_enabled()
-+                and not self._enable_prefetch
-+                and not self.use_index_dedup
-+                and per_sample_weights is None
-+                and feature_requires_grad is None
-+                and batch_size_per_feature_per_rank is None
-+                and total_unique_indices is None
+@@ -660,0 +818,6 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++                option.num_of_buckets_per_alloc = _clamp_bucket_allocation_group(
++                    self.requested_num_of_buckets_per_alloc
++                    if self.requested_num_of_buckets_per_alloc is not None
++                    else option.num_of_buckets_per_alloc,
++                    option.init_capacity, option.bucket_capacity,
++                )
+@@ -964,0 +1128,6 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
++            native_lru_hit_update_call = self._native_lru_hit_update_call_mask(
++                per_sample_weights=per_sample_weights,
++                feature_requires_grad=feature_requires_grad,
++                batch_size_per_feature_per_rank=batch_size_per_feature_per_rank,
++                total_unique_indices=total_unique_indices,
 +            )
-@@ -990,0 +1056 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
+@@ -990,0 +1160 @@ class BatchedDynamicEmbeddingTablesV2(nn.Module):
 +                native_lru_hit_update_call,
 diff --git a/corelib/dynamicemb/dynamicemb/key_value_table.py b/corelib/dynamicemb/dynamicemb/key_value_table.py
-index 0e16029..cdb3d17 100644
+index 0e16029..45e8885 100644
 --- a/corelib/dynamicemb/dynamicemb/key_value_table.py
 +++ b/corelib/dynamicemb/dynamicemb/key_value_table.py
 @@ -225,0 +226,2 @@ class KeyValueTable(
 +        *,
 +        native_lru_hit_update_from_unique: bool = False,
 @@ -239,0 +242,6 @@ class KeyValueTable(
-+        if native_lru_hit_update_from_unique and batch == 0:
++        if batch == 0:
 +            # No native lookup launch. Explicitly clear the diagnostic counters
 +            # so an empty metrics-on forward cannot report the previous batch.
 +            if self._record_cache_metrics:
 +                self._cache_metrics.zero_()
 +            return 0, unique_keys[:0], unique_keys[:0], None
-@@ -250 +258,16 @@ class KeyValueTable(
+@@ -250 +258,9 @@ class KeyValueTable(
 -        if self._score_update:
-+        if (
-+            native_lru_hit_update_from_unique
-+            and self._score_update
-+            and self.evict_strategy() == EvictStrategy.KLru
-+            and self.options.bucket_capacity == 128
-+            and scores is None
-+            and batch > 0
-+            and type(self.score) is int
-+            and 0 <= self.score < 2**64
-+        ):
-+            # The scalar API uses score presence to select mutable find, but
-+            # passes a null score pointer for KLru. Native KLru timestamps hits.
-+            find_pointers(
-+                self.table, batch, unique_keys, pointers, founds, self.score
-+            )
++        if self._score_update and self.evict_strategy() == EvictStrategy.KLru:
++            # LRU hit refresh is required semantics, independent of the optional
++            # optimization hint retained in this API for caller compatibility.
++            # Scalar presence selects mutable find; KLru ignores its value and
++            # timestamps hits natively. No dummy score tensor is allocated.
++            # unique_keys is the caller contract (V2 uses segmented_unique);
++            # unsupported native bucket/key modes raise instead of losing LRU.
++            find_pointers(self.table, batch, unique_keys, pointers, founds, 0)
 +        elif self._score_update:
-@@ -296,0 +320,2 @@ class KeyValueTable(
+@@ -296,0 +313,2 @@ class KeyValueTable(
 +        *,
 +        native_lru_hit_update_from_unique: bool = False,
-@@ -303 +328,7 @@ class KeyValueTable(
+@@ -303 +321,7 @@ class KeyValueTable(
 -        return self.find_impl(unique_keys, unique_embs, founds, input_scores)
 +        return self.find_impl(
 +            unique_keys,
@@ -10067,9 +10670,9 @@ index 0e16029..cdb3d17 100644
 +            input_scores,
 +            native_lru_hit_update_from_unique=native_lru_hit_update_from_unique,
 +        )
-@@ -905,0 +937 @@ class KeyValueTableCachingFunction:
+@@ -905,0 +930 @@ class KeyValueTableCachingFunction:
 +        native_lru_hit_update_from_unique: bool = False,
-@@ -914,0 +947,13 @@ class KeyValueTableCachingFunction:
+@@ -914,0 +940,13 @@ class KeyValueTableCachingFunction:
 +        if native_lru_hit_update_from_unique:
 +            if not isinstance(cache, KeyValueTable):
 +                raise TypeError("native KLru hit update requires KeyValueTable cache")
@@ -10083,7 +10686,7 @@ index 0e16029..cdb3d17 100644
 +            cache_lookup = cache.find_embeddings(
 +                unique_keys, unique_embs, input_scores=lfu_accumulated_frequency
 +            )
-@@ -920,3 +965 @@ class KeyValueTableCachingFunction:
+@@ -920,3 +958 @@ class KeyValueTableCachingFunction:
 -        ) = cache.find_embeddings(
 -            unique_keys, unique_embs, input_scores=lfu_accumulated_frequency
 -        )

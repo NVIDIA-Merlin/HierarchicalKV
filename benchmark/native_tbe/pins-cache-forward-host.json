@@ -1,0 +1,145 @@
+{
+  "scaffold_sha256": {
+    "__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "config.py": "f1401f667ffe928527a545e2e21181685863fa6b98be1a1e48a812aee1c76e6c",
+    "criteo_dataloader.py": "dc34c9c261befe32e91720f699e72c4802a59c7c50868db418db89bb82104fc0",
+    "dlrm_model.py": "b342d7927ca1f37bd11d293241a87c05dd2dbfa9783d55365128e8b6a5e61787",
+    "embedding_config.py": "ac1074ada9d93d98c04eb59832663b57611553fc7a8af03ce03305374eb20f63",
+    "native_tbe_comparison.py": "fe252661e68ba6013f63d3b993236ce057c52dd95a1b4a32727dec97bd1e1508",
+    "serving_replay.py": "1abfe20c6b3d3c82ac2c6fe415e3c047918c12219622086f46044bb73a336a13",
+    "test_contract.py": "403297d1b1d1a5f355949266f3df668ed7aa2da168b19d0d7e08b256aa7fe36d",
+    "test_native_tbe_comparison.py": "fadcd9a0321f76936a067c4030c8d186822eec00515f0a89950c7c16c0f01d03",
+    "test_native_tbe_fairness.py": "9576a5fd20014b15d67aec7267ea112ade7227664ba0b4605b067a04e977ce46",
+    "train.py": "aade38cae9326aa78742c7b9070a685e07e2c10d75da953585061f3385ac194e",
+    "training_state_gate.py": "90343b0892c1b8c84147142c8c1b50eb6a24ee6f1bf63967dbaf41beda1765ca"
+  },
+  "loaded_objects_sha256": {
+    "dynamicemb": {
+      "dynamicemb_extensions.cpython-310-x86_64-linux-gnu.so": "b928115e0b645e3b721a051ca60953ff98f4c1721301d8a0cfef12630ffc1bc2",
+      "fbgemm_gpu_config.so": "dd14512343d32fbc1f5f228e7bc86ca9ee0db849ebc840ad9ed3df4b5ca37d9f",
+      "fbgemm_gpu_py.so": "43a53c7e0e63a115cb186521c7a2ebdea001c4955c9453d92ce39ca3227224b8",
+      "fbgemm_gpu_tbe_index_select.so": "11da434f8248187e97aa609ebfe2c9ad4d8c689b6cf6c1d9d22926c945537075",
+      "fbgemm_gpu_tbe_inference.so": "51dc43fb3987fc34ad1bd42508dedea2a11ede9714e58f23cd105fb5c9b9f72e",
+      "fbgemm_gpu_tbe_optimizers.so": "d6c63c9023c4e369132612d6767904e5723bb3219144f9000230305843a5634f",
+      "fbgemm_gpu_tbe_training_backward.so": "bb06fcbb7051c595e1c3399fa4c45500eb36f9d1f69db1219603cf2a2979255c",
+      "fbgemm_gpu_tbe_training_backward_dense.so": "9093943841e9c0936ff07f35768b3091eb2af2badfebd6ce148f8d5eb2308bf3",
+      "fbgemm_gpu_tbe_training_backward_gwd.so": "960937099858218a3a3aa224245e57d41ee807d4c513e0328a2142590eef6223",
+      "fbgemm_gpu_tbe_training_backward_pt2.so": "f4bb7b39ac11aff0637226187da3a9895a99fb95ed3a84ebc8040ac48d067e0c",
+      "fbgemm_gpu_tbe_training_backward_split_host.so": "bb6b6d02b6f4aaae28131031b1f9d817a31ab4b64b73f6cbefbc7bf55f6ed4d9",
+      "fbgemm_gpu_tbe_training_backward_vbe.so": "de24d1da01cf4fd2a6e4d65b083eb789859fb7ea9e0d23bb04a97ae055b2645b",
+      "fbgemm_gpu_tbe_training_forward.so": "311f137d86156b6c09f7fee16cdc7a229a9c9139f0a6177cc586a837f3ea5233",
+      "fbgemm_gpu_tbe_utils.so": "4d4e3eadaa182b3467e67e917bf3d809d1400233c9cca952d2cd91f55207dbe9"
+    },
+    "torchrec": {
+      "fbgemm_gpu_config.so": "dd14512343d32fbc1f5f228e7bc86ca9ee0db849ebc840ad9ed3df4b5ca37d9f",
+      "fbgemm_gpu_py.so": "43a53c7e0e63a115cb186521c7a2ebdea001c4955c9453d92ce39ca3227224b8",
+      "fbgemm_gpu_tbe_index_select.so": "11da434f8248187e97aa609ebfe2c9ad4d8c689b6cf6c1d9d22926c945537075",
+      "fbgemm_gpu_tbe_inference.so": "51dc43fb3987fc34ad1bd42508dedea2a11ede9714e58f23cd105fb5c9b9f72e",
+      "fbgemm_gpu_tbe_optimizers.so": "d6c63c9023c4e369132612d6767904e5723bb3219144f9000230305843a5634f",
+      "fbgemm_gpu_tbe_training_backward.so": "bb06fcbb7051c595e1c3399fa4c45500eb36f9d1f69db1219603cf2a2979255c",
+      "fbgemm_gpu_tbe_training_backward_dense.so": "9093943841e9c0936ff07f35768b3091eb2af2badfebd6ce148f8d5eb2308bf3",
+      "fbgemm_gpu_tbe_training_backward_gwd.so": "960937099858218a3a3aa224245e57d41ee807d4c513e0328a2142590eef6223",
+      "fbgemm_gpu_tbe_training_backward_pt2.so": "f4bb7b39ac11aff0637226187da3a9895a99fb95ed3a84ebc8040ac48d067e0c",
+      "fbgemm_gpu_tbe_training_backward_split_host.so": "bb6b6d02b6f4aaae28131031b1f9d817a31ab4b64b73f6cbefbc7bf55f6ed4d9",
+      "fbgemm_gpu_tbe_training_backward_vbe.so": "de24d1da01cf4fd2a6e4d65b083eb789859fb7ea9e0d23bb04a97ae055b2645b",
+      "fbgemm_gpu_tbe_training_forward.so": "311f137d86156b6c09f7fee16cdc7a229a9c9139f0a6177cc586a837f3ea5233",
+      "fbgemm_gpu_tbe_utils.so": "4d4e3eadaa182b3467e67e917bf3d809d1400233c9cca952d2cd91f55207dbe9"
+    }
+  },
+  "backend_module_sha256": {
+    "dynamicemb": "ae198e80bc89939424efeb94b8614293528d75a536c3729868b6e646fca84c9f",
+    "torchrec": "359b4732f0d0d99020bfe994b444c8837b1b1f218883d7a1e147dcb1f2e19730"
+  },
+  "event_contract": {
+    "metric": "CUDA-event elapsed service envelope",
+    "primary_metric": "measurement.host_wall_seconds",
+    "includes": "host-dispatch/layout/copy/idle gaps and final flush; not kernel busy-time",
+    "wall_overhead": "stop-event enqueue is included in the unchanged primary wall timer",
+    "coverage": "source-traced fixed single-device LRU/EXACT_SGD lookup+flush, no prefetch pipeline; not runtime timeline validation",
+    "coverage_provenance": {
+      "task": "44fc651b",
+      "handoff_sha256": "327287d1dcb4d64c8eaeb7984d82086a1ce6746ab3a20d16967e5f1e9f88d275",
+      "runtime_identity": "native (same raw record); requires frozen build/source alignment"
+    }
+  },
+  "hkv_layout": "shared",
+  "shared_dirty_oracle_logical_tables": 26,
+  "flush_repeat_cells": {
+    "42-dynamicemb-warm.jsonl": 1,
+    "42-torchrec-warm.jsonl": 1,
+    "43-dynamicemb-warm.jsonl": 1,
+    "43-torchrec-warm.jsonl": 1,
+    "44-dynamicemb-warm.jsonl": 1,
+    "44-torchrec-warm.jsonl": 1,
+    "45-dynamicemb-warm.jsonl": 1,
+    "45-torchrec-warm.jsonl": 1,
+    "46-dynamicemb-warm.jsonl": 1,
+    "46-torchrec-warm.jsonl": 1
+  },
+  "new_sdk_five_pair_scope": {
+    "source_commit": "cc797335de5cef92be6f604f07c92e2b38133e45",
+    "elf_sha256": "b928115e0b645e3b721a051ca60953ff98f4c1721301d8a0cfef12630ffc1bc2",
+    "elf_build_id": "c97ba0b318ab42c249b8ee5d400a9e4c209ab744",
+    "budget_qualification": "HOLD",
+    "budget_evaluated": false,
+    "formal_performance_admitted": false,
+    "TBE_applications": 5,
+    "planned_pairs": 5,
+    "native_policy_comparison": true,
+    "policy_equivalence_admitted": false,
+    "strict_four_gib_evaluated": false
+  },
+  "cache_only_scope": {
+    "required": true,
+    "timed_native_forward_only": true,
+    "timed_metrics_enabled": false,
+    "all_hit_before_and_after": true,
+    "flush_outside_timer": true,
+    "source_driver_sha256": "fe252661e68ba6013f63d3b993236ce057c52dd95a1b4a32727dec97bd1e1508"
+  },
+  "cache_only_event_contract": {
+    "metric": "CUDA-event elapsed native cache-forward envelope",
+    "primary_metric": "measurement.host_wall_seconds",
+    "includes": "native forward dispatch/cache metadata and device completion; not kernel busy-time",
+    "wall_overhead": "stop-event enqueue follows the primary wall timestamp",
+    "coverage": "source-traced fixed single-device all-hit native forward, no prefetch pipeline; not runtime timeline validation",
+    "coverage_provenance": {
+      "candidate_scope": "cache-only native-forward source trace",
+      "runtime_profile": "NOT_RUN",
+      "runtime_identity": "native (same raw record); requires frozen build/source alignment"
+    }
+  },
+  "cache_only_replay": {
+    "warmup_iterations": 20,
+    "timed_iterations": 200,
+    "output_group_size": 8,
+    "independent_pairs": 5,
+    "backend_processes": 10,
+    "replays_are_independent_samples": false,
+    "full_output_parity_each_timed_iteration": true,
+    "retention_limit": "at most eight complete native CUDA outputs per group; D2H/oracle/hash excluded between groups"
+  },
+  "python_module_sha256": {
+    "torchrec": {},
+    "dynamicemb": {
+      "dynamicemb.batched_dynamicemb_tables": "ae198e80bc89939424efeb94b8614293528d75a536c3729868b6e646fca84c9f",
+      "dynamicemb.batched_dynamicemb_function": "d1974294d478639fb434a7793274278bab18edec28fe5582db6dcc3c560e1709",
+      "dynamicemb.key_value_table": "6c4ac10e67e277595afd70fc9868231b488416f866d62f63874146cada41a423"
+    }
+  },
+  "runtime_overlay": {
+    "scope": "mandatory LRU hit refresh, host backing, grouped metadata allocations",
+    "sdk_sha256": {
+      "dynamicemb/batched_dynamicemb_tables.py": "ae198e80bc89939424efeb94b8614293528d75a536c3729868b6e646fca84c9f",
+      "dynamicemb/batched_dynamicemb_function.py": "d1974294d478639fb434a7793274278bab18edec28fe5582db6dcc3c560e1709",
+      "dynamicemb/key_value_table.py": "6c4ac10e67e277595afd70fc9868231b488416f866d62f63874146cada41a423",
+      "benchmark/criteo_experiment/embedding_config.py": "ac1074ada9d93d98c04eb59832663b57611553fc7a8af03ce03305374eb20f63"
+    },
+    "compiled_native_ELF_unchanged": "b928115e0b645e3b721a051ca60953ff98f4c1721301d8a0cfef12630ffc1bc2",
+    "backing_placement": "host",
+    "metadata_buckets_per_allocation": 1024,
+    "TBE_native_unchanged": true,
+    "paper_unchanged": true,
+    "published": false
+  }
+}
