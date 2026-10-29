@@ -1,0 +1,111 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Historical source: NVIDIA/recsys-examples@250aaa8bbbda2b6dd7995ef7f363754e4571066e
+# Original full-file SHA256: 0025a9fb22d09c67403b5966a6a8963bb2bdd10954e8b81c5b6e6a342a4d1014
+# Exact two-method source excerpt; read by AST tests, never imported as active SDK.
+class KeyValueTable:
+    def find_impl(
+        self,
+        unique_keys: torch.Tensor,
+        unique_embs: torch.Tensor,
+        founds: Optional[torch.Tensor] = None,
+        input_scores: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        if unique_keys.dtype != self.key_type():
+            unique_keys = unique_keys.to(self.key_type())
+
+        if unique_embs.dtype != self.value_type():
+            raise RuntimeError(
+                "Embedding dtype not match {} != {}".format(
+                    unique_embs.dtype, self.value_type()
+                )
+            )
+
+        batch = unique_keys.size(0)
+        assert unique_embs.dim() == 2
+        assert unique_embs.size(0) == batch
+
+        load_dim = unique_embs.size(1)
+
+        device = unique_keys.device
+        if founds is None:
+            founds = torch.empty(batch, dtype=torch.bool, device=device)
+        pointers = torch.empty(batch, dtype=torch.long, device=device)
+
+        scores = self.create_scores(batch, device, input_scores)
+
+        if self._score_update:
+            find_pointers_with_scores(
+                self.table, batch, unique_keys, pointers, founds, scores
+            )
+        else:
+            find_pointers(self.table, batch, unique_keys, pointers, founds)
+
+        self.value_dim()
+
+        if load_dim != 0:
+            load_from_pointers(pointers, unique_embs)
+
+        missing = torch.logical_not(founds)
+        num_missing_0: torch.Tensor = torch.empty(1, dtype=torch.long, device=device)
+        num_missing_1: torch.Tensor = torch.empty(1, dtype=torch.long, device=device)
+        missing_keys: torch.Tensor = torch.empty_like(unique_keys)
+        missing_indices: torch.Tensor = torch.empty(
+            batch, dtype=torch.long, device=device
+        )
+        select(missing, unique_keys, missing_keys, num_missing_0)
+        select_index(missing, missing_indices, num_missing_1)
+
+        if self._record_cache_metrics:
+            self._cache_metrics[0] = batch
+            self._cache_metrics[1] = founds.sum().item()
+
+        h_num_missing = num_missing_0.cpu().item()
+
+        # Handle missing scores: return None if scores is None
+        if scores is not None:
+            missing_scores = scores[missing_indices[:h_num_missing]]
+        else:
+            missing_scores = None
+
+        return (
+            h_num_missing,
+            missing_keys[:h_num_missing],
+            missing_indices[:h_num_missing],
+            missing_scores,
+        )
+
+    def create_scores(
+        self,
+        h_num_total: int,
+        device: torch.device,
+        lfu_accumulated_frequency: Optional[torch.Tensor] = None,
+    ) -> Optional[torch.Tensor]:
+        """Create scores tensor for lookup operation based on eviction strategy."""
+        if (
+            lfu_accumulated_frequency is not None
+            and self.evict_strategy() == EvictStrategy.KLfu
+        ):
+            return lfu_accumulated_frequency
+        elif self.evict_strategy() == EvictStrategy.KLfu:
+            scores = torch.ones(h_num_total, device=device, dtype=torch.long)
+            return scores
+        elif self.evict_strategy() == EvictStrategy.KCustomized:
+            scores = torch.empty(h_num_total, device=device, dtype=torch.long)
+            scores.fill_(self.score)
+            return scores
+        else:
+            return None
