@@ -3432,7 +3432,8 @@ class HashTable : public HashTableBase<K, V, S> {
           block_size > 0,
           "[HierarchicalKV] block_size <= 0, the K-V-S size may be too large!");
 
-      shared_size = kvm_size * block_size;
+      // Extra score_size bytes cover the padding that aligns the scores.
+      shared_size = kvm_size * block_size + score_size;
       grid_size = SAFE_GET_GRID_SIZE(n, block_size);
     }
     kernel<<<grid_size, block_size, shared_size, stream>>>(

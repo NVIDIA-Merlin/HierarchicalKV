@@ -1758,6 +1758,93 @@ void test_export_batch_if(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
+// With dim = 3, export_batch_if uses the shared-memory dump_kernel with an
+// odd block size, so the scores stored after the values must be realigned.
+void test_export_batch_if_with_odd_dim(size_t max_hbm_for_vectors) {
+  constexpr size_t dim = 3;
+  constexpr uint64_t CAPACITY = 1024UL;
+  constexpr uint64_t KEY_NUM = 512UL;
+  constexpr S threshold = KEY_NUM / 2;
+
+  TableOptions options;
+  options.init_capacity = CAPACITY;
+  options.max_capacity = CAPACITY;
+  options.dim = dim;
+  options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
+
+  std::unique_ptr<Table> table = std::make_unique<Table>();
+  table->init(options);
+
+  std::vector<K> h_keys(KEY_NUM);
+  std::vector<S> h_scores(KEY_NUM);
+  std::vector<V> h_vectors(KEY_NUM * dim);
+  for (size_t i = 0; i < KEY_NUM; i++) {
+    h_keys[i] = static_cast<K>(i + 1);
+    h_scores[i] = static_cast<S>(i + 1);
+    for (size_t j = 0; j < dim; j++) {
+      h_vectors[i * dim + j] = static_cast<V>(h_keys[i]);
+    }
+  }
+
+  K* d_keys;
+  S* d_scores;
+  V* d_vectors;
+  size_t* d_dump_counter;
+  CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
+  CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * dim * sizeof(V)));
+  CUDA_CHECK(cudaMalloc(&d_dump_counter, sizeof(size_t)));
+  CUDA_CHECK(cudaMemcpy(d_keys, h_keys.data(), KEY_NUM * sizeof(K),
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores.data(), KEY_NUM * sizeof(S),
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors.data(), KEY_NUM * dim * sizeof(V),
+                        cudaMemcpyHostToDevice));
+
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  table->insert_or_assign(KEY_NUM, d_keys, d_vectors, d_scores, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  ASSERT_EQ(table->size(stream), KEY_NUM);
+
+  K pattern = 0;
+  table->template export_batch_if<ExportIfPredFunctor>(
+      pattern, threshold, table->capacity(), 0, d_dump_counter, d_keys,
+      d_vectors, d_scores, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+
+  size_t h_dump_counter = 0;
+  CUDA_CHECK(cudaMemcpy(&h_dump_counter, d_dump_counter, sizeof(size_t),
+                        cudaMemcpyDeviceToHost));
+  ASSERT_EQ(h_dump_counter, KEY_NUM - threshold);
+
+  CUDA_CHECK(cudaMemcpy(h_keys.data(), d_keys, h_dump_counter * sizeof(K),
+                        cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(h_scores.data(), d_scores, h_dump_counter * sizeof(S),
+                        cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(h_vectors.data(), d_vectors,
+                        h_dump_counter * dim * sizeof(V),
+                        cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < h_dump_counter; i++) {
+    ASSERT_GT(h_scores[i], threshold);
+    ASSERT_EQ(h_scores[i], static_cast<S>(h_keys[i]));
+    for (size_t j = 0; j < dim; j++) {
+      ASSERT_EQ(h_vectors[i * dim + j], static_cast<V>(h_keys[i]));
+    }
+  }
+
+  CUDA_CHECK(cudaStreamDestroy(stream));
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_scores));
+  CUDA_CHECK(cudaFree(d_vectors));
+  CUDA_CHECK(cudaFree(d_dump_counter));
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  CudaCheckError();
+}
+
 void test_basic_for_cpu_io() {
   constexpr uint64_t INIT_CAPACITY = 64 * 1024 * 1024UL;
   constexpr uint64_t MAX_CAPACITY = INIT_CAPACITY;
@@ -3834,6 +3921,10 @@ TEST(MerlinHashTableTest, test_size_sum_exceeds_int_max) {
 TEST(MerlinHashTableTest, test_export_batch_if) {
   test_export_batch_if(16);
   test_export_batch_if(0);
+}
+TEST(MerlinHashTableTest, test_export_batch_if_with_odd_dim) {
+  test_export_batch_if_with_odd_dim(16);
+  test_export_batch_if_with_odd_dim(0);
 }
 TEST(MerlinHashTableTest, test_insert_or_assign_multi_threads) {
   test_insert_or_assign_multi_threads(16, 0.25f, 0.125f);
