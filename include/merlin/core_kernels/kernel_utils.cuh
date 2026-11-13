@@ -1082,5 +1082,46 @@ __device__ __forceinline__ OccupyResult find_and_lock_for_update(
   return OccupyResult::REFUSED;
 }
 
+template <class K, class V, class S, uint32_t TILE_SIZE>
+__device__ __forceinline__ OccupyResult try_find_and_lock_for_update(
+    cg::thread_block_tile<TILE_SIZE> g, Bucket<K, V, S>* __restrict__ bucket,
+    const K desired_key, const size_t start_idx, int& key_pos, int& src_lane,
+    const size_t bucket_max_size) {
+  // Retry at the caller, together with its copy and key publication. Spinning
+  // here can prevent another tile in the warp from publishing a held key.
+  K expected_key = static_cast<K>(EMPTY_KEY);
+
+  AtomicKey<K>* current_key;
+
+  unsigned vote = 0;
+  bool result = false;
+
+  for (uint32_t tile_offset = 0; tile_offset < bucket_max_size;
+       tile_offset += TILE_SIZE) {
+    key_pos = (start_idx + tile_offset + g.thread_rank()) % bucket_max_size;
+
+    current_key = bucket->keys(key_pos);
+
+    // Step 1: try find and lock the desired_key.
+    {
+      expected_key = desired_key;
+      result = current_key->compare_exchange_strong(
+          expected_key, static_cast<K>(LOCKED_KEY),
+          cuda::std::memory_order_acquire, cuda::std::memory_order_relaxed);
+      vote = g.ballot(result);
+      if (vote) {
+        src_lane = __ffs(vote) - 1;
+        key_pos = g.shfl(key_pos, src_lane);
+        return OccupyResult::DUPLICATE;
+      }
+      vote = g.ballot(expected_key == static_cast<K>(EMPTY_KEY));
+      if (vote) return OccupyResult::REFUSED;
+      vote = g.ballot(expected_key == static_cast<K>(LOCKED_KEY));
+      if (vote != 0) return OccupyResult::CONTINUE;
+    }
+  }
+  return OccupyResult::REFUSED;
+}
+
 }  // namespace merlin
 }  // namespace nv
