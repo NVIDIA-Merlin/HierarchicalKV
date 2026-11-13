@@ -148,102 +148,111 @@ __global__ void tlp_v1_upsert_and_evict_kernel_unique(
       }
     }
   }
-  while (occupy_result == OccupyResult::INITIAL) {
-    S* bucket_scores_ptr = BUCKET::scores(bucket_keys_ptr, bucket_capacity, 0);
-    S min_score = MAX_SCORE;
-    int min_pos = -1;
-#pragma unroll
-    for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-      copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
-                                     bucket_scores_ptr + j);
-    }
-    __pipeline_commit();
-    for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
-      if (i < bucket_capacity - STRIDE_S) {
+  do {
+    if (occupy_result == OccupyResult::INITIAL) {
+      do {
+        S* bucket_scores_ptr =
+            BUCKET::scores(bucket_keys_ptr, bucket_capacity, 0);
+        S min_score = MAX_SCORE;
+        int min_pos = -1;
 #pragma unroll
         for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
-          copy_bucket_scores<Load_LEN_S>(
-              sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
-              bucket_scores_ptr + i + STRIDE_S + j);
+          copy_bucket_scores<Load_LEN_S>(sm_bucket_scores[tx] + j,
+                                         bucket_scores_ptr + j);
         }
-      }
-      __pipeline_commit();
-      __pipeline_wait_prior(1);
-      S temp_scores[Load_LEN_S];
-      S* src = sm_bucket_scores[tx] + same_buf(i / STRIDE_S) * STRIDE_S;
+        __pipeline_commit();
+        for (int i = 0; i < bucket_capacity; i += STRIDE_S) {
+          if (i < bucket_capacity - STRIDE_S) {
 #pragma unroll
-      for (int k = 0; k < STRIDE_S; k += Load_LEN_S) {
-        *reinterpret_cast<byte16*>(temp_scores) =
-            *reinterpret_cast<byte16*>(src + k);
+            for (int j = 0; j < STRIDE_S; j += Load_LEN_S) {
+              copy_bucket_scores<Load_LEN_S>(
+                  sm_bucket_scores[tx] + diff_buf(i / STRIDE_S) * STRIDE_S + j,
+                  bucket_scores_ptr + i + STRIDE_S + j);
+            }
+          }
+          __pipeline_commit();
+          __pipeline_wait_prior(1);
+          S temp_scores[Load_LEN_S];
+          S* src = sm_bucket_scores[tx] + same_buf(i / STRIDE_S) * STRIDE_S;
 #pragma unroll
-        for (int j = 0; j < Load_LEN_S; j += 1) {
-          S temp_score = temp_scores[j];
-          if (temp_score < min_score) {
-            min_score = temp_score;
-            min_pos = i + k + j;
+          for (int k = 0; k < STRIDE_S; k += Load_LEN_S) {
+            *reinterpret_cast<byte16*>(temp_scores) =
+                *reinterpret_cast<byte16*>(src + k);
+#pragma unroll
+            for (int j = 0; j < Load_LEN_S; j += 1) {
+              S temp_score = temp_scores[j];
+              if (temp_score < min_score) {
+                min_score = temp_score;
+                min_pos = i + k + j;
+              }
+            }
           }
         }
-      }
-    }
-    score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
-    if (score < min_score) {
-      occupy_result = OccupyResult::REFUSED;
-      evict_idx = atomicAdd(evicted_counter, 1);
-      evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx, key,
-                            score);
-      break;
-    }
-    auto min_score_key = BUCKET::keys(bucket_keys_ptr, min_pos);
-    auto expected_key = min_score_key->load(cuda::std::memory_order_relaxed);
-    if (expected_key != static_cast<K>(LOCKED_KEY) &&
-        expected_key != static_cast<K>(EMPTY_KEY)) {
-      bool result = min_score_key->compare_exchange_strong(
-          expected_key, static_cast<K>(LOCKED_KEY),
-          cuda::std::memory_order_acquire, cuda::std::memory_order_relaxed);
-      if (result) {
-        S* min_score_ptr =
-            BUCKET::scores(bucket_keys_ptr, bucket_capacity, min_pos);
-        auto verify_score_ptr =
-            reinterpret_cast<AtomicScore<S>*>(min_score_ptr);
-        auto verify_score =
-            verify_score_ptr->load(cuda::std::memory_order_relaxed);
-        if (verify_score <= min_score) {
-          key_pos = min_pos;
-          ScoreFunctor::update_with_digest(
-              bucket_keys_ptr, key_pos, scores, kv_idx, score, bucket_capacity,
-              get_digest<K>(key), (occupy_result != OccupyResult::DUPLICATE));
-
-          if (expected_key == static_cast<K>(RECLAIM_KEY)) {
-            occupy_result = OccupyResult::OCCUPIED_RECLAIMED;
-            atomicAdd(bucket_size_ptr, 1);
-          } else {
-            occupy_result = OccupyResult::EVICT;
-            evict_idx = atomicAdd(evicted_counter, 1);
-            evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx,
-                                  expected_key, min_score);
-          }
-        } else {
-          min_score_key->store(expected_key, cuda::std::memory_order_release);
+        score = ScoreFunctor::desired_when_missed(scores, kv_idx, global_epoch);
+        if (score < min_score) {
+          occupy_result = OccupyResult::REFUSED;
+          evict_idx = atomicAdd(evicted_counter, 1);
+          evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx, key,
+                                score);
+          break;
         }
-      }
-    }
-  }
-  VecV* bucket_value_ptr = bucket_values_ptr + key_pos * dim;
-  const VecV* param_value_ptr = values + kv_idx * dim;
-  VecV* evicted_value_ptr = evicted_values + evict_idx * dim;
+        auto min_score_key = BUCKET::keys(bucket_keys_ptr, min_pos);
+        auto expected_key =
+            min_score_key->load(cuda::std::memory_order_relaxed);
+        if (expected_key != static_cast<K>(LOCKED_KEY) &&
+            expected_key != static_cast<K>(EMPTY_KEY)) {
+          bool result = min_score_key->compare_exchange_strong(
+              expected_key, static_cast<K>(LOCKED_KEY),
+              cuda::std::memory_order_acquire, cuda::std::memory_order_relaxed);
+          if (result) {
+            S* min_score_ptr =
+                BUCKET::scores(bucket_keys_ptr, bucket_capacity, min_pos);
+            auto verify_score_ptr =
+                reinterpret_cast<AtomicScore<S>*>(min_score_ptr);
+            auto verify_score =
+                verify_score_ptr->load(cuda::std::memory_order_relaxed);
+            if (verify_score <= min_score) {
+              key_pos = min_pos;
+              ScoreFunctor::update_with_digest(
+                  bucket_keys_ptr, key_pos, scores, kv_idx, score,
+                  bucket_capacity, get_digest<K>(key),
+                  (occupy_result != OccupyResult::DUPLICATE));
 
-  if (occupy_result != OccupyResult::REFUSED) {
-    if (occupy_result == OccupyResult::EVICT) {
-      CopyValue::ldg_stg(0, evicted_value_ptr, bucket_value_ptr, dim);
+              if (expected_key == static_cast<K>(RECLAIM_KEY)) {
+                occupy_result = OccupyResult::OCCUPIED_RECLAIMED;
+                atomicAdd(bucket_size_ptr, 1);
+              } else {
+                occupy_result = OccupyResult::EVICT;
+                evict_idx = atomicAdd(evicted_counter, 1);
+                evict_key_score<K, S>(evicted_keys, evicted_scores, evict_idx,
+                                      expected_key, min_score);
+              }
+            } else {
+              min_score_key->store(expected_key,
+                                   cuda::std::memory_order_release);
+            }
+          }
+        }
+      } while (false);
     }
-    CopyValue::ldg_stg(0, bucket_value_ptr, param_value_ptr, dim);
-    auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
-    // memory_order_release:
-    // Modifications to the bucket will not after this instruction.
-    key_address->store(key, cuda::std::memory_order_release);
-  } else {
-    CopyValue::ldg_stg(0, evicted_value_ptr, param_value_ptr, dim);
-  }
+    if (occupy_result == OccupyResult::INITIAL) continue;
+    VecV* bucket_value_ptr = bucket_values_ptr + key_pos * dim;
+    const VecV* param_value_ptr = values + kv_idx * dim;
+    VecV* evicted_value_ptr = evicted_values + evict_idx * dim;
+
+    if (occupy_result != OccupyResult::REFUSED) {
+      if (occupy_result == OccupyResult::EVICT) {
+        CopyValue::ldg_stg(0, evicted_value_ptr, bucket_value_ptr, dim);
+      }
+      CopyValue::ldg_stg(0, bucket_value_ptr, param_value_ptr, dim);
+      auto key_address = BUCKET::keys(bucket_keys_ptr, key_pos);
+      // memory_order_release:
+      // Modifications to the bucket will not after this instruction.
+      key_address->store(key, cuda::std::memory_order_release);
+    } else {
+      CopyValue::ldg_stg(0, evicted_value_ptr, param_value_ptr, dim);
+    }
+  } while (occupy_result == OccupyResult::INITIAL);
 }
 
 // Use 1 thread to deal with a KV-pair, but use a threads group cto copy value.
