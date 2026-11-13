@@ -1,0 +1,26 @@
+.. _exhale_class_classnv_1_1merlin_1_1HashTableBase:
+
+Template Class HashTableBase
+============================
+
+- Defined in :ref:`file_merlin_hashtable.cuh`
+
+
+Inheritance Relationships
+-------------------------
+
+Derived Type
+************
+
+- ``public nv::merlin::HashTable< K, V, S, Strategy, ArchTag >`` (:ref:`exhale_class_classnv_1_1merlin_1_1HashTable`)
+
+
+Class Documentation
+-------------------
+
+
+.. doxygenclass:: nv::merlin::HashTableBase
+   :project: HierarchicalKV
+   :members:
+   :protected-members:
+   :undoc-members:
