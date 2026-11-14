@@ -928,7 +928,12 @@ __global__ void dump_kernel(const Table<K, V, S>* __restrict table,
   K* smem = (K*)s;
   K* block_result_key = smem;
   V* block_result_val = (V*)&(smem[blockDim.x]);
-  S* block_result_score = (S*)&(block_result_val[blockDim.x * dim]);
+  // blockDim.x * dim * sizeof(V) need not be a multiple of alignof(S), so
+  // round the score region up; the caller reserves the padding.
+  const size_t score_offset =
+      (sizeof(K) * blockDim.x + sizeof(V) * blockDim.x * dim + alignof(S) - 1) /
+      alignof(S) * alignof(S);
+  S* block_result_score = reinterpret_cast<S*>(s + score_offset);
   __shared__ size_t block_acc;
   __shared__ size_t global_acc;
   PredFunctor<K, S> pred;
