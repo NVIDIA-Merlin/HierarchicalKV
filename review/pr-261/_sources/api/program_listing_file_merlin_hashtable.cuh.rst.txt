@@ -370,6 +370,7 @@ Program Listing for File merlin_hashtable.cuh
          initialized_ = false;
          destroy_table<key_type, value_type, score_type>(&table_, allocator_);
          allocator_->free(MemoryType::Device, d_table_);
+         allocator_->free(MemoryType::Device, cpu_payload_owners_);
          dev_mem_pool_.reset();
          host_mem_pool_.reset();
    
@@ -481,6 +482,7 @@ Program Listing for File merlin_hashtable.cuh
                          sizeof(TableCore));
    
        sync_table_configuration();
+       if (options_.io_by_cpu) reset_cpu_payload_owners();
    
        // Create memory pools.
        dev_mem_pool_ = std::make_unique<MemoryPool<DeviceAllocator<char>>>(
@@ -679,7 +681,7 @@ Program Listing for File merlin_hashtable.cuh
                      d_src_offset_sorted, stream);
    
          if (filter_condition) {
-           const size_t block_size = options_.io_block_size;
+           const size_t block_size = ((options_.io_block_size + 31) / 32) * 32;
            const size_t N = n * dim();
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -1079,7 +1081,7 @@ Program Listing for File merlin_hashtable.cuh
                      param_key_index, param_key_index_sorted, stream);
    
          if (filter_condition) {
-           const size_t block_size = options_.io_block_size;
+           const size_t block_size = ((options_.io_block_size + 31) / 32) * 32;
            const size_t N = n * dim();
            const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
    
@@ -1310,95 +1312,20 @@ Program Listing for File merlin_hashtable.cuh
                table_->buckets_num, options_.dim, stream, n, d_table_,
                table_->buckets, keys, values, scores, global_epoch_);
          }
+       } else if (options_.io_by_cpu) {
+         assign_by_cpu<true>(n, keys, values, scores, stream);
        } else {
-         auto sortOp = SortPairOp<uintptr_t, int>();
-         auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
-   
-         MultiVector<value_type*, int, value_type*, int, key_type*, uint8_t> mv(
-             n, n, n, n, n, d_sort_bytes);
-         const size_type dev_ws_size = mv.total_size();
-         auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-         auto temp_storage = dev_ws.get<uint8_t*>(0);
-         auto d_dst = get_vector<0>(mv, temp_storage);
-         auto d_src_offset = get_vector<1>(mv, temp_storage);
-         auto d_dst_sorted = get_vector<2>(mv, temp_storage);
-         auto d_src_offset_sorted = get_vector<3>(mv, temp_storage);
-         auto keys_ptr = get_vector<4>(mv, temp_storage);
-         auto d_sort_storage = get_vector<5>(mv, temp_storage);
-         sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
-   
-         CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
-   
-         constexpr uint32_t MinBucketCapacityFilter =
-             sizeof(VecD_Load) / sizeof(D);
-   
-         bool filter_condition =
-             options_.max_bucket_size >= MinBucketCapacityFilter &&
-             !options_.io_by_cpu && unique_key;
-   
-         if (filter_condition) {
-           constexpr uint32_t BLOCK_SIZE = 128U;
-   
-           tlp_update_kernel_hybrid<key_type, value_type, score_type,
-                                    evict_strategy>
-               <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
-                   table_->buckets, table_->buckets_num, options_.max_bucket_size,
-                   options_.dim, keys, d_dst, scores, keys_ptr, d_src_offset,
-                   global_epoch_, n);
-   
-         } else {
-           const size_t block_size = options_.block_size;
-           const size_t N = n * TILE_SIZE;
-           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-           update_kernel<key_type, value_type, score_type, evict_strategy,
-                         TILE_SIZE><<<grid_size, block_size, 0, stream>>>(
-               d_table_, table_->buckets, options_.max_bucket_size,
-               table_->buckets_num, options_.dim, keys, d_dst, scores,
-               d_src_offset, global_epoch_, N);
-         }
-   
-         sortOp.sort(n, reinterpret_cast<uintptr_t*>(d_dst),
-                     reinterpret_cast<uintptr_t*>(d_dst_sorted), d_src_offset,
-                     d_src_offset_sorted, stream);
-   
-         if (filter_condition) {
-           const size_t block_size = options_.io_block_size;
-           const size_t N = n * dim();
-           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-           write_kernel_unlock_key<key_type, value_type, score_type>
-               <<<grid_size, block_size, 0, stream>>>(values, d_dst_sorted,
-                                                      d_src_offset_sorted, dim(),
-                                                      keys, keys_ptr, N);
-   
-         } else if (options_.io_by_cpu) {
-           MultiVector<value_type*, int, value_type> mv1(n, n, n * dim());
-           const size_type host_ws_size = mv1.total_size();
-           auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
-           auto host_temp_storage = host_ws.get<uint8_t*>(0);
-           auto h_dst_sorted = get_vector<0>(mv1, host_temp_storage);
-           auto h_src_offset_sorted = get_vector<1>(mv1, host_temp_storage);
-           auto h_values = get_vector<2>(mv1, host_temp_storage);
-   
-           CUDA_CHECK(cudaMemcpyAsync(h_dst_sorted, d_dst_sorted, mv1.offset(2),
-                                      cudaMemcpyDeviceToHost, stream));
-           CUDA_CHECK(cudaMemcpyAsync(h_values, values,
-                                      n * dim() * sizeof(value_type),
-                                      cudaMemcpyDeviceToHost, stream));
-           CUDA_CHECK(cudaStreamSynchronize(stream));
-   
-           write_by_cpu<value_type>(h_dst_sorted, h_values, h_src_offset_sorted,
-                                    dim(), n);
-         } else {
-           const size_t block_size = options_.io_block_size;
-           const size_t N = n * dim();
-           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-           write_kernel<key_type, value_type, score_type>
-               <<<grid_size, block_size, 0, stream>>>(
-                   values, d_dst_sorted, d_src_offset_sorted, dim(), N);
-         }
+         // Coalesce mapped-vector stores across a warp while keeping the whole
+         // tuple in one key critical section.
+         constexpr uint32_t COPY_TILE = 32;
+         const size_t block = ((options_.block_size + 31) / 32) * 32;
+         const size_t N = n * COPY_TILE;
+         update_kernel_with_io<key_type, value_type, score_type, evict_strategy,
+                               COPY_TILE>
+             <<<SAFE_GET_GRID_SIZE(N, block), block, 0, stream>>>(
+                 d_table_, table_->buckets, options_.max_bucket_size,
+                 table_->buckets_num, dim(), keys, values, scores, global_epoch_,
+                 N);
        }
    
        CudaCheckError();
@@ -1514,106 +1441,16 @@ Program Listing for File merlin_hashtable.cuh
                                     options_.dim, stream, n, d_table_,
                                     table_->buckets, keys, values);
          }
+       } else if (options_.io_by_cpu) {
+         assign_by_cpu<false>(n, keys, values, nullptr, stream);
        } else {
-         auto sortOp = SortPairOp<uintptr_t, int>();
-         auto d_sort_bytes = sortOp.get_storage_bytes(n, stream);
-   
-         MultiVector<value_type*, int, value_type*, int, key_type*, uint8_t> mv(
-             n, n, n, n, n, d_sort_bytes);
-         const size_type dev_ws_size = mv.total_size();
-         auto dev_ws{dev_mem_pool_->get_workspace<1>(dev_ws_size, stream)};
-         auto temp_storage = dev_ws.get<uint8_t*>(0);
-         auto d_dst = get_vector<0>(mv, temp_storage);
-         auto d_src_offset = get_vector<1>(mv, temp_storage);
-         auto d_dst_sorted = get_vector<2>(mv, temp_storage);
-         auto d_src_offset_sorted = get_vector<3>(mv, temp_storage);
-         auto keys_ptr = get_vector<4>(mv, temp_storage);
-         auto d_sort_storage = get_vector<5>(mv, temp_storage);
-         sortOp.set_storage(reinterpret_cast<void*>(d_sort_storage));
-   
-         CUDA_CHECK(cudaMemsetAsync(d_dst, 0, dev_ws_size, stream));
-   
-         constexpr uint32_t MinBucketCapacityFilter =
-             sizeof(VecD_Load) / sizeof(D);
-   
-         bool filter_condition =
-             options_.max_bucket_size >= MinBucketCapacityFilter &&
-             !options_.io_by_cpu && unique_key;
-   
-         if (filter_condition) {
-           constexpr uint32_t BLOCK_SIZE = 128U;
-   
-           tlp_update_values_kernel_hybrid<key_type, value_type, score_type>
-               <<<(n + BLOCK_SIZE - 1) / BLOCK_SIZE, BLOCK_SIZE, 0, stream>>>(
-                   table_->buckets, table_->buckets_num, options_.max_bucket_size,
-                   options_.dim, keys, d_dst, keys_ptr, d_src_offset, n);
-   
-         } else {
-           const size_t block_size = options_.block_size;
-           const size_t N = n * TILE_SIZE;
-           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-           update_values_kernel<key_type, value_type, score_type, TILE_SIZE>
-               <<<grid_size, block_size, 0, stream>>>(
-                   d_table_, table_->buckets, options_.max_bucket_size,
-                   table_->buckets_num, options_.dim, keys, d_dst, d_src_offset,
-                   N);
-         }
-   
-         sortOp.sort(n, reinterpret_cast<uintptr_t*>(d_dst),
-                     reinterpret_cast<uintptr_t*>(d_dst_sorted), d_src_offset,
-                     d_src_offset_sorted, stream);
-   
-         if (filter_condition) {
-           const size_t block_size = options_.io_block_size;
-           uint64_t total_value_size = sizeof(value_type) * dim();
-           if (total_value_size % 16 == 0) {
-             using VecV = byte16;
-             uint64_t vec_dim = total_value_size / sizeof(VecV);
-             const size_t N = n * vec_dim;
-             const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-             write_kernel_unlock_key<key_type, VecV, score_type>
-                 <<<grid_size, block_size, 0, stream>>>(
-                     reinterpret_cast<const VecV*>(values),
-                     reinterpret_cast<VecV**>(d_dst_sorted), d_src_offset_sorted,
-                     vec_dim, keys, keys_ptr, N);
-           } else {
-             const size_t N = n * dim();
-             const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-             write_kernel_unlock_key<key_type, value_type, score_type>
-                 <<<grid_size, block_size, 0, stream>>>(values, d_dst_sorted,
-                                                        d_src_offset_sorted, dim(),
-                                                        keys, keys_ptr, N);
-           }
-         } else if (options_.io_by_cpu) {
-           MultiVector<value_type*, int, value_type> mv1(n, n, n * dim());
-           const size_type host_ws_size = mv1.total_size();
-           auto host_ws{host_mem_pool_->get_workspace<1>(host_ws_size, stream)};
-           auto host_temp_storage = host_ws.get<uint8_t*>(0);
-           auto h_dst_sorted = get_vector<0>(mv1, host_temp_storage);
-           auto h_src_offset_sorted = get_vector<1>(mv1, host_temp_storage);
-           auto h_values = get_vector<2>(mv1, host_temp_storage);
-   
-           CUDA_CHECK(cudaMemcpyAsync(h_dst_sorted, d_dst_sorted, mv1.offset(2),
-                                      cudaMemcpyDeviceToHost, stream));
-           CUDA_CHECK(cudaMemcpyAsync(h_values, values,
-                                      n * dim() * sizeof(value_type),
-                                      cudaMemcpyDeviceToHost, stream));
-           CUDA_CHECK(cudaStreamSynchronize(stream));
-   
-           write_by_cpu<value_type>(h_dst_sorted, h_values, h_src_offset_sorted,
-                                    dim(), n);
-         } else {
-           const size_t block_size = options_.io_block_size;
-           const size_t N = n * dim();
-           const size_t grid_size = SAFE_GET_GRID_SIZE(N, block_size);
-   
-           write_kernel<key_type, value_type, score_type>
-               <<<grid_size, block_size, 0, stream>>>(
-                   values, d_dst_sorted, d_src_offset_sorted, dim(), N);
-         }
+         constexpr uint32_t COPY_TILE = 32;
+         const size_t block = ((options_.block_size + 31) / 32) * 32;
+         const size_t N = n * COPY_TILE;
+         update_values_kernel_with_io<key_type, value_type, score_type, COPY_TILE>
+             <<<SAFE_GET_GRID_SIZE(N, block), block, 0, stream>>>(
+                 d_table_, table_->buckets, options_.max_bucket_size,
+                 table_->buckets_num, dim(), keys, values, N);
        }
    
        CudaCheckError();
@@ -2109,7 +1946,7 @@ Program Listing for File merlin_hashtable.cuh
    
        {
          uint64_t dim = table_->dim;
-         uint64_t n = options_.max_capacity;
+         uint64_t n = table_->capacity;
          auto kernel = [&] {
            if (dim >= 32 && n % 32 == 0) {
              return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
@@ -2446,6 +2283,7 @@ Program Listing for File merlin_hashtable.cuh
          // been processed.
          CUDA_CHECK(cudaDeviceSynchronize());
    
+         const auto old_capacity = capacity();
          while (capacity() < new_capacity &&
                 capacity() * 2 <= options_.max_capacity) {
            double_capacity<key_type, value_type, score_type>(&table_, allocator_);
@@ -2461,6 +2299,8 @@ Program Listing for File merlin_hashtable.cuh
                                                       N);
          }
          CUDA_CHECK(cudaDeviceSynchronize());
+         if (options_.io_by_cpu && capacity() != old_capacity)
+           reset_cpu_payload_owners();
          reach_max_capacity_ = (capacity() * 2 > options_.max_capacity);
        }
        CudaCheckError();
@@ -2649,6 +2489,66 @@ Program Listing for File merlin_hashtable.cuh
      }
    
     private:
+     void reset_cpu_payload_owners() {
+       allocator_->free(MemoryType::Device, cpu_payload_owners_);
+       cpu_payload_owners_ = nullptr;
+       allocator_->alloc(MemoryType::Device,
+                         reinterpret_cast<void**>(&cpu_payload_owners_),
+                         capacity() * sizeof(*cpu_payload_owners_));
+       CUDA_CHECK(cudaMemset(cpu_payload_owners_, 0,
+                             capacity() * sizeof(*cpu_payload_owners_)));
+     }
+   
+     template <bool UPDATE_SCORE>
+     void assign_by_cpu(size_type n, const key_type* keys,
+                        const value_type* values, const score_type* scores,
+                        cudaStream_t stream) {
+       MultiVector<value_type*, size_t, uint8_t, int> mv(n, n, n, 1);
+       auto dev_ws = dev_mem_pool_->get_workspace<1>(mv.total_size(), stream);
+       auto storage = dev_ws.template get<uint8_t*>(0);
+       auto dst = get_vector<0>(mv, storage);
+       auto slots = get_vector<1>(mv, storage);
+       auto state = get_vector<2>(mv, storage);
+       auto pending = get_vector<3>(mv, storage);
+       CUDA_CHECK(cudaMemsetAsync(state, 0, n * sizeof(*state), stream));
+   
+       MultiVector<value_type*, int, value_type, int> host_mv(n, n, n * dim(), 1);
+       auto host_ws =
+           host_mem_pool_->get_workspace<1>(host_mv.total_size(), stream);
+       auto host_storage = host_ws.template get<uint8_t*>(0);
+       auto h_dst = get_vector<0>(host_mv, host_storage);
+       auto h_offsets = get_vector<1>(host_mv, host_storage);
+       auto h_values = get_vector<2>(host_mv, host_storage);
+       auto h_pending = get_vector<3>(host_mv, host_storage);
+       for (size_type i = 0; i < n; ++i) h_offsets[i] = i;
+       CUDA_CHECK(cudaMemcpyAsync(h_values, values, n * dim() * sizeof(value_type),
+                                  cudaMemcpyDeviceToHost, stream));
+       const size_t block = 128;
+       const size_t grid = SAFE_GET_GRID_SIZE(n, block);
+       do {
+         CUDA_CHECK(cudaMemsetAsync(pending, 0, sizeof(*pending), stream));
+         prepare_cpu_update_kernel<key_type, value_type, score_type,
+                                   evict_strategy, UPDATE_SCORE, TILE_SIZE>
+             <<<SAFE_GET_GRID_SIZE(n * TILE_SIZE, block), block, 0, stream>>>(
+                 table_->buckets, options_.max_bucket_size, table_->buckets_num,
+                 dim(), keys, scores, global_epoch_, cpu_payload_owners_, dst,
+                 slots, state, pending, n);
+         select_cpu_update_writers_kernel<<<grid, block, 0, stream>>>(
+             cpu_payload_owners_, dst, slots, state, n);
+         CUDA_CHECK(cudaMemcpyAsync(h_dst, dst, n * sizeof(*dst),
+                                    cudaMemcpyDeviceToHost, stream));
+         CUDA_CHECK(cudaMemcpyAsync(h_pending, pending, sizeof(*pending),
+                                    cudaMemcpyDeviceToHost, stream));
+         CUDA_CHECK(cudaStreamSynchronize(stream));
+         write_by_cpu<value_type>(h_dst, h_values, h_offsets, dim(), n);
+         release_cpu_update_owners_kernel<<<grid, block, 0, stream>>>(
+             cpu_payload_owners_, dst, slots, n);
+       } while (*h_pending != 0);
+       // The owner token is a workspace address. Retire all tokens before either
+       // pool may recycle its storage, including the pool's buffer-growth path.
+       CUDA_CHECK(cudaStreamSynchronize(stream));
+     }
+   
      inline bool is_fast_mode() const noexcept { return table_->is_pure_hbm; }
    
      inline bool is_memory_mode() const noexcept {
@@ -2731,6 +2631,7 @@ Program Listing for File merlin_hashtable.cuh
      HashTableOptions options_;
      TableCore* table_ = nullptr;
      TableCore* d_table_ = nullptr;
+     unsigned long long* cpu_payload_owners_ = nullptr;
      size_t shared_mem_size_ = 0;
      int sm_cnt_ = 0;
      int max_threads_per_block_ = 0;
