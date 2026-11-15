@@ -691,24 +691,19 @@ __global__ void update_score_kernel(const Table<K, V, S>* __restrict table,
     if (bucket_size >= bucket_max_size) {
       start_idx = (start_idx / TILE_SIZE) * TILE_SIZE;
     }
-    occupy_result = find_and_lock_for_update<K, V, S, TILE_SIZE>(
-        g, bucket, update_key, start_idx, key_pos, src_lane, bucket_max_size);
+    do {
+      occupy_result = try_find_and_lock_for_update<K, V, S, TILE_SIZE>(
+          g, bucket, update_key, start_idx, key_pos, src_lane, bucket_max_size);
+      if (occupy_result == OccupyResult::CONTINUE) continue;
+      if (occupy_result == OccupyResult::REFUSED) continue;
 
-    occupy_result = g.shfl(occupy_result, src_lane);
-
-    if (occupy_result == OccupyResult::REFUSED) continue;
-
-    if (occupy_result == OccupyResult::DUPLICATE) {
-      if (src_lane == g.thread_rank()) {
+      if (g.thread_rank() == src_lane) {
         ScoreFunctor::update_without_missed(bucket, key_pos, scores, key_idx,
                                             global_epoch);
+        bucket->keys(key_pos)->store(update_key,
+                                     cuda::std::memory_order_release);
       }
-    }
-
-    if (g.thread_rank() == src_lane) {
-      (bucket->keys(key_pos))
-          ->store(update_key, cuda::std::memory_order_relaxed);
-    }
+    } while (occupy_result == OccupyResult::CONTINUE);
   }
 }
 

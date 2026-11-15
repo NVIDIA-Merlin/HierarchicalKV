@@ -1040,5 +1040,91 @@ __global__ void update_kernel(const Table<K, V, S>* __restrict table,
   }
 }
 
+// CPU IO must own the destination before updating its score, without keeping a
+// key locked while waiting for a host copy. A live workspace address identifies
+// this call and its last successful metadata writer, including duplicate keys.
+template <class K, class V, class S, int Strategy, bool UPDATE_SCORE,
+          uint32_t TILE_SIZE = 4>
+__global__ void prepare_cpu_update_kernel(
+    Bucket<K, V, S>* buckets, size_t bucket_capacity, size_t buckets_num,
+    size_t dim, const K* keys, const S* scores, S global_epoch,
+    unsigned long long* owners, V** dst, size_t* slots, uint8_t* state,
+    int* pending, size_t n) {
+  auto g = cg::tiled_partition<TILE_SIZE>(cg::this_thread_block());
+  const auto call_begin = reinterpret_cast<unsigned long long>(dst);
+  const auto call_end = reinterpret_cast<unsigned long long>(dst + n);
+  for (size_t i = (blockIdx.x * blockDim.x + threadIdx.x) / TILE_SIZE; i < n;
+       i += blockDim.x * gridDim.x / TILE_SIZE) {
+    if (g.thread_rank() == 0) dst[i] = nullptr;
+    // Order the clear before another lane publishes an accepted destination.
+    g.sync();
+    if (state[i] == 2) continue;
+    const K key = keys[i];
+    if (IS_RESERVED_KEY<K>(key)) {
+      if (g.thread_rank() == 0) state[i] = 2;
+      continue;
+    }
+    size_t bucket_idx = 0, start_idx = 0;
+    auto bucket = get_key_position<K>(buckets, key, bucket_idx, start_idx,
+                                      buckets_num, bucket_capacity);
+    OccupyResult result;
+    int pos = -1, lane = -1;
+    // Only the short key critical section retries here. A foreign payload
+    // owner is deferred to another host pass, never waited on by the GPU.
+    do {
+      result = try_find_and_lock_for_update<K, V, S, TILE_SIZE>(
+          g, bucket, key, start_idx, pos, lane, bucket_capacity);
+      if (result == OccupyResult::DUPLICATE && g.thread_rank() == lane) {
+        const size_t slot = bucket_idx * bucket_capacity + pos;
+        const auto identity = reinterpret_cast<unsigned long long>(dst + i);
+        const auto owner = atomicCAS(owners + slot, 0ULL, identity);
+        if (owner == 0 || (owner >= call_begin && owner < call_end)) {
+          if constexpr (UPDATE_SCORE) {
+            ScoreFunctor<K, V, S, Strategy>::update_without_missed(
+                bucket, pos, scores, i, global_epoch);
+          }
+          atomicExch(owners + slot, identity);
+          slots[i] = slot;
+          dst[i] = bucket->vectors + pos * dim;
+          state[i] = 1;
+        } else {
+          atomicExch(pending, 1);
+        }
+        bucket->keys(pos)->store(key, cuda::std::memory_order_release);
+      } else if (result == OccupyResult::REFUSED && g.thread_rank() == 0) {
+        state[i] = 2;
+      }
+    } while (result == OccupyResult::CONTINUE);
+  }
+}
+
+template <class V>
+__global__ void select_cpu_update_writers_kernel(unsigned long long* owners,
+                                                 V** dst, const size_t* slots,
+                                                 uint8_t* state, size_t n) {
+  for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n;
+       i += blockDim.x * gridDim.x) {
+    if (state[i] != 1) continue;
+    // Every duplicate has already updated its score exactly once. Copy only
+    // the payload of the final metadata writer for this destination.
+    if (atomicCAS(owners + slots[i], 0ULL, 0ULL) !=
+        reinterpret_cast<unsigned long long>(dst + i))
+      dst[i] = nullptr;
+    state[i] = 2;
+  }
+}
+
+template <class V>
+__global__ void release_cpu_update_owners_kernel(unsigned long long* owners,
+                                                 V** dst, const size_t* slots,
+                                                 size_t n) {
+  for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < n;
+       i += blockDim.x * gridDim.x) {
+    if (dst[i] != nullptr)
+      atomicCAS(owners + slots[i],
+                reinterpret_cast<unsigned long long>(dst + i), 0ULL);
+  }
+}
+
 }  // namespace merlin
 }  // namespace nv

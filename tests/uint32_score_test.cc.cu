@@ -311,3 +311,71 @@ TEST(Uint32ScoreTest, EvictCustomizedCorrectRateFull) {
 
   CudaCheckError();
 }
+
+TEST(Uint32ScoreTest, CpuDeferredUpdatesHandleMissingAndReservedKeys) {
+  constexpr size_t count = 6;
+  constexpr size_t dimension = 17;
+  for (bool unique : {false, true}) {
+    SCOPED_TRACE(unique);
+    cudaStream_t stream;
+    CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+    auto options = default_options();
+    options.io_by_cpu = true;
+    options.max_hbm_for_vectors = 0;
+    options.dim = dimension;
+    Table table;
+    table.init(options);
+    test_util::KVMSBuffer<K, V, S> input;
+    test_util::KVMSBuffer<K, V, S> output;
+    input.Reserve(count, dimension, stream);
+    output.Reserve(count, dimension, stream);
+    input.keys.h_data[0] = 11;
+    input.keys.h_data[1] = 22;
+    input.keys.h_data[2] = 33;
+    CUDA_CHECK(cudaMemcpyFromSymbol(input.keys.h_data + 3,
+                                    nv::merlin::EMPTY_KEY, sizeof(K)));
+    CUDA_CHECK(cudaMemcpyFromSymbol(input.keys.h_data + 4,
+                                    nv::merlin::LOCKED_KEY, sizeof(K)));
+    CUDA_CHECK(cudaMemcpyFromSymbol(input.keys.h_data + 5,
+                                    nv::merlin::RECLAIM_KEY, sizeof(K)));
+    for (size_t row = 0; row < count; ++row) {
+      input.scores.h_data[row] = 7;
+      input.status.h_data[row] = false;
+      for (size_t component = 0; component < dimension; ++component)
+        input.values.h_data[row * dimension + component] = -1;
+    }
+    input.SyncData(true, stream);
+    table.insert_or_assign(2, input.keys_ptr(), input.values_ptr(),
+                           input.scores_ptr(), stream, true);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    input.scores.h_data[0] = 0;
+    input.scores.h_data[1] = std::numeric_limits<S>::max();
+    for (size_t i = 0; i < count * dimension; ++i)
+      input.values.h_data[i] = static_cast<V>(100 + i);
+    input.SyncData(true, stream);
+    table.assign(count, input.keys_ptr(), input.values_ptr(),
+                 input.scores_ptr(), stream, unique);
+    table.assign(0, nullptr, nullptr, nullptr, stream, unique);
+    for (size_t i = 0; i < count * dimension; ++i)
+      input.values.h_data[i] = static_cast<V>(200 + i);
+    input.values.SyncData(true, stream);
+    table.assign_values(count, input.keys_ptr(), input.values_ptr(), stream,
+                        unique);
+    table.assign_values(0, nullptr, nullptr, stream, unique);
+    output.ToZeros(stream);
+    table.find(count, input.keys_ptr(), output.values_ptr(),
+               output.status_ptr(), output.scores_ptr(), stream);
+    output.SyncData(false, stream);
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    EXPECT_EQ(table.size(stream), 2);
+    for (size_t row = 0; row < count; ++row) {
+      EXPECT_EQ(output.status.h_data[row], row < 2);
+      if (row >= 2) continue;
+      EXPECT_EQ(output.scores.h_data[row], input.scores.h_data[row]);
+      for (size_t component = 0; component < dimension; ++component)
+        EXPECT_EQ(output.values.h_data[row * dimension + component],
+                  input.values.h_data[row * dimension + component]);
+    }
+    CUDA_CHECK(cudaStreamDestroy(stream));
+  }
+}
