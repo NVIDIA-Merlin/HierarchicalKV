@@ -1641,21 +1641,19 @@ __global__ void write_kernel_unlock_key(const V* __restrict src,
                                         const size_t dim, const K* keys,
                                         K** __restrict__ key_ptrs,
                                         const size_t N) {
-  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / dim);
-    int dim_index = t % dim;
-    int real_idx = src_offset ? src_offset[vec_index] : vec_index;
-
-    K* key_ptr = key_ptrs[real_idx];
-    K key = keys[real_idx];
-    V* value_ptr = dst[vec_index];
-
-    if (key_ptr && dim_index == 0) *key_ptr = key;
-
+  auto g = cg::tiled_partition<32>(cg::this_thread_block());
+  for (size_t vec = (blockIdx.x * blockDim.x + threadIdx.x) / 32; vec < N / dim;
+       vec += blockDim.x * gridDim.x / 32) {
+    const int real_idx = src_offset ? src_offset[vec] : vec;
+    V* value_ptr = dst[vec];
     if (value_ptr) {
-      value_ptr[dim_index] = src[real_idx * dim + dim_index];
+      copy_vector<V, 32>(g, src + real_idx * dim, value_ptr, dim);
+    }
+    g.sync();
+    K* key_ptr = key_ptrs[real_idx];
+    if (g.thread_rank() == 0 && key_ptr) {
+      reinterpret_cast<AtomicKey<K>*>(key_ptr)->store(
+          keys[real_idx], cuda::std::memory_order_release);
     }
   }
 }

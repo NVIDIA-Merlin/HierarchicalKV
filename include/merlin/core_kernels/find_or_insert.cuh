@@ -1645,32 +1645,23 @@ __global__ void read_or_write_kernel_unlock_key(
     const bool* mask, const int* __restrict param_key_index,
     K** __restrict__ key_ptrs, const K* __restrict__ keys, const size_t dim,
     const size_t N) {
-  size_t tid = (blockIdx.x * blockDim.x) + threadIdx.x;
-
-  for (size_t t = tid; t < N; t += blockDim.x * gridDim.x) {
-    int vec_index = int(t / dim);
-    int dim_index = t % dim;
-    int real_key_index =
-        param_key_index != nullptr ? param_key_index[vec_index] : vec_index;
-
-    K* key_ptr = key_ptrs[real_key_index];
-    K key = keys[real_key_index];
-
-    /// if found, read the value form table, otherwise write it
-    if (table_value_addrs[vec_index] != nullptr) {
-      // unlock the key.
-      if (key_ptr && dim_index == 0) *key_ptr = key;
-
-      /// find
-      if (mask[real_key_index]) {
-        param_values[real_key_index * dim + dim_index] =
-            table_value_addrs[vec_index][dim_index];
-      }
-      /// insert
-      else {
-        table_value_addrs[vec_index][dim_index] =
-            param_values[real_key_index * dim + dim_index];
-      }
+  auto g = cg::tiled_partition<32>(cg::this_thread_block());
+  for (size_t vec = (blockIdx.x * blockDim.x + threadIdx.x) / 32; vec < N / dim;
+       vec += blockDim.x * gridDim.x / 32) {
+    const int real_idx = param_key_index ? param_key_index[vec] : vec;
+    auto table_value = table_value_addrs[vec];
+    if (table_value) {
+      auto param_value = param_values + real_idx * dim;
+      if (mask[real_idx])
+        copy_vector<VecV, 32>(g, table_value, param_value, dim);
+      else
+        copy_vector<VecV, 32>(g, param_value, table_value, dim);
+    }
+    g.sync();
+    K* key_ptr = key_ptrs[real_idx];
+    if (g.thread_rank() == 0 && key_ptr) {
+      reinterpret_cast<AtomicKey<K>*>(key_ptr)->store(
+          keys[real_idx], cuda::std::memory_order_release);
     }
   }
 }

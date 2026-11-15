@@ -1114,10 +1114,10 @@ __device__ __forceinline__ OccupyResult try_find_and_lock_for_update(
         key_pos = g.shfl(key_pos, src_lane);
         return OccupyResult::DUPLICATE;
       }
-      vote = g.ballot(expected_key == static_cast<K>(EMPTY_KEY));
-      if (vote) return OccupyResult::REFUSED;
       vote = g.ballot(expected_key == static_cast<K>(LOCKED_KEY));
       if (vote != 0) return OccupyResult::CONTINUE;
+      vote = g.ballot(expected_key == static_cast<K>(EMPTY_KEY));
+      if (vote) return OccupyResult::REFUSED;
     }
   }
   return OccupyResult::REFUSED;

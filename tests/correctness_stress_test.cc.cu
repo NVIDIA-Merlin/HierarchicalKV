@@ -1358,3 +1358,270 @@ TEST(CorrectnessStress, LfuMaximumIncrementSaturatesOnInsertAndUpdate) {
     CUDA_CHECK(cudaFree(device_found));
   }
 }
+
+namespace {
+
+template <class Operation>
+void run_nonblocking_update_workers(size_t count, Operation operation) {
+  std::vector<cudaStream_t> streams(count);
+  for (auto& stream : streams)
+    CUDA_CHECK(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+  int device = 0;
+  CUDA_CHECK(cudaGetDevice(&device));
+  std::atomic<size_t> ready{0};
+  std::atomic<bool> start{false};
+  std::vector<std::exception_ptr> failures(count);
+  std::vector<std::thread> workers;
+  for (size_t worker = 0; worker < count; ++worker) {
+    workers.emplace_back([&, worker] {
+      ready.fetch_add(1);
+      while (!start.load()) std::this_thread::yield();
+      try {
+        CUDA_CHECK(cudaSetDevice(device));
+        operation(worker, streams[worker]);
+      } catch (...) {
+        failures[worker] = std::current_exception();
+      }
+    });
+  }
+  while (ready.load() != count) std::this_thread::yield();
+  start.store(true);
+  for (auto& worker : workers) worker.join();
+  for (auto stream : streams) {
+    CUDA_CHECK(cudaStreamSynchronize(stream));
+    CUDA_CHECK(cudaStreamDestroy(stream));
+  }
+  for (auto failure : failures) {
+    if (failure) std::rethrow_exception(failure);
+  }
+}
+
+template <class UpdateTable>
+void read_update_rows(UpdateTable& table, const std::vector<K>& keys,
+                      std::vector<V>& values, std::vector<S>& scores) {
+  K* device_keys = copy_to_device(keys);
+  V* device_values = nullptr;
+  S* device_scores = nullptr;
+  bool* device_found = nullptr;
+  values.resize(keys.size() * table.dim());
+  scores.resize(keys.size());
+  CUDA_CHECK(cudaMalloc(&device_values, values.size() * sizeof(V)));
+  CUDA_CHECK(cudaMalloc(&device_scores, scores.size() * sizeof(S)));
+  CUDA_CHECK(cudaMalloc(&device_found, keys.size() * sizeof(bool)));
+  CUDA_CHECK(cudaMemset(device_found, 0, keys.size() * sizeof(bool)));
+  table.find(keys.size(), device_keys, device_values, device_found,
+             device_scores, 0);
+  CUDA_CHECK(cudaStreamSynchronize(0));
+  std::vector<uint8_t> found(keys.size());
+  CUDA_CHECK(cudaMemcpy(found.data(), device_found, found.size(),
+                        cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(values.data(), device_values, values.size() * sizeof(V),
+                        cudaMemcpyDeviceToHost));
+  CUDA_CHECK(cudaMemcpy(scores.data(), device_scores, scores.size() * sizeof(S),
+                        cudaMemcpyDeviceToHost));
+  for (size_t row = 0; row < keys.size(); ++row)
+    EXPECT_EQ(found[row], uint8_t{1}) << keys[row];
+  CUDA_CHECK(cudaFree(device_keys));
+  CUDA_CHECK(cudaFree(device_values));
+  CUDA_CHECK(cudaFree(device_scores));
+  CUDA_CHECK(cudaFree(device_found));
+}
+
+void check_deferred_mixed_value_writers(Table& table,
+                                        const std::vector<K>& keys,
+                                        bool unique) {
+  const size_t dimension = table.dim();
+  std::vector<V> full_values(keys.size() * dimension);
+  std::vector<V> value_only_values(full_values.size());
+  std::vector<S> full_scores(keys.size());
+  for (size_t row = 0; row < keys.size(); ++row) {
+    full_scores[row] = 1000 + row;
+    for (size_t component = 0; component < dimension; ++component) {
+      full_values[row * dimension + component] =
+          1000000 + row * 1024 + component;
+      value_only_values[row * dimension + component] =
+          2000000 + row * 1024 + component;
+    }
+  }
+  K* device_keys = copy_to_device(keys);
+  V* device_full = copy_to_device(full_values);
+  V* device_values = copy_to_device(value_only_values);
+  S* device_scores = copy_to_device(full_scores);
+  run_nonblocking_update_workers(2, [&](size_t worker, cudaStream_t stream) {
+    // No synchronization between calls: later larger batches may grow a pool
+    // while another stream still has completion work from its previous call.
+    for (size_t count : {size_t{17}, size_t{65}, keys.size()}) {
+      if (worker == 0) {
+        table.assign(count, device_keys, device_full, device_scores, stream,
+                     unique);
+      } else {
+        table.assign_values(count, device_keys, device_values, stream, unique);
+      }
+    }
+  });
+  std::vector<V> actual_values;
+  std::vector<S> actual_scores;
+  read_update_rows(table, keys, actual_values, actual_scores);
+  EXPECT_EQ(actual_scores, full_scores);
+  EXPECT_EQ(table.size(0), keys.size());
+  for (size_t row = 0; row < keys.size(); ++row) {
+    const size_t offset = row * dimension;
+    const bool full_won = actual_values[offset] == full_values[offset];
+    const auto& expected = full_won ? full_values : value_only_values;
+    for (size_t component = 0; component < dimension; ++component)
+      EXPECT_EQ(actual_values[offset + component], expected[offset + component])
+          << keys[row] << ':' << component;
+  }
+  CUDA_CHECK(cudaFree(device_keys));
+  CUDA_CHECK(cudaFree(device_full));
+  CUDA_CHECK(cudaFree(device_values));
+  CUDA_CHECK(cudaFree(device_scores));
+}
+
+template <int strategy>
+void check_deferred_duplicate_frequency_updates() {
+  constexpr size_t dimension = 33;
+  constexpr size_t distinct_count = 17;
+  constexpr size_t count = 257;
+  using FrequencyTable = nv::merlin::HashTable<K, V, S, strategy>;
+  const auto distinct = collision_keys(distinct_count, TableMode::kThroughput);
+  for (bool io_by_cpu : {false, true}) {
+    SCOPED_TRACE(io_by_cpu);
+    TableOptions options;
+    options.init_capacity = 512;
+    options.max_capacity = 512;
+    options.max_hbm_for_vectors = 0;
+    options.max_bucket_size = 128;
+    options.dim = dimension;
+    options.io_by_cpu = io_by_cpu;
+    options.api_lock = true;
+    FrequencyTable table;
+    table.init(options);
+    if (strategy == EvictStrategy::kEpochLfu) table.set_global_epoch(9);
+    K* seed_keys = copy_to_device(distinct);
+    V* seed_values =
+        copy_to_device(std::vector<V>(distinct_count * dimension, -1));
+    S* seed_scores = copy_to_device(std::vector<S>(distinct_count, 1));
+    table.insert_or_assign(distinct_count, seed_keys, seed_values, seed_scores,
+                           0, true);
+    CUDA_CHECK(cudaStreamSynchronize(0));
+    std::vector<K> keys(count);
+    std::vector<V> full_values(count * dimension);
+    std::vector<V> value_only_values(full_values.size());
+    std::vector<S> full_scores(count), score_only_scores(count);
+    std::vector<S> expected_scores(distinct_count, 1);
+    for (size_t row = 0; row < count; ++row) {
+      keys[row] = distinct[row % distinct_count];
+      full_scores[row] = row % 5 + 1;
+      score_only_scores[row] = row % 7 + 1;
+      expected_scores[row % distinct_count] +=
+          full_scores[row] + score_only_scores[row];
+      for (size_t component = 0; component < dimension; ++component) {
+        full_values[row * dimension + component] =
+            1000000 + row * 1024 + component;
+        value_only_values[row * dimension + component] =
+            2000000 + row * 1024 + component;
+      }
+    }
+    K* device_keys = copy_to_device(keys);
+    V* device_full = copy_to_device(full_values);
+    V* device_values = copy_to_device(value_only_values);
+    S* device_full_scores = copy_to_device(full_scores);
+    S* device_score_only = copy_to_device(score_only_scores);
+    run_nonblocking_update_workers(3, [&](size_t worker, cudaStream_t stream) {
+      if (worker == 0) {
+        table.assign(count, device_keys, device_full, device_full_scores,
+                     stream, false);
+      } else if (worker == 1) {
+        table.assign_values(count, device_keys, device_values, stream, false);
+      } else {
+        table.assign_scores(count, device_keys, device_score_only, stream,
+                            false);
+      }
+    });
+    if (strategy == EvictStrategy::kEpochLfu) {
+      for (auto& score : expected_scores) score |= S{9} << 32;
+    }
+    std::vector<V> actual_values;
+    std::vector<S> actual_scores;
+    read_update_rows(table, distinct, actual_values, actual_scores);
+    EXPECT_EQ(actual_scores, expected_scores);
+    EXPECT_EQ(table.size(0), distinct_count);
+    for (size_t row = 0; row < distinct_count; ++row) {
+      const size_t offset = row * dimension;
+      const V base = actual_values[offset] < 2000000 ? 1000000 : 2000000;
+      const V relative = actual_values[offset] - base;
+      ASSERT_GE(relative, V{0});
+      ASSERT_LT(relative, static_cast<V>(count * 1024));
+      const size_t winner = static_cast<size_t>(relative) / 1024;
+      EXPECT_EQ(keys[winner], distinct[row]);
+      for (size_t component = 0; component < dimension; ++component)
+        EXPECT_EQ(actual_values[offset + component],
+                  base + winner * 1024 + component)
+            << distinct[row] << ':' << component;
+    }
+    CUDA_CHECK(cudaFree(seed_keys));
+    CUDA_CHECK(cudaFree(seed_values));
+    CUDA_CHECK(cudaFree(seed_scores));
+    CUDA_CHECK(cudaFree(device_keys));
+    CUDA_CHECK(cudaFree(device_full));
+    CUDA_CHECK(cudaFree(device_values));
+    CUDA_CHECK(cudaFree(device_full_scores));
+    CUDA_CHECK(cudaFree(device_score_only));
+  }
+}
+
+}  // namespace
+
+TEST(CorrectnessStress, DeferredMixedValueWritersSurviveWorkspaceGrowth) {
+  constexpr size_t count = 257;
+  std::vector<K> keys(count);
+  std::iota(keys.begin(), keys.end(), 1);
+  for (bool io_by_cpu : {false, true}) {
+    for (size_t dimension : {size_t{17}, size_t{513}}) {
+      for (bool unique : {false, true}) {
+        SCOPED_TRACE(::testing::Message() << "cpu_io=" << io_by_cpu << " dim="
+                                          << dimension << " unique=" << unique);
+        Table table;
+        create_table(table, TableMode::kThroughput, 2048, dimension, false,
+                     io_by_cpu);
+        insert_or_assign(table, keys, std::vector<V>(count * dimension, -1),
+                         std::vector<S>(count, 1), true);
+        check_deferred_mixed_value_writers(table, keys, unique);
+      }
+    }
+  }
+}
+
+TEST(CorrectnessStress, DeferredDuplicateWritersApplyEveryFrequencyIncrement) {
+  check_deferred_duplicate_frequency_updates<EvictStrategy::kLfu>();
+  check_deferred_duplicate_frequency_updates<EvictStrategy::kEpochLfu>();
+}
+
+TEST(CorrectnessStress, CpuPayloadOwnershipReinitializesAfterReserve) {
+  constexpr size_t count = 65;
+  constexpr size_t dimension = 17;
+  TableOptions options;
+  options.init_capacity = 128;
+  options.max_capacity = 1024;
+  options.max_hbm_for_vectors = 0;
+  options.max_bucket_size = 128;
+  options.max_load_factor = 1.0f;
+  options.dim = dimension;
+  options.io_by_cpu = true;
+  options.api_lock = true;
+  Table table;
+  table.init(options);
+  std::vector<K> keys(count);
+  std::iota(keys.begin(), keys.end(), 1);
+  insert_or_assign(table, keys, std::vector<V>(count * dimension, -1),
+                   std::vector<S>(count, 1), true);
+  ASSERT_EQ(table.capacity(), size_t{128});
+  check_deferred_mixed_value_writers(table, keys, false);
+  table.reserve(1024);
+  CUDA_CHECK(cudaStreamSynchronize(0));
+  ASSERT_EQ(table.capacity(), size_t{1024});
+  insert_or_assign(table, keys, std::vector<V>(count * dimension, -2),
+                   std::vector<S>(count, 2), true);
+  check_deferred_mixed_value_writers(table, keys, true);
+}
