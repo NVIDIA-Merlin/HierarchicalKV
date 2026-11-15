@@ -1077,6 +1077,93 @@ void test_erase_if_pred(size_t max_hbm_for_vectors) {
   CudaCheckError();
 }
 
+template <class K, class V, class S>
+struct EraseIfEvenKeyFunctor {
+  template <int GroupSize>
+  __forceinline__ __device__ bool operator()(
+      const K& key, const V* value, const S& score,
+      cg::thread_block_tile<GroupSize>& g) {
+    return (key % 2) == 0;
+  }
+};
+
+// erase_if_v2 must only visit the buckets that exist, i.e. capacity() slots,
+// while the table is still smaller than max_capacity.
+void test_erase_if_v2_before_reaching_max_capacity(size_t max_hbm_for_vectors) {
+  constexpr uint64_t INIT_CAPACITY = 1024UL;
+  constexpr uint64_t MAX_CAPACITY = 1UL << 26;
+  constexpr uint64_t KEY_NUM = 256UL;
+
+  TableOptions options;
+  options.init_capacity = INIT_CAPACITY;
+  options.max_capacity = MAX_CAPACITY;
+  options.dim = DIM;
+  options.max_hbm_for_vectors = nv::merlin::GB(max_hbm_for_vectors);
+  using Table = nv::merlin::HashTable<K, V, S, EvictStrategy::kCustomized>;
+
+  std::unique_ptr<Table> table = std::make_unique<Table>();
+  table->init(options);
+
+  std::vector<K> h_keys(KEY_NUM);
+  std::vector<S> h_scores(KEY_NUM);
+  std::vector<V> h_vectors(KEY_NUM * DIM);
+  std::unique_ptr<bool[]> h_found(new bool[KEY_NUM]);
+  for (size_t i = 0; i < KEY_NUM; i++) {
+    h_keys[i] = static_cast<K>(i + 1);
+    h_scores[i] = static_cast<S>(i + 1);
+    for (size_t j = 0; j < DIM; j++) {
+      h_vectors[i * DIM + j] = static_cast<V>(i);
+    }
+  }
+
+  K* d_keys;
+  S* d_scores;
+  V* d_vectors;
+  bool* d_found;
+  CUDA_CHECK(cudaMalloc(&d_keys, KEY_NUM * sizeof(K)));
+  CUDA_CHECK(cudaMalloc(&d_scores, KEY_NUM * sizeof(S)));
+  CUDA_CHECK(cudaMalloc(&d_vectors, KEY_NUM * DIM * sizeof(V)));
+  CUDA_CHECK(cudaMalloc(&d_found, KEY_NUM * sizeof(bool)));
+  CUDA_CHECK(cudaMemcpy(d_keys, h_keys.data(), KEY_NUM * sizeof(K),
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_scores, h_scores.data(), KEY_NUM * sizeof(S),
+                        cudaMemcpyHostToDevice));
+  CUDA_CHECK(cudaMemcpy(d_vectors, h_vectors.data(), KEY_NUM * DIM * sizeof(V),
+                        cudaMemcpyHostToDevice));
+
+  cudaStream_t stream;
+  CUDA_CHECK(cudaStreamCreate(&stream));
+
+  table->insert_or_assign(KEY_NUM, d_keys, d_vectors, d_scores, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  ASSERT_EQ(table->capacity(), INIT_CAPACITY);
+  ASSERT_EQ(table->size(stream), KEY_NUM);
+
+  EraseIfEvenKeyFunctor<K, V, S> pred;
+  size_t erase_num =
+      table->template erase_if_v2<EraseIfEvenKeyFunctor<K, V, S>>(pred, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  ASSERT_EQ(erase_num, KEY_NUM / 2);
+  ASSERT_EQ(table->size(stream), KEY_NUM / 2);
+
+  table->find(KEY_NUM, d_keys, d_vectors, d_found, nullptr, stream);
+  CUDA_CHECK(cudaStreamSynchronize(stream));
+  CUDA_CHECK(cudaMemcpy(h_found.get(), d_found, KEY_NUM * sizeof(bool),
+                        cudaMemcpyDeviceToHost));
+  for (size_t i = 0; i < KEY_NUM; i++) {
+    ASSERT_EQ(h_found[i], (h_keys[i] % 2) != 0) << "key=" << h_keys[i];
+  }
+
+  CUDA_CHECK(cudaStreamDestroy(stream));
+  CUDA_CHECK(cudaFree(d_keys));
+  CUDA_CHECK(cudaFree(d_scores));
+  CUDA_CHECK(cudaFree(d_vectors));
+  CUDA_CHECK(cudaFree(d_found));
+  CUDA_CHECK(cudaDeviceSynchronize());
+
+  CudaCheckError();
+}
+
 void test_rehash(size_t max_hbm_for_vectors) {
   constexpr uint64_t BUCKET_MAX_SIZE = 128ul;
   constexpr uint64_t INIT_CAPACITY = BUCKET_MAX_SIZE;
@@ -3874,6 +3961,10 @@ TEST(MerlinHashTableTest, test_erase_if_pred) {
   test_erase_if_pred<EraseIfVersion::V1>(0);
   test_erase_if_pred<EraseIfVersion::V2>(16);
   test_erase_if_pred<EraseIfVersion::V3>(16);
+}
+TEST(MerlinHashTableTest, test_erase_if_v2_before_reaching_max_capacity) {
+  test_erase_if_v2_before_reaching_max_capacity(16);
+  test_erase_if_v2_before_reaching_max_capacity(0);
 }
 TEST(MerlinHashTableTest, test_rehash) {
   test_rehash(16);

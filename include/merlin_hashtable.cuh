@@ -3186,7 +3186,7 @@ class HashTable : public HashTableBase<K, V, S> {
     {
       /// Search_length should be multiple of GroupSize for communication.
       uint64_t dim = table_->dim;
-      uint64_t n = options_.max_capacity;
+      uint64_t n = table_->capacity;
       auto kernel = [&] {
         if (dim >= 32 && n % 32 == 0) {
           return remove_kernel_v2<key_type, value_type, score_type, PredFunctor,
