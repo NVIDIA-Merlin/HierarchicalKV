@@ -2,20 +2,28 @@
 
 # Usage : `bash run_all_tests.sh`
 
-# Search for all binary files that end with "test"
-files=$(find ./build/ -type f -name "*_test" -executable)
-
-# Execute each file found
+# Keep test stdin separate from the NUL-delimited discovery stream.
+has_tests=false
 has_fail=false
-for file in $files
+while IFS= read -r -d '' file <&3
 do
+    has_tests=true
     echo "Executing $file ..."
-    ./$file
-    if ! [ $? -eq 0 ]; then
-      has_fail=true
+    if ! "$file" 3<&-; then
+        has_fail=true
     fi
-done
+done 3< <(find ./build/ -type f -name "*_test" -executable -print0)
 
-if [ "$has_fail" = true ] ; then
+# Bash exposes the process substitution's PID through $!.
+if ! wait "$!"; then
+    exit 1
+fi
+
+if [ "$has_tests" = false ]; then
+    echo "No executable *_test binaries found in ./build/." >&2
+    exit 1
+fi
+
+if [ "$has_fail" = true ]; then
     exit 1
 fi
