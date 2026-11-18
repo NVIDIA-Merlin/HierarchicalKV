@@ -210,6 +210,10 @@ For Unit Test:
 ./merlin_hashtable_test
 ```
 
+For the complete CMake test suite, run `bash run_all_tests.sh` from the
+repository root after a successful build. See [GPU CI](docs/gpu-ci.md) for the
+existing Blossom trigger and backend requirements.
+
 ### with bazel
 
 - DON'T use the option of `--recursive` for `git clone`.

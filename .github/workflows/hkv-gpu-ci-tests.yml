@@ -1,0 +1,31 @@
+# Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: HKV GPU controller tests
+
+on:
+  push:
+    paths:
+      - .github/scripts/hkv_gpu_ci.py
+      - tests/hkv_gpu_ci_test.py
+      - .github/workflows/hkv-gpu-ci*.yml
+  pull_request:
+    paths:
+      - .github/scripts/hkv_gpu_ci.py
+      - tests/hkv_gpu_ci_test.py
+      - .github/workflows/hkv-gpu-ci*.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          submodules: false
+      - name: Test controller HTTP boundaries without host credentials
+        run: python3 -I tests/hkv_gpu_ci_test.py

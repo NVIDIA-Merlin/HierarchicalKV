@@ -1,0 +1,125 @@
+# Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: HKV H100 NVL
+
+on:
+  push:
+    branches: ['**']
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to retry
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  resolve:
+    if: >-
+      github.repository == 'NVIDIA-Merlin/HierarchicalKV' &&
+      (github.event_name == 'pull_request_target' ||
+       contains(fromJSON('["EmmaQiaoCh","rhdong","Ranjeet-Nvidia","jiashuy"]'), github.actor)) &&
+      (github.event_name != 'issue_comment' ||
+       (github.event.issue.pull_request && startsWith(github.event.comment.body, '/hkv-gpu-ci ')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      pull_request: ${{ steps.resolve.outputs.pull_request }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: NVIDIA-Merlin/HierarchicalKV
+          ref: ${{ github.workflow_sha }}
+          path: hkv-control
+          sparse-checkout: .github/scripts/hkv_gpu_ci.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          submodules: false
+      - id: resolve
+        run: python3 -I hkv-control/.github/scripts/hkv_gpu_ci.py resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  gpu:
+    needs: resolve
+    if: needs.resolve.outputs.pull_request != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    concurrency:
+      group: hkv-h100-nvl-pr-${{ needs.resolve.outputs.pull_request }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: NVIDIA-Merlin/HierarchicalKV
+          ref: ${{ github.workflow_sha }}
+          path: hkv-control
+          sparse-checkout: .github/scripts/hkv_gpu_ci.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          submodules: false
+      - name: Check host connectivity
+        # The controller owns the strict verdict and commit status.
+        continue-on-error: true
+        env:
+          HKV_GITLAB_URL: ${{ secrets.HKV_GITLAB_URL }}
+        run: |
+          timeout 30s python3 -I - <<'PY'
+          import ipaddress
+          import os
+          import socket
+          import sys
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import urlsplit
+          from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+          try:
+              origin = os.environ["HKV_GITLAB_URL"].rstrip("/")
+              address = urlsplit(origin)
+              if address.scheme != "https" or not address.hostname or address.username or address.password or address.path or address.query or address.fragment:
+                  raise ValueError()
+              records = socket.getaddrinfo(address.hostname, address.port or 443, type=socket.SOCK_STREAM)
+              addresses = {ipaddress.ip_address(record[4][0]) for record in records}
+              print("DNS counts total=" + str(len(addresses)) + " global=" + str(sum(item.is_global for item in addresses)) + " private=" + str(sum(item.is_private for item in addresses)), flush=True)
+          except Exception as error:
+              print("DNS failed " + type(error).__name__, flush=True)
+              sys.exit(1)
+
+          class NoRedirect(HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          try:
+              request = Request(origin + "/api/v4/version", method="HEAD")
+              with build_opener(NoRedirect()).open(request, timeout=10) as response:
+                  print("HTTPS reachable status=" + str(response.status), flush=True)
+          except HTTPError as error:
+              print("HTTPS reachable status=" + str(error.code), flush=True)
+              error.close()
+          except Exception as error:
+              cause = error.reason if isinstance(error, URLError) and isinstance(error.reason, BaseException) else error
+              print("HTTPS failed " + type(cause).__name__, flush=True)
+              sys.exit(1)
+          PY
+      - name: Dispatch and verify H100 NVL suite
+        run: python3 -I hkv-control/.github/scripts/hkv_gpu_ci.py check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HKV_GITLAB_TOKEN: ${{ secrets.HKV_GITLAB_TOKEN }}
+          HKV_GITLAB_URL: ${{ secrets.HKV_GITLAB_URL }}
+          HKV_GITLAB_PROJECT_ID: ${{ vars.HKV_GITLAB_PROJECT_ID }}
+          HKV_GITLAB_DEPLOYMENT_SHA: ${{ vars.HKV_GITLAB_DEPLOYMENT_SHA }}
