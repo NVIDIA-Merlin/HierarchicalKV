@@ -30,7 +30,7 @@ jobs:
        contains(fromJSON('["EmmaQiaoCh","rhdong","Ranjeet-Nvidia","jiashuy"]'), github.actor)) &&
       (github.event_name != 'issue_comment' ||
        (github.event.issue.pull_request && startsWith(github.event.comment.body, '/hkv-gpu-ci ')))
-    runs-on: blossom
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       pull_request: ${{ steps.resolve.outputs.pull_request }}
@@ -52,7 +52,7 @@ jobs:
   gpu:
     needs: resolve
     if: needs.resolve.outputs.pull_request != ''
-    runs-on: blossom
+    runs-on: ubuntu-latest
     timeout-minutes: 210
     concurrency:
       group: hkv-h100-nvl-pr-${{ needs.resolve.outputs.pull_request }}

@@ -32,7 +32,7 @@ handled interruption, timeout or stale head. Its wait is bounded to 205 minutes;
 the host's 195-minute job limit remains the last resort for abrupt controller loss.
 These limits allow full tests without promising a completion time.
 
-The `blossom` runner executes only trusted controller code from the workflow's own
+GitHub-hosted Ubuntu runners execute only trusted controller code from the workflow's own
 immutable SHA. Checkout is sparse, fixed to this repository, without submodules
 or persisted credentials. PR files are never checked out or executed in this
 credentialed control path. Contributed code runs only on the existing isolated
@@ -59,7 +59,7 @@ administrator policies. Code Owner approval remains independently required.
 Local controller checks are `python3 tests/hkv_gpu_ci_test.py`; they use mock HTTP
 and establish no GPU result. The separate hosted **HKV GPU controller tests**
 workflow runs them for relevant PR/push changes with read-only permissions and no
-host credentials; contributed tests never run on the privileged blossom path.
+host credentials; contributed tests never run on the credentialed control path.
 
 ## Existing Blossom adapter
 
