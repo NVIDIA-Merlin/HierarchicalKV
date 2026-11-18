@@ -8,6 +8,11 @@ public Actions run. Passing requires the isolated host pipeline's terminal
 success, exactly one successful `hkv:gpu` job, and matching source artifacts;
 dispatch alone cannot pass the check.
 
+Live automatic acceptance is still pending. Before dispatch, a token-free
+connectivity check reports DNS address counts and an unauthenticated HTTPS status,
+without private hostnames or addresses. Reachability does not establish valid
+credentials or a passing GPU result.
+
 Pushes to repository branches with open PRs and PR opened/reopened/ready/synchronize
 events use the existing trusted maintainers: `EmmaQiaoCh`, `rhdong`,
 `Ranjeet-Nvidia`, and `jiashuy`. Both the event actor and PR author must be on that
