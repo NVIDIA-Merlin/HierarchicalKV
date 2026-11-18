@@ -1,0 +1,82 @@
+# Copyright (c) 2026, NVIDIA CORPORATION. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+name: HKV H100 NVL
+
+on:
+  push:
+    branches: ['**']
+  pull_request_target:
+    types: [opened, reopened, ready_for_review, synchronize]
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to retry
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  resolve:
+    if: >-
+      github.repository == 'NVIDIA-Merlin/HierarchicalKV' &&
+      (github.event_name == 'pull_request_target' ||
+       contains(fromJSON('["EmmaQiaoCh","rhdong","Ranjeet-Nvidia","jiashuy"]'), github.actor)) &&
+      (github.event_name != 'issue_comment' ||
+       (github.event.issue.pull_request && startsWith(github.event.comment.body, '/hkv-gpu-ci ')))
+    runs-on: blossom
+    timeout-minutes: 5
+    outputs:
+      pull_request: ${{ steps.resolve.outputs.pull_request }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: NVIDIA-Merlin/HierarchicalKV
+          ref: ${{ github.workflow_sha }}
+          path: hkv-control
+          sparse-checkout: .github/scripts/hkv_gpu_ci.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          submodules: false
+      - id: resolve
+        run: python3 -I hkv-control/.github/scripts/hkv_gpu_ci.py resolve
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  gpu:
+    needs: resolve
+    if: needs.resolve.outputs.pull_request != ''
+    runs-on: blossom
+    timeout-minutes: 210
+    concurrency:
+      group: hkv-h100-nvl-pr-${{ needs.resolve.outputs.pull_request }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: NVIDIA-Merlin/HierarchicalKV
+          ref: ${{ github.workflow_sha }}
+          path: hkv-control
+          sparse-checkout: .github/scripts/hkv_gpu_ci.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+          submodules: false
+      - name: Dispatch and verify H100 NVL suite
+        run: python3 -I hkv-control/.github/scripts/hkv_gpu_ci.py check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HKV_GITLAB_TOKEN: ${{ secrets.HKV_GITLAB_TOKEN }}
+          HKV_GITLAB_URL: ${{ secrets.HKV_GITLAB_URL }}
+          HKV_GITLAB_PROJECT_ID: ${{ vars.HKV_GITLAB_PROJECT_ID }}
+          HKV_GITLAB_DEPLOYMENT_SHA: ${{ vars.HKV_GITLAB_DEPLOYMENT_SHA }}
