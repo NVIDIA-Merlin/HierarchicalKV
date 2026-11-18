@@ -589,6 +589,26 @@ class GPUControlTests(unittest.TestCase):
             with self.subTest(origin=origin), self.assertRaises(ci._Error):
                 ci._API(origin, {})
 
+    def test_http_error_response_is_closed_before_sanitized_failure(self):
+        response = io.BytesIO(b"SECRET-FIXTURE")
+        self.addCleanup(response.close)
+        failure = HTTPError(
+            "https://private-host.invalid/SECRET-FIXTURE",
+            403,
+            "SECRET-FIXTURE",
+            {},
+            response,
+        )
+
+        def rejected(request):
+            raise failure
+
+        self.fixture.fault = rejected
+        with self.assertRaises(ci._Error) as sanitized:
+            self.gh.request("GET", ci._gh("/pulls/262"))
+        self.assertTrue(response.closed)
+        self.assertEqual(str(sanitized.exception), "API request failed")
+
     def test_cli_errors_are_secret_free_and_resolve_output_is_numeric(self):
         with tempfile.TemporaryDirectory() as directory:
             event = Path(directory) / "event.json"

@@ -71,7 +71,12 @@ class _API:
             if len(data) > 1 << 20:
                 raise _Error("API response exceeded limit")
             return json.loads(data)
-        except (HTTPError, URLError, OSError, ValueError):
+        except HTTPError as error:
+            try:
+                error.close()
+            finally:
+                raise _Error("API request failed") from None
+        except (URLError, OSError, ValueError):
             raise _Error("API request failed") from None
 
 
